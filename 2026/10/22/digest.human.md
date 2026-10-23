@@ -1,0 +1,36 @@
+# Git mailing list daily digest for 2026/10/22
+
+## The day in brief
+The Git mailing list saw intense discussion around governance processes, with a voting system proposal gaining momentum but facing ideological pushback. Technical work advanced on several fronts, including a major performance fix for `git log --follow`, SSH signing verification fixes, and worktree improvements. The maintainer's "What's cooking" report highlighted a growing backlog of patches, raising concerns about project capacity.
+
+## Notable threads
+
+### Governance and voting process
+The proposal to formalize a voting process for contentious decisions sparked heated debate. **Emily Shaffer** posted a patch defining the voting process, which would be used to resolve the AI contribution policy stalemate. **Kristoffer Haugsbakk** criticized the idea, arguing it would favor corporate interests, particularly on AI adoption. **Patrick Steinhardt** proposed secret ballots to mitigate corporate influence, while **brian m. carlson** defended contributors' independence from employer pressure. **Junio C Hamano** endorsed the need for secret ballots, shifting the discussion from "whether" to "how" to implement voting fairly.
+
+The eligibility criteria for voters also drew scrutiny. **Phillip Wood** suggested counting patch series rather than individual patches and requiring substantive reviews, while **Justin Tobler** warned that stricter criteria could disproportionately favor corporate-affiliated contributors. The thread revealed deep divisions about Git's governance model and the role of corporate contributors in shaping project direction.
+
+### `git log --follow` performance regression fix
+**Miklos Vajna** posted a four-patch series fixing a severe performance regression in `git log --follow` when tracking renames across merges. The regression, introduced in June 2026, made `--follow` unusably slow (6m43s vs. 28s on the Linux kernel repository). The fix splits diffing into two passes: a fast pass without rename detection to identify unchanged parents, and a fallback to expensive rename detection only when necessary. The series includes comprehensive test coverage and benchmarks showing a speedup to 36s.
+
+### SSH signing verification fixes
+**Christian Noé Ramos López** posted a v2 security bugfix for Git's SSH signing verification, addressing two critical flaws: (1) a misleading hint message that included full ref names instead of short names, and (2) a revocation file that failed open when missing or unreadable. The patch ensures signature information is displayed consistently and makes revocation file errors fatal by default, with an escape hatch via Git's `:(optional)` pathname syntax. **Junio C Hamano** requested a procedural correction for future rerolls, and **Patrick Steinhardt** helped shape the documentation wording.
+
+### Worktree improvements and branch deletion
+**Harald Nordgren**'s work on `git branch --delete-merged` to detect squash-merged and rebase-merged branches continued to evolve. The discussion converged on a clean separation between `--delete-merged <pattern>` (strict tip-reachability) and `--delete-integrated <pattern>` (change-based detection for rebased and squashed branches). **Jasper Mayone** proposed an author-based mitigation for false positives, requiring that the landing commit's author also authored at least one commit on the branch being deleted. The thread also addressed a separate RFC by **DonQuinleone** to handle branches with gone upstreams, with interface design remaining the primary point of contention.
+
+### Index lock contention and `git status` improvements
+**Mihai Cosma** proposed an alternative approach to reduce lock contention in `git status` by deferring lock acquisition until write time. The patch series also fixes a silent data-loss bug in the `index.skipHash` code path, where concurrent index modifications could be silently overwritten. Benchmarks show a 6× speedup in `git add` latency in large repositories, demonstrating the effectiveness of the approach. The series is compatible with **Jun Wu**'s concurrent "Wait for the index lock" series and could be merged in either order.
+
+## In brief
+- **`git worktree --reflink`**: **brian m. carlson** objected to Jason Newton's use of AI-generated text in review responses, escalating the interpersonal conflict in the thread. The reflink implementation remains contested, with **Eric Sunshine** and **Phillip Wood** maintaining substantive objections to both the opt-in design and ephemeral branch reaping.
+- **Incremental connectivity check**: **Kristofer Karlsson** agreed to eliminate reliance on `repo->fetch_if_missing` in the incremental connectivity check, addressing **Junio C Hamano**'s forward-compatibility concern.
+- **`gitbreaking-changes(7)` manpage**: **Junio C Hamano** signaled tentative approval for the series, contingent on the post-transition awkwardness being manageable. The discussion resolved the document's lifecycle after Git 3.0, with options to treat it as a living draft or retain only the most recent breaking-change discussion.
+- **`git stash` performance**: **Phillip Wood** and **Junio C Hamano** finalized stylistic details for the `pw/stash-optimize-check_changes-calls` series, which is now queued for `next`.
+- **Community Summit notes**: The discussion around the voting process was directly tied to the unresolved AI contribution policy debate, with **Emily Shaffer** volunteering to coordinate voting logistics.
+- **`git remote set-password`**: **brian m. carlson** rejected the proposal outright, citing project policy against encouraging URL-embedded credentials and advocating for credential helpers or SSH with public keys.
+- **`git init` absolute paths**: **Matt Hunter** posted a v2 patch restoring the absolute path output in the "Initialized empty Git repository" message, incorporating all feedback and adding a regression test.
+- **Terminology cleanup**: **Andy Koppe** posted a five-patch series aligning Git's documentation, code comments, and tests with the 2024 terminology change that narrowed "pseudoref" to FETCH_HEAD and MERGE_HEAD only, while introducing "root ref" for refs outside the "refs/" hierarchy. **Junio C Hamano** reviewed the first patch, objecting to the omission of "different semantics" in the "pseudoref" definition.
+- **ODB transaction race condition**: **Patrick Steinhardt** approved **Justin Tobler**'s v4 bugfix series targeting a race condition in Git's ODB transaction machinery, clearing the series for integration.
+- **`git log --follow` test coverage**: **Miklos Vajna** posted the first patch in a series adding test coverage for `--follow` behavior across merge commits, preparing for a later optimization.
+- **Maintainer capacity**: **Junio C Hamano**'s "What's cooking" report highlighted a backlog of ~100 topics, with only ~30 in or near `next`, raising concerns about the maintainer's capacity to handle the volume of incoming contributions. The report also noted several graduated topics, including Unicode 18 width tables, `uploadpack.lazyFetchTrusted` config, and incremental `fetch.writeCommitGraph`.
