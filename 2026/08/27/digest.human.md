@@ -1,42 +1,48 @@
 # Git mailing list daily digest for 2026/08/27
 
+## Long threads
+
+### worktree add messages for ambiguous remote branch names
+
+*Long thread: 32 replies so far from 6 participants over 20 days; 2 messages that day.*
+
+Yoichi Nakayama posted v10 of his four-patch series improving the error and advice shown when `git worktree add` and `git checkout` cannot disambiguate a branch name matching multiple remote-tracking branches; the changes from v9 fix the function name in the first patch and change the type of `tracking_name_data.remote_names` in the second. Junio C Hamano reviewed v10, said it looks good to him, and stated he will mark it for `next` unless other comments arrive in a few days. Earlier, the series had grown a fourth commit making `git worktree add --guess-remote` treat multiple matches as an error instead of falling back to HEAD.
+
+### packfile lookups racing a concurrent geometric repack
+
+*Long thread: 23 replies so far from 5 participants over 10 days; 4 messages that day.*
+
+Elijah Newren's series fixes objects being treated as missing when a geometric repack deletes a pack that a stale multi-pack-index still names as owner. Today Jeff King objected that `OBJECT_INFO_QUICK` is designed to accept false negatives, so `git mktree --batch` is wrong to use QUICK at all, and called the stale-packs mechanism a hack that triggers `SECOND_READ` for QUICK queries and defeats QUICK's purpose; he also flagged the `open_pack_index()` change as racy. Elijah Newren conceded the point, decided to drop patch 3/4's packfile.c changes entirely, and will instead send a small mktree change that stops passing `OBJECT_INFO_QUICK` so mktree recovers via the normal reprepare like other non-QUICK readers.
+
+### commit refusing --amend and partial commits during conflict resolution
+
+*Long thread: 14 replies so far from 3 participants over 2 days; 12 messages that day.*
+
+Elijah Newren posted v2 of his three-patch series extending the refusal of `git commit --amend` and partial commits (`git commit <paths>`) beyond merge and cherry-pick to `am`, `revert`, and rebase conflict stops, rewording the empty-commit rebase errors and adding a `sequencer_ongoing_operation()` helper. Phillip Wood reviewed it, approving patch 3/3 and suggesting the sequencer's `rebase_path_stopped_sha()` helpers instead of hardcoded paths; Junio C Hamano questioned the reworded message and the `FROM_REBASE_PICK` naming. Newren said he will send a v3 incorporating the suggestions.
+
+### builtin command `repo` parameter
+
+*Long thread: 7 replies so far from 3 participants over 1 day; 9 messages that day.*
+
+Hardik Kumar posted a patch replacing global `the_repository` uses with the previously-UNUSED `repo` parameter in `is_bare_repository()` call sites in `cmd_blame`, `cmd_gc`, `get_layout_bare`, `cmd_reset`, and `transport_push`, verified by the full test suite. Junio C Hamano countered that mixing `the_repository` and `repo` in one function is less consistent than the original and posted an illustrative patch replacing the `struct repository *` parameter of all `cmd_foo()` builtins with `bool has_repo`, asking for opinions; he also answered Ben Knoble that libification means factoring reusable logic out of `cmd_checkout()` rather than calling `main()` from elsewhere.
+
 ## The day in brief
-The `--autosquash` fix for empty commits is ready for final review, while the trace2 hardening series faces deeper architectural questions. A `git checkout -m` autostash series is contested on performance grounds, and the ODB fsck pluggability series receives light review. Junio proposed a major architectural shift for the `the_repository` removal effort, replacing `repo` parameters with a simple `bool` flag in built-in commands.
+Yoichi Nakayama's v10 worktree ambiguous-remote message series earned Junio C Hamano's approval and a stated intent to mark it for `next`. On the packfile race thread, Elijah Newren conceded Jeff King's objection to QUICK usage and will rework the mktree fix. Elijah Newren also posted v2 of the series refusing `git commit --amend` and partial commits during conflict resolution, drawing a favorable review from Phillip Wood.
 
 ## Notable threads
 
-### `--autosquash` fix for empty commits (2026/07/10/04-13-11)
-Farid Zakaria’s bugfix for `--autosquash` behavior when `fixup!`/`squash!` commits cancel out their target is now in its fourth iteration (`v4`) and ready for final review. The patch introduces `is_amended_head_empty()` to detect when applying a `fixup!` or `squash!` empties the target commit, ensuring `--empty` is honored for such commits while preserving existing behavior for workflows that rely on empty commits as placeholders. The implementation handles edge cases like mid-chain fixups and conflict resolution, and includes comprehensive test coverage.
+### sequencer honoring --empty when a fixup empties its target
+Farid Zakaria posted v4 of the patch making `git rebase --autosquash --empty=drop` drop a commit that a `fixup!` or `squash!` empties, rebased onto master. V4 restricts dropping to commits that become empty, allows only the final fixup of a chain to drop the emptied commit, never drops when the chain is not preceded by a pick, and extends `commit_staged_changes()` to honor `--empty=drop` for a conflicted fixup resolved by undoing its target.
 
-Today’s update confirms the v4 link on lore.kernel.org, resolving the last blocker. The patch touches `sequencer.c`, `Documentation/git-rebase.adoc`, and adds tests in `t/t3415-rebase-autosquash.sh` and `t/t5407-post-rewrite-hook.sh`. The follow-up discussion about a potential `revert!` directive remains unresolved but is orthogonal to this patch.
+### branch -d protecting local upstreams
+Elijah Newren reported a hole in Harald Nordgren's series protecting local branches from `git branch -d` when a surviving branch depends on them through an upstream chain: with branches A, B, C where B tracks A and C tracks B, `git branch -d A B` protected B but deleted A, leaving surviving B with a missing upstream, contradicting the patch's claim.
 
-### Trace2 hardening against `die()` (2026/07/15/16-12-11)
-Jeff King (Peff) expanded his critique of Derrick Stolee’s trace2 hardening series, arguing that the current approach is a “tip of the iceberg” that may require a ground-up rewrite of trace2. The series replaces `die()`-triggering helpers with defensive fallbacks, but Peff’s review highlights that indirect calls via helpers like `strbuf` or `json-writer.c` could still crash Git. Elijah Newren agreed to drop patch 3/4 entirely, replacing it with a targeted fix for `git mktree --batch` that removes the `OBJECT_INFO_QUICK` flag while retaining `SKIP_FETCH_OBJECT`.
-
-The core fix (patch 4/4) remains ready for merging, having adopted Peff’s tri-state design for `fill_midx_entry()`. The series touches 17 files within the trace2 subsystem and introduces `banned-die.h` as a new architectural enforcement mechanism. The discussion now centers on whether the hardening effort should expand to address indirect dependencies or accept the current approach as a pragmatic first step.
-
-### `git checkout -m` autostash conflict handling (2026/07/25/15-34-27)
-Phillip Wood contested the performance trade-off of the fast-path optimization in Harald Nordgren’s two-patch series refining `git checkout -m` autostash behavior. The optimization skips the autostash retry loop when no tracked changes exist, but Phillip argues the pre-check overhead outweighs the benefit of avoiding occasional redundant stash cycles. He suggests a deeper refactoring of `unpack_trees()` would be needed to make the optimization truly effective.
-
-The series also makes the sequencer’s autostash apply logic explicitly report conflicts via a `conflicted` output parameter, but Phillip objects to this API design, preferring to repurpose the return value instead. Junio had previously accepted patch 2/2 conditionally, but Phillip’s feedback signals the series is unlikely to proceed without revision. The improved advice formatting in patch 2/2 remains uncontroversial.
-
-### ODB fsck pluggability (2026/08/25/14-30-02)
-Karthik Nayak provided light review of Patrick Steinhardt’s 10-patch series making ODB fsck checks pluggable. Feedback was limited to minor wording and spelling nits, with one substantive question about the use of `OPT_BIT` versus `OPT_BOOL` for the `--full` flag. The series is functionally complete, with no remaining technical objections, and prepares the codebase for future pluggable ODB backends.
-
-The patch moves fsck logic from `builtin/fsck.c` into backend-specific implementations (e.g., `odb/source-packed.c`, `odb/source-loose.c`), replacing dedicated error bits (`ERROR_PACK`, `ERROR_BITMAP`) with the generic `ERROR_OBJECT`. The series touches 10 files and includes test coverage for the new backend-specific logic.
-
-### `the_repository` removal effort (2026/08/27/18-29-00)
-Junio C Hamano proposed a major architectural shift for the `the_repository` removal effort, submitting a patch to replace the `struct repository *repo` parameter in built-in commands with a simple `bool has_repo` flag. The patch touches 135 files and converts every built-in command’s signature, arguing that the `repo` parameter is misleading and encourages wasted effort converting code that will never be libified.
-
-The proposal addresses segfault risks in edge cases like `cd / && git foo -h` and reaffirms the distinction between built-in commands (repository-specific) and general utility code (repository-agnostic). Junio’s patch is tested and passes the test suite, but the community has not yet weighed in on the architectural shift. The thread also clarified that built-in commands are not intended for direct reuse via libgit, redirecting the `the_repository` removal effort toward utility code outside `builtin/`.
+### die_for_incompatible_opts() for an unbounded number of options
+Junio C Hamano posted v2 introducing `die_for_incompatible_opts()` to check an arbitrary number of mutually exclusive options and rewriting the existing opt2/opt3/opt4 variants on top of it. V2 adds the `va_end()` that Elijah Newren had flagged as missing and uses `va_arg(ap, int)` to distinguish bool values from the EOF sentinel.
 
 ## In brief
-- **`git worktree add` ambiguous branch error messages** (2026/08/08/08-21-41): Junio marked the v13 iteration as ready for `next`, with no further changes expected.
-- **Worktree repair path resolution** (2026/08/15/13-11-19): Junio accepted the functional split between `read_gitfile_raw()` and `read_gitfile_gently()`, leaving only commit-message clarification as the remaining action.
-- **Geometric repacking race condition** (2026/08/18/22-34-04): No new developments; the series remains under active debate.
-- **Branch protection from deletion** (2026/08/25/21-25-15): Elijah Newren identified a logical gap: the protection is not transitive, despite documentation claiming it applies to “directly or indirectly” upstream branches.
-- **Unsafe commit operations during conflict resolution** (2026/08/26/05-21-21): Junio questioned the necessity of blocking `git commit <paths>` during conflict resolution for empty commits, introducing uncertainty about the series’ direction.
-- **Deprecation warning rewording** (2026/08/26/14-33-31): Junio resolved Elijah Newren’s grammatical nit in the v3 patch, which is now cooking in `next`.
-- **`die_for_incompatible_opts()` helper** (2026/08/26/23-31-50): Junio posted a v2 patch implementing the `EOF` sentinel design and fixing the `va_end()` omission.
-- **French `git-checkout` man page** (2026/08/27/12-53-02): Eric Gautier reported a grammatical error in the French translation, which Ben Knoble escalated to the French translation maintainers.
-- **`git-svn` migration noise and build option** (2026/08/27/16-51-32): Wesley Schwengle posted a v2 patch fixing a typo in the error message.
+- Phillip Wood reviewed Harald Nordgren's `checkout -m` autostash refinement: he welcomed the conflict-result blank line before the branch-switch message but pushed back on gating the autostash retry on tracked local changes, which would require checking before every `unpack_trees()` call.
+- Jeff King commented on Derrick Stolee's trace2 banned-die.h approach: banning `die()` catches only direct calls, and truly allocation-free trace2 would probably require a ground-up no-dependency rewrite.
+- Yoichi Nakayama explained moving the `is_git_directory()` check out of `read_gitfile_raw()` into worktree.c for the worktree repair relative-path fix; Junio C Hamano confirmed the functional split is fine.
+- Junio C Hamano posted v3 of the `you_still_use_that()` rewording, fixing "mailing list" and correcting two tests to look for "will be removed soon".
+- Wesley Schwengle submitted v2 of the git-svn series silencing v1-layout migration noise on plain repositories and adding a `NO_GIT_SVN` Makefile knob to skip building and installing git-svn.
