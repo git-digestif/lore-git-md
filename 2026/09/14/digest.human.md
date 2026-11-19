@@ -1,78 +1,48 @@
 # Git mailing list daily digest for 2026/09/14
 
+## Long threads
+
+### receive-report hook in `builtin/receive-pack.c`
+
+*Long thread: 57 replies so far from 7 participants over 28 days; 1 message that day.*
+
+Karthik Nayak's series introduces a `receive-report` hook that runs after the reference transaction completes but before the report is sent to the client: the hook receives the pkt-line encoded report on stdin, its stdout replaces the report, and a non-zero exit marks all references rejected. Earlier revisions fixed a BUG() when no report was requested and a leak when reassigning command strings. Today Junio C Hamano queued a "receive-pack: coccinelle fix" patch on top of the v10 series, removing the nullness check of `cmd->error_string_owned` before `FREE_AND_NULL` in `override_cmds_error()` in `builtin/receive-pack.c`, since `FREE_AND_NULL` is safe to call on NULL.
+
+### sequencer auto maintenance timing
+
+*Long thread: 30 replies so far from 5 participants over 11 days; 3 messages that day.*
+
+Thomas Bachem's series makes rebase, cherry-pick and revert run `git maintenance run --auto` exactly once when a sequence completes, and passes `maintenance.auto=false` to sequencer-spawned commit, merge and exec commands via `GIT_CONFIG_PARAMETERS` so background maintenance cannot race the sequence for `MERGE_RR.lock` or delete open packs. Today Bachem accepted Phillip Wood's rewording of the 3/3 commit message and explained the new test scenario in `t/t3418-rebase-continue.sh`, accepted Patrick Steinhardt's doc wording for `git_config_append_parameter()` while keeping a sentence on NULL values, and asked Steinhardt to choose between calling auto maintenance at the end of `pick_commits()` plus the single-pick return paths or in the two builtins, saying he will reroll accordingly.
+
+### unifying ref storage format terminology
+
+*Long thread: 27 replies so far from 4 participants over 11 days; 4 messages that day.*
+
+Patrick Steinhardt's 13-patch v3 series renames the inconsistent ref storage format interfaces -- `--ref-format=`, `GIT_REFERENCE_BACKEND`, `init.defaultRefFormat` and friends -- to consistent `ref-storage-format` equivalents across init, clone, refs, submodule, rev-parse and help, keeping old names as hidden aliases and letting `--ref-storage-format=` accept `format://payload` URIs. Today Karthik Nayak questioned whether hidden `OPT_ALIAS()` entries make sense but said the v3 changes look good, Kaartic Sivaraam wondered whether tests should also cover the deprecated variants, and Junio C Hamano said he would like more thought on the `OPT_ALIAS()` question but otherwise found the series in very good shape.
+
+### advice squelch hints with `--global`
+
+*Long thread: 23 replies so far from 4 participants over 6 days; 3 messages that day.*
+
+Vsevolod Myalitsin's series addresses the `defaultBranchName` advice, whose suggested `git config set advice.defaultBranchName false` writes to the local scope and so only affects the repository where the advice was already shown. Today Jeff King suggested simply recommending `--global` in all advice squelch messages, with per-repo exceptions getting a hint flag later, Junio C Hamano agreed with the simplicity, and Hamano posted [PATCH v5 1/1] "advice: give cut-and-pasteable advice to squelch", adding `--global` to the `git config set` command in the advice message across `advice.c` and 11 test files.
+
 ## The day in brief
-The Git mailing list saw significant activity around several key areas: a new incremental connectivity check for fetch/push operations, a critical bugfix for concurrent repack operations, and ongoing refinements to the `git var` extension and advice system. Outreachy mentor assignments were finalized, and several documentation and test modernization efforts progressed. The maintainer's "What's cooking" report provided a comprehensive overview of integration status for Git 2.56-rc0.
+Junio C Hamano queued a coccinelle fix on top of the v10 receive-report hook series and posted a v5 adding `--global` to advice squelch hints. New series arrived for an incremental connectivity check with reported ~190x speedups and for fixing a `git repack -d` race that can delete packs whose objects were never copied.
 
 ## Notable threads
 
-### Incremental connectivity check for fetch/push
-**[PATCH v1 0/2] Add incremental connectivity check for fetch/push** by Kristofer Karlsson
+### repack race with mid-run `.keep` files
+Qin ShiCheng posted a 6-patch series fixing a production-hit race where `git repack -d` deletes a pack whose objects were never copied: a concurrent push can link a `.keep` onto an existing pack between repack's initial scan and pack-objects' rescan, so pack-objects leaves the objects out and repack deletes the pack anyway. The series makes receive-pack remove only `.keep` files it installed and has repack hand pack-objects its startup snapshot of kept packs via a new `--keep-pack-from-file=<file>` option instead of `--honor-pack-keep`, plus fixes for the cruft walk's kept-pack cache and binary lookup of kept packs.
 
-Kristofer Karlsson introduced an opt-in incremental connectivity check (`transfer.connectivityCheck=incremental`) to reduce the cost of verifying object connectivity during fetches and pushes. The new mode processes incoming commits in topological order, tracking trusted objects from parent commits to skip unchanged subtrees. This shifts the cost from being proportional to repository size to being proportional to incoming change size.
+### incremental connectivity check via rev-list
+Kristofer Karlsson posted a two-patch series adding an opt-in incremental connectivity check gated behind `transfer.connectivityCheck=incremental`, running inside the rev-list subprocess via a new internal `--verify-trees-incremental` flag, with benchmarks reporting up to ~190x speedup and much lower RSS for small pushes against a 3.4 GB boundary closure. Junio C Hamano called the benchmarks "exciting" but raised two concerns on patch 2/2 -- a possibly too-late `is_promisor_object()` call in `verify_blob()` and a possible NULL from `get_commit_tree_oid()` passed to `tree_map_add()` -- and Karlsson confirmed both, explaining the promisor path is safe because `--exclude-promisor-objects` sets `fetch_if_missing = 0`, and said he will add a blob test and a NULL check with `die()`.
 
-The implementation adds a new `tree-verify.c` file and updates `builtin/rev-list.c` and `connected.c`. Benchmark results show dramatic speedups for small pushes to large repositories (up to 190x faster) with significant memory savings. Junio C Hamano raised concerns about promisor object handling and NULL-dereference risks, which the author plans to address in a follow-up version.
-
-**Why it matters**: This feature addresses a significant performance bottleneck in large repositories, particularly for CI/CD pipelines and development workflows that involve frequent small pushes to large repositories.
-
-### Fix concurrent-push race leading to data loss
-**[PATCH 0/6] repack: fix concurrent-push race leading to data loss** by qeesung
-
-Qin ShiCheng (qeesung) posted a critical bugfix series addressing a race condition in `git repack -d` where concurrent pushes can cause the repack machinery to delete packs whose objects were never copied elsewhere, resulting in data loss. The series ensures `.keep` files are only removed by the process that created them and replaces the `--honor-pack-keep` mechanism with a consistent snapshot of kept packs observed at repack startup.
-
-The series includes six patches that:
-1. Prevent `receive-pack` from removing `.keep` files it didn't create
-2. Fix traversal logic in `pack-objects`
-3. Fix a latent bug in the cruft-pack walk
-4. Optimize `--keep-pack` name lookups
-5. Add `--keep-pack-from-file` to handle repositories with many kept packs
-6. Pass `repack`'s snapshot of `.keep` packs to `pack-objects`
-
-**Why it matters**: This is a production-tested fix for a subtle but serious data-loss bug that affects repositories with concurrent push operations.
-
-### Git var extension series reaches v8
-**[PATCH v8 0/4] Extend git var to provide unified identity and signing configuration** by Andrew Pleeter
-
-Andrew Pleeter posted v8 of the `git var` extension series, which provides a unified, scriptable interface to Git's identity and signing configuration. The v8 patch addresses Junio's v7 feedback by adopting `VARIABLE=value` output format and aligning exit code behavior with the implementation.
-
-The series extends `git var` to support:
-- Identity components (name/email/date for author and committer)
-- Signing keys (`GIT_SIGNING_KEY`)
-- Multiple variable arguments
-- NUL-terminated output with `-z`
-
-**Why it matters**: This extension provides a consistent interface for scripts and tools to access Git's configuration, particularly for signing operations, which is increasingly important for secure development workflows.
-
-### Outreachy December 2026 cohort mentor assignments complete
-**Git participation in Outreachy December 2026 cohort** by Kaartic Sivaraam
-
-Kaartic Sivaraam reported that mentor assignments for both Outreachy projects are now complete:
-- "Improve how command arguments and options are scanned and parsed" (co-mentors: Christian Couder, Siddharth Asthana)
-- "Reduce Git's global state to enable Git's libification" (co-mentors: Christian Couder, Pablo Sabater)
-
-Additionally, Kaartic proposed expanding the application to include two promisor-remote projects originally prepared for GSoC 2026.
-
-**Why it matters**: Outreachy provides valuable internship opportunities for underrepresented groups in open source, and Git's participation helps grow the contributor base and advance key technical goals.
-
-### What's cooking in git.git (Sep 2026)
-**What's cooking in git.git (Sep 2026)** by Junio C Hamano
-
-The maintainer's "What's cooking" report provided a comprehensive overview of integration status for Git 2.56-rc0. Key highlights include:
-- Rust integration topics in `next` (js/rust-in-windows-ci, jc/rust-cargo-build-target)
-- ODB abstraction work (ps/odb-stop-registering-in-memory-sources, ps/odb-alternates-at-creation, ps/odb-pluggable-fsck)
-- Ref storage format standardization (ps/ref-storage-format)
-- New experimental commands like `git history squash` (hn/history-squash)
-- Performance optimizations like Bloom filter usage in `git last-modified` (tc/last-modified-bloom)
-
-**Why it matters**: This report provides visibility into what features and improvements are likely to land in the next release, helping contributors and users plan accordingly.
+### `--force-if-includes` rejects non-branch sources
+Tyler Cipriani posted v4 of a two-patch series making `--force-if-includes` reject pushes whose source ref is not a branch: `check_if_includes_upstream` now unconditionally resolves the peer ref with `RESOLVE_REF_READING`, so tag pushes are rejected too. D. Ben Knoble flagged that this breaks his workflow of pushing `<TAG>:hotfix` with `push.useForceIfIncludes=true`; Cipriani confirmed the break, noting the check today consults the same-named local branch's reflog rather than the pushed tag, and reported a related bug where a fast-forward push fails under `--force-with-lease --force-if-includes` when the reflog is expired, to be addressed in v5.
 
 ## In brief
-
-- **[PATCH v4 0/2] rerere: fix race condition between rebase and background maintenance** by Thomas Bachem: Posted v4 of the rerere lock race series, splitting into two patches as requested by reviewers.
-- **[PATCH v4 0/2] dir: fix common prefix calculation with leading exclude pathspec** by Yannik Tausch: Posted v4 of the pathspec exclusion series, reverting to a two-patch structure and adding deterministic test cases.
-- **[PATCH v4 0/2] push: --force-if-includes fixes** by Tyler Cipriani: Posted v4 addressing backwards-compatibility concerns about rejecting non-branch pushes when `--force-if-includes` is enabled.
-- **[PATCH v5] advice: add scope hint for disabling advice messages** by Junio C Hamano: Posted v5 implementing the uniform `--global` hint for all `advice.*` settings.
-- **[PATCH 0/3] imap-send: OpenSSL compatibility and correctness fixes** by Beat Bolli: Clarified the OpenSSL 4.1 compatibility macro as a forward-compatibility fix to avoid build failures under `DEVELOPER=1`.
-- **[PATCH v2] completion: add support for `git worktree repair`** by Yoichi NAKAYAMA: Posted v2 with adjusted commit message for the worktree repair completion patch.
-- **[PATCH v2 0/2] doc: lint and fix backtick quoting in git-refs and git-pack-refs** by Todd Zullinger: Posted v2 addressing Junio's correction to restrict backtick-quoting in `pack-refs-options.adoc` to configuration keys only.
-- **[PATCH] t7610-mergetool.sh: modernize test helpers** by Tanishq Singh: Junio identified a logical error in the test modernization patch, requiring a v2.
-- **Bug report: `git status --ignored` with pathspec substring matching** by Sean Whitton: Reported a bug where `git status --ignored` with a pathspec incorrectly matches ignored directories whose names contain the pathspec as a substring.
+- Andrew Pleeter posted v8 of `git var`, which now prints `VARIABLE=value` pairs for multi-variable queries (repeated entries for multi-valued variables, `VARIABLE\nvalue\0` with `-z`), omits unset variables while still exiting 1, fixing the ambiguity Junio C Hamano flagged in v7.
+- Yannik Tausch posted v4 of a two-patch `dir` series fixing pathspec prefix handling with leading exclude items: exclude items now match against full paths (fixing an incorrect match and an out-of-bounds read), and the common prefix is derived from the first non-exclude item to preserve the directory-walk optimization.
+- Thomas Bachem posted v4 of a two-patch rerere series: `setup_rerere()` waits up to `rerere.lockTimeout` for `MERGE_RR.lock` (with `git rerere gc` skipping instead), and the six callers that stop at a conflict warn and go on when the lock stays busy.
+- Junio C Hamano said he will queue Ariel Keselman's v3 patch skipping the packed-refs transaction for root-ref deletions in the files backend and mark it for `next`.
+- Johannes Schindelin announced Git for Windows 2.56.0-rc0, which drops Windows 8.1 support (moving `git.exe` from `/mingw64/bin` to `/ucrt64/bin`) and bundles Git v2.56.0-rc0, Git LFS v3.8.0, cURL v8.22.0 and OpenSSL v3.5.8.
