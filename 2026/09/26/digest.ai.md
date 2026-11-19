@@ -1,57 +1,41 @@
 # Git mailing list daily digest for 2026/09/26
 
+## Long threads
+
+### stash: clean up index-mode test merge
+
+*Long thread (root 2026/09/19/21-26-34): 26 replies so far from 3 participants over 8 days; 6 messages that day.*
+
+D. Ben Knoble posted [PATCH v3 0/5] "stash: clean up index-mode test merge", a series in `builtin/stash.c` fixing a bug reported by Eli Barzilay in the interaction between autostashing, staged index entries, and `stash.index=true`. The v3 changelog covers changing the conflict label for the current index to "Current index", fixing a memory leak of `merge_result`, fixing the order of trees passed to `merge_incore_nonrecursive` (merge_base, head, merge) with a new test (3/5) validating it, and making test 4/5 assert more details of the expected state on failure. The final patch (5/5) replaces the shell-out sequence of `diff-tree`/`apply --cached`/`reset` with an in-core `merge_incore_nonrecursive` call, fixing the autostash bug where `git reset` triggered a non-re-entrant `save_autostash()` lock on a deleted `MERGE_AUTOSTASH` ref, and adds a `t/t7600-merge.sh` test for fast-forward merge with `--autostash` and `stash.index`. Earlier, Phillip Wood had proposed a more realistic test checking actual file-content merging with distinct contents for the three merged blobs, and D. Ben Knoble confirmed it fails on the original wrong tree order and passes on the new code, to be included in the next round; Phillip Wood had also spotted the `merge_result` leak, and Junio C Hamano had diagnosed that the transposed tree arguments came from the differing parameter orders of `merge_ort_nonrecursive()` and `merge_incore_nonrecursive()`.
+
 ## The day in brief
-Kristoffer Haugsbakk posted a redesigned v2 series for `--[no-]range-diff-notes` in `git format-patch`, addressing prior usability concerns. Andrew Pleeter submitted v9 of the `git var` extension series, removing the ambiguous `GIT_SIGNING_KEY` variable. D. Ben Knoble finalized a five-patch bugfix series for `git stash` autostash handling of staged index entries, incorporating all review feedback. A crash in `git pack-objects` during partial clone with `tree:0` filter was reported, and a test flakiness fix for `p5551-fetch-rescan` was proposed.
+
+D. Ben Knoble posted v3 of the stash index-mode merge cleanup, correcting the tree order passed to `merge_incore_nonrecursive` and fixing a `merge_result` memory leak. Andrew Pleeter sent v9 of the `git var` series, adding `-z` output, multiple-variable queries, and broken-out identity variables. L Naudé reported a `pack-objects` abort on a missing promised tree during fetch in a `tree:0` partial clone.
 
 ## Notable threads
 
-### `--[no-]range-diff-notes` v2 for `git format-patch`
-Kristoffer Haugsbakk posted v2 of the `--[no-]range-diff-notes` series for `git format-patch`, addressing Junio C Hamano’s usability concerns from v1. The series now consists of two patches: a preparatory refactoring and the new implementation.
+### pack-objects abort on missing promised tree in partial clone
 
-The v2 design eliminates the toggle mechanism and arg-less `--range-diff-notes` variant, enforcing explicit separation between patch notes and range-diff notes. The new options are `--range-diff-notes=<ref>` (requiring an explicit ref argument) and `--no-range-diff-notes` (suppressing notes in the range-diff section without fallback). The implementation introduces a `struct rdiff_notes` to track user intent and replaces the custom `revision.c` handler with a standard `parse-options` callback (`rdiff_notes_cb`). The `get_notes_args` function is updated to take only `struct rev_info *` as a parameter, removing a redundant argument.
+L Naudé reported that `git pack-objects --exclude-promisor-objects-best-effort` aborts with `BUG: builtin/pack-objects.c:5004: should_include_obj should only be called on existing objects` during `git fetch origin main` in a `tree:0` partial clone of `NousResearch/hermes-agent` on Git 2.55.0. The failure is traced to `is_not_in_promisor_pack_obj()` at `pack-objects.c:5004`, called from `process_tree()` at `list-objects.c:167` for missing tree `d0daf5223f2367bd20fc2deb9d66aed05fcd30e8`, with `remote.origin.promisor=true` and `remote.origin.partialclonefilter=tree:0` set.
 
-The first patch refactors `get_notes_args` to directly access `rev->rdiff_log_arg` instead of receiving it as a separate argument, simplifying the codebase for the feature implementation. The second patch implements the new functionality, adding comprehensive test coverage for scenarios like suppressing all range-diff notes, using different notes refs for patches and range-diffs, and ensuring `--range-diff-notes` requires a value. The documentation is updated to reflect the simplified behavior, removing references to the toggle mechanism.
+### git var: -z output, multiple variables, broken-out idents
 
-The series is well-structured and addresses the usability issues of v1, but the thread remains closed, and no maintainer decision has been made on whether to accept the redesign.
+Andrew Pleeter posted [PATCH v9 0/4], a reroll splitting the v8 single patch into four patches touching `builtin/var.c`, `Documentation/git-var.adoc`, and `t/t0007-git-var.sh`: converting multi-valued variables (currently only `GIT_CONFIG_GLOBAL`) from newline-joined strings to a `string_list`, adding a `-z` option that terminates each entry with a NUL byte, teaching `git var` to accept more than one variable, and adding `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_AUTHOR_DATE` and their `GIT_COMMITTER_*` counterparts via `split_ident_line()`. `GIT_SIGNING_KEY` is dropped because `get_signing_key()` returns a value whose meaning depends on `gpg.format`. In multi-variable mode, variables with no value are omitted and the command exits 0, reserving non-zero status for real errors, while a single variable with no value still exits 1.
 
-### `git var` extension series v9
-Andrew Pleeter posted v9 of the `git var` extension series, implementing a unified interface for Git’s identity and signing configuration. The series is now split into four patches as previously agreed: (1) string-list conversion for multi-valued variables, (2) `-z` output mode, (3) multi-variable support, and (4) the new identity variables (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, etc.).
+### format-patch: learn --[no-]range-diff-notes
 
-The first patch refactors the internal representation of multi-valued variables to use a `string_list` instead of a newline-joined string, eliminating fragility where delimiters could appear in values. The second patch adds a `-z` output mode that matches `git config -z` format, resolving ambiguity when parsing multi-valued variables or values containing newlines. The third patch implements multi-variable support, allowing `git var` to accept more than one variable argument in a single invocation and omitting unset variables without error. The fourth patch adds the six new identity variables, each backed by a helper function that calls `split_ident_line()` on the corresponding ident string.
+Kristoffer Haugsbakk resent PATCH v2 of `kh/format-patch-range-diff-notes` after the previous send failed to reach the list due to a missing `To` header. Patch 2/2 adds `--range-diff-notes=<ref>` and `--no-range-diff-notes` to `format-patch`, implemented via a parse-options callback using a new `rdiff_notes` struct, so the range diff can display different notes than the patches; patch 1/2 simplifies `get_notes_args` to take only a `struct rev_info`.
 
-The series removes the controversial `GIT_SIGNING_KEY` variable due to ambiguity across signing mechanisms (GPG/SSH/X.509). The exit-code behavior is finalized: multi-variable queries exit 0 if any requested variable is set, omitting unset variables from the output. The series is technically complete and ready for integration, pending Junio’s review of v9.
+### dir: skip excluded directory with nested repo on prefix match
 
-### `git stash` autostash bugfix v3
-D. Ben Knoble posted v3 of a five-patch bugfix series for `git stash`, addressing a race condition in autostash handling of staged index entries when `stash.index=true` is set. The series replaces subprocess-based index merging with in-core merging via `merge-ort.c`, eliminating a SIGSEGV risk and ensuring staged entries are preserved.
+René Scharfe posted v2 of the `dir.c` fix for ignored directories containing a nested repository, guarding the nested-repo `dir_match()` call with `pathspec &&` so it is not invoked when pathspec is NULL. He acknowledged the v1 bug after Junio C Hamano had written earlier that `dir_match()` would crash on a NULL pathspec. The series adds a status test in `t/t7061-wtstatus-ignore.sh` and a checkout test in `t/t2021-checkout-overwrite.sh`.
 
-The series is now complete and ready for integration. Key changes since v2 include a new test for `stash --index` merges (Patch 3/5), expanded test assertions to verify both worktree and index state preservation (Patch 4/5), and a memory leak fix in the core fix (Patch 5/5). The tree argument order in `merge_incore_nonrecursive()` was corrected from `(head, merge, merge_base)` to `(merge_base, merge, head)` after Junio C Hamano identified the bug in an earlier iteration.
+### doc: clarify --follow's single-file limitation
 
-Phillip Wood proposed an expanded test case for `stash --index` merges, exercising content-level conflicts. The author confirmed the test scenario passes with the fix and fails on the original code. The discussion also resolved a minor implementation detail about diff output comparison, confirming raw diff output is sufficient for test comparisons.
-
-The series touches `builtin/stash.c`, `merge-ort.c`, and the test suite (`t/t3903-stash.sh`, `t/t7600-merge.sh`). All prior feedback is incorporated, and the series is technically complete. Junio and Phillip Wood have endorsed the fixes, and no further revisions are expected.
-
-### `git status --ignored` pathspec substring matching bugfix v2
-René Scharfe posted v2 of a bugfix for `git status --ignored` with pathspec substring matching. The patch incorporates Junio C Hamano’s squash-in fix for a NULL-dereference crash in the new `dir_match()` helper, adding a defensive NULL check and a test case to verify safety when `pathspec` is NULL.
-
-The patch restores exact-match pathspec behavior for ignored directories by ensuring `match_pathspec_with_flags()` is called even when the directory would otherwise be skipped due to an optimization introduced in commit `95c11ecc73`. The interdiff against v1 shows the key change: the `pathspec` check is now explicit (`if (pathspec && !matches_how)`), preventing a NULL-dereference crash. The added test in `t/t2021-checkout-overwrite.sh` verifies that `git checkout` does not segfault when an untracked nested repository exists without a pathspec.
-
-The patch is technically sound, addresses the safety concern raised in review, and includes thorough test coverage. It is ready for maintainer integration.
-
-### Crash in `git pack-objects` during partial clone with `tree:0` filter
-L Naudé reported a crash in `git pack-objects` during a `git fetch` in a partial clone configured with `tree:0` filter. The failure occurs at `builtin/pack-objects.c:5004` with the assertion `should_include_obj should only be called on existing objects`, triggered when the code encounters a promised tree (`d0daf5223f2367bd20fc2deb9d66aed05fcd30e8`) that is not present locally and cannot be fetched.
-
-The crash happens in `is_not_in_promisor_pack_obj()`, called from `process_tree()` in `list-objects.c`, during the `repack_local_links()` code path in `index-pack`. The reporter confirms the tree is missing via `git cat-file` and `git rev-list --missing=print`, and notes the repository has `remote.origin.promisor=true` and `remote.origin.partialclonefilter=tree:0`. The issue is tied to the `repack_local_links()` code path, suggesting the crash occurs during repacking of promisor objects.
-
-No minimal reproduction is provided, but the conditions (partial clone with `tree:0` filter and a missing promised tree) are clearly identified. The crash is non-deterministic but reproducible under the described conditions.
-
-### Test flakiness fix for `t/perf/p5551-fetch-rescan`
-Jon Simons posted a patch adding `--no-deref` to `update-ref` in `t/perf/p5551-fetch-rescan.sh` to fix flakiness. The test became flaky after Git commit 3f763ddf28 introduced automatic creation of a `HEAD` symref during `git fetch`. Without `--no-deref`, `update-ref` fails when trying to delete both the symref target and the symref itself, causing the test to abort.
-
-The change is minimal—one line—and directly addresses the regression. The commit message clearly explains the problem and cites the relevant prior commit. The patch is well-scoped and uncontroversial, resolving the flakiness in `p5551` without side effects.
-
-### CI/build system patch for macOS
-Harald Nordgren clarified that the CI/build system patch removing a redundant `brew link --force gettext` command is still relevant. The change targets GitHub CI builds, not local macOS development, and silences spurious "Already linked" warnings in macOS job logs. The patch is minimal, safe, and empirically validated by a passing macOS CI pipeline. All prior feedback is addressed, and the thread is unblocked.
+Tamir Duberstein posted v5 of the `Documentation/git-log.adoc` patch clarifying `--follow`: an explicit `--follow` requires exactly one path argument and Git reports an error if none or more than one is given, while the `log.follow` config leaves the command unchanged in those cases. Results for directory arguments and accepted wildcard patterns are unspecified, and `--no-follow` disables the mode.
 
 ## In brief
-- Kristoffer Haugsbakk requested a `.mailmap` update to use `<code@khaugsbakk.name>` for future commits in response to the `git shortlog` regression fix series.
-- René Scharfe acknowledged a NULL-dereference bug in the `dir.c` bugfix and confirmed the v2 patch incorporates Junio’s squash-in fix.
+
+- Harald Nordgren confirmed his `ci/install-dependencies.sh` patch dropping the no-op `brew link --force gettext` on macOS remains relevant, clarifying it silences a spurious "Already linked" warning in GitHub CI macOS job logs.
+- Jon Simons updated `t/perf/p5551-fetch-rescan.sh` to pass `--no-deref` to `update-ref --stdin` when deleting child test refs before each measured `git fetch`, fixing repeated runs that otherwise fail with "multiple updates for 'refs/remotes/origin/master'".
+- Kristoffer Haugsbakk stated his preferred commit email is `code@khaugsbakk.name` and that he ought to send a `.mailmap` change, and reviewed Jeff King's regression test in `t/t4201-shortlog.sh`, concluding it makes sense as written.
