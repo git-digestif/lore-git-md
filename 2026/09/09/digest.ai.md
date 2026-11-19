@@ -1,160 +1,65 @@
 # Git mailing list daily digest for 2026/09/09
 
+## Long threads
+
+### receive-report hook in `builtin/receive-pack.c`
+
+*Long thread (root 2026/08/18/07-55-55): 48 replies so far from 5 participants over 23 days; 3 messages that day.*
+
+Karthik Nayak posted v9 of the series introducing a `receive-report` hook that runs after the reference transaction completes but before the status report is sent to the client; the hook receives the pkt-line encoded report on stdin, its stdout replaces the report, and a non-zero exit marks all references rejected. The v9 fix replaces the `BUG("unknown report status version")` in the default case of the new switch with `case REPORT_STATUS_UNKNOWN: break;`, fixing a BUG() failure when a client requests no report -- a case Junio C Hamano had called perfectly valid. Patrick Steinhardt asked whether tests cover the fix; Junio explained that `send-pack` always requests a report when the server advertises `report-status`/`report-status-v2`, so such a test would need a custom client or a way to disable capability advertisement.
+
+### `uploadpack.lazyFetchTrusted` and the lazy-fetch recursion guard
+
+*Long thread (root 2026/07/10/08-51-34): 25 replies so far from 3 participants over 62 days; 2 messages that day.*
+
+Christian Couder's series adds a protected `uploadpack.lazyFetchTrusted` config so server operators can mark repositories whose git dir is trusted for lazy fetching, plus a `GIT_INTERNAL_LAZY_FETCH_DEPTH` guard (max 5) against infinite recursion when a promisor remote resolves back to the served repo. Today's exchange concerned the depth counter's type: Christian proposed casting `git_env_ulong()` to `int` since `git_env_int()` does not exist, and Junio C Hamano noted that `git_env_ulong()` already has 13 callers mixing explicit and implicit casts, leaving the choice to Christian.
+
+### sequencer auto maintenance at the end of a sequence
+
+*Long thread (root 2026/09/04/07-53-44): 24 replies so far from 5 participants over 6 days; 3 messages that day.*
+
+Thomas Bachem posted v4 of the series that runs `git maintenance run --auto` exactly once when a rebase, cherry-pick or revert sequence completes (from `builtin/rebase.c` and `builtin/revert.c`) and passes `maintenance.auto=false` to sequencer-spawned commands via `GIT_CONFIG_PARAMETERS`; v4 has no code change, only commit messages condensed to about a third at Junio C Hamano's request. Patrick Steinhardt agreed with Junio that proposed log messages have been growing longer with irrelevant detail. Phillip Wood reviewed v4 3/3, suggested rewording the opening of the commit message, questioned one new test assertion in `t/t3418-rebase-continue.sh`, and called the series pretty good.
+
+### unifying ref storage format terminology
+
+*Long thread (root 2026/09/04/10-36-01): 23 replies so far from 4 participants over 6 days; 12 messages that day.*
+
+Patrick Steinhardt posted v3 of the 13-patch series renaming `--ref-format=`, `--show-ref-format`, `GIT_REFERENCE_BACKEND`, `GIT_DEFAULT_REF_FORMAT` and `init.defaultRefFormat` to `ref-storage-format` equivalents across init, clone, refs, submodule, rev-parse and help, keeping old names as hidden aliases via `OPT_ALIAS()`, and letting `--ref-storage-format=` accept a `format://payload` URI. Kaartic Sivaraam raised follow-ups -- comparing payloads with `strbuf_realpath`, error messages naming the wrong environment variable when the fallback is used, and `Documentation/ref-storage-format.adoc` being shared with `git-refs(1)` -- and Patrick agreed to fix the env-var messages and the `GIT_TEST_DEFAULT_REF_FORMAT` rename, rejected the realpath comparison since a payload need not be a path, and kept the shared doc out of the series.
+
+### writing alternates at object database creation time
+
+*Long thread (root 2026/08/25/14-11-49): 23 replies so far from 4 participants over 16 days; 4 messages that day.*
+
+Patrick Steinhardt posted v4 of the 9-patch series that moves alternate writing into `odb_source_create_on_disk()` at creation time -- `create_object_database()` now takes a `const struct strvec *alternates` -- and removes the ad-hoc `odb_source_write_alternate()` callback; v4 adds documentation for the new repository-creation functions. Justin Tobler reviewed v4 and said it looks good to him.
+
 ## The day in brief
-The Git mailing list saw active development across several fronts today. Key highlights include Junio C Hamano’s surface-level review of Mike Hommey’s Rust reorganization patch, brian m. carlson’s forward-compatibility concern about the same patch, and Karthik Nayak’s v9 iteration of the `receive-report` hook series addressing a critical design flaw. Johannes Schindelin’s MinGW/Windows build adjustments series reached a milestone with Junio proposing it ready for `next`, while Patrick Steinhardt’s ODB alternates refactoring series received final documentation updates. The Outreachy December 2026 cohort application was submitted, and SZEDER Gábor introduced a build system optimization using precompiled headers.
+
+Karthik Nayak's v9 receive-report hook fixes the BUG() failure when a client requests no report. Patrick Steinhardt's v4 alternates-at-creation series drew positive review, while his v3 ref-storage-format series drew follow-up questions. Thomas Bachem's v4 sequencer auto-maintenance series arrived with condensed commit messages after reviewers pushed back on message length. SZEDER Gábor's precompiled-header Makefile series reports about a 35% build speedup.
 
 ## Notable threads
 
-### Rust infrastructure reorganization
-**What changed?**
-Mike Hommey’s patch to relocate Git’s experimental Rust code from `src/` to a dedicated `rust/` subdirectory received detailed surface-level review from Junio C Hamano. The patch addresses project hygiene concerns by removing a misleading top-level `Cargo.toml` and reducing mixed-language confusion.
+### precompiling `git-compat-util.h` in the Makefile
+SZEDER Gábor posted a 4-patch series making the Makefile precompile `git-compat-util.h`, reporting about a 35% build speedup; it reintroduces `REFTABLE_OBJS` so reftable sources (which mostly do not include the header) are excluded, and adds a `NO_PRECOMPILED_HEADER` knob. He also benchmarked an optional follow-up covering the remaining compat/reftable files at only ~1% extra gain and judged it not worth the churn. Junio C Hamano suggested leading patch 3/4's commit message with the series' endgame rather than the historical `REFTABLE_OBJS` detail.
 
-**Why it matters**
-This reorganization supports downstream projects that vendor Git’s C code while excluding its Rust components. However, brian m. carlson raised a forward-compatibility concern: the current approach may break when Git 3.0 makes Rust components mandatory, forcing downstream projects to either adopt Git’s Rust code or find a new approach.
+### `git var` broken-down idents, signing key, multiple args, `-z`
+Andrew Pleeter reposted v6 of the patch teaching `git var` to expose `GIT_AUTHOR_NAME`/`EMAIL`/`DATE`, the committer equivalents, `GIT_SIGNING_KEY`, multiple variable arguments and `-z`. Phillip Wood objected to returning non-zero when one of several requested variables has no value, since that prevents distinguishing fatal errors by exit code, and again asked for the use case for `GIT_SIGNING_KEY`. Junio C Hamano argued the extra delimiter after multi-valued variables makes the wrong trade-off and stated his preferred design: drop the empty-record convention and model multi-variable output as `var=value` pairs like `git var -l`.
 
-**Today’s developments**
-- [2026/09/09/19-54-35] Junio identified four surface-level issues requiring fixes: commit message phrasing (imperative mood), duplicate `.gitignore` entries for `/target/` and `/Cargo.lock`, duplicate `RUST_SOURCES` entries in Makefile, and inconsistency between `.gitignore` and Makefile `clean` target regarding `Cargo.lock` location.
-- [2026/09/09/21-13-49] brian m. carlson raised a forward-compatibility concern about the reorganization’s support for downstream projects that vendor Git’s C code while excluding its Rust components, particularly in light of Git 3.0’s mandatory Rust components.
+### moving the Rust gitcore crate into `rust/`
+Mike Hommey reposted v3, moving `Cargo.toml`, `cargo-meson.sh`, `meson.build` and the `src/*.rs` files into a dedicated `rust/` subdirectory so a top-level `Cargo.toml` no longer implies a bare `cargo build` works and the source can be vendored as a submodule. Junio C Hamano flagged that `rust/src/lib.rs` and `rust/src/varint.rs` are each listed twice in `RUST_SOURCES` and that the `clean` target still removes the top-level `Cargo.lock`; brian m. carlson questioned the rationale, asking how vendoring without the Rust components would work once Rust becomes mandatory.
 
-**Subsystems affected**
-- Build system
-- Rust infrastructure
+### upstreaming more Git for Windows patches
+Johannes Schindelin posted v3 of the 12-patch series, moving the CMake/meson/`MINGW_PREFIX` hunks out of 08/12 into 12/12 and dropping a fly-by cleanup from `t0060`. Johannes Sixt found 08/12 good but flagged a stale "Note:" paragraph about CMake/Meson support; Johannes agreed to remove it and add a `Helped-by:`. Junio C Hamano reviewed 12/12, called the movement logically correct, and asked whether the topic should be marked ready for `next`.
 
-**Practical impact**
-The patch improves project structure clarity and supports downstream vendoring use cases. However, the forward-compatibility concern may require revisiting the reorganization strategy when Git 3.0 makes Rust components mandatory.
-
----
-
-### `uploadpack.lazyFetchTrusted` server-side configuration
-**What changed?**
-Christian Couder’s patch series implementing `uploadpack.lazyFetchTrusted` as a server-side protected configuration variable to mark repositories as trusted for lazy fetching reached a resolution on a minor API-consistency discussion.
-
-**Why it matters**
-This series provides a server-side mechanism for operators to explicitly declare which repositories are safe to lazy-fetch from, addressing security concerns about untrusted repositories triggering arbitrary code execution via lazy-fetch hooks or configuration.
-
-**Today’s developments**
-- [2026/09/09/10-00-51] Christian proposed a cast from `unsigned long` to `int` for the recursion depth counter, citing precedent in `builtin/pack-objects.c`, and asked Junio whether to accept this approach or introduce a new `git_env_int()` helper.
-- [2026/09/09/21-39-29] Junio confirmed that casting the result of `git_env_ulong()` to `int` is acceptable, following existing precedent in Git (e.g., `commit-graph.c`, `config.c`, `progress.c`), and suggested Christian could either follow this pattern or audit all callers to migrate appropriate ones to a new `git_env_int()`.
-
-**Subsystems affected**
-- Fetch/push plumbing
-- Configuration system
-- Security infrastructure
-
-**Practical impact**
-The resolution clears the way for the v4 update of the series, which implements a server-side trust model for lazy fetching with recursion safeguards.
-
----
-
-### MinGW/Windows build and runtime adjustments
-**What changed?**
-Johannes Schindelin’s 12-patch series upstreaming Git for Windows-specific build and runtime adjustments reached a milestone with Junio proposing the series ready for `next`.
-
-**Why it matters**
-The series addresses hard-coded assumptions, MSYS2 integration, linking behavior, deprecated build artifacts, a locale-handling regression in the MSYS2 runtime, and direct `git.exe` invocation, improving Windows compatibility without affecting non-Windows platforms.
-
-**Today’s developments**
-- [2026/09/09/19-09-38] Johannes Schindelin acknowledged Johannes Sixt’s feedback on patch 8/12, agreeing to move compiler-definition hunks from patch 8 to patch 12 and remove a stale paragraph about Meson from the commit message.
-- [2026/09/09/19-17-04] Johannes Schindelin posted v3 of the series, addressing Johannes Sixt’s feedback by moving compiler-definition hunks from patch 8 to patch 12 and dropping a fly-by style cleanup in `t0060-path-utils.sh`.
-- [2026/09/09/19-41-09] Junio noted that the only material change in v3 of patch 12/12 was the removal of a fly-by style cleanup in `t0060-path-utils.sh` and confirmed that the logical restructuring was correct and improved maintainability.
-- [2026/09/09/20-13-25] Johannes Schindelin proposed adding a `Helped-by:` trailer for Johannes Sixt to credit his review contributions and asked Junio whether to send a v4 iteration or if Junio would squash the minor commit message tweaks directly before merging to `next`.
-
-**Subsystems affected**
-- Build system
-- Windows compatibility layer
-- Runtime environment
-
-**Practical impact**
-The series improves MSYS2 integration, compiler flexibility, and runtime behavior on Windows, with real-world validation from Johannes Sixt’s personal builds and GitHub CI. The unresolved discussion about guarding against an empty `MSYSTEM` export in patch 12 continues, but the series is otherwise ready for integration.
-
----
-
-### `receive-report` hook for server-side status filtering
-**What changed?**
-Karthik Nayak’s patch series introducing the `receive-report` hook for `git-receive-pack` reached v9, addressing a critical design flaw identified by Junio in the previous iteration.
-
-**Why it matters**
-The hook allows server administrators to intercept and modify the pkt-line encoded status report sent to the client after ref updates are committed, enabling use cases like GitLab’s multi-version concurrency control (MVCC) system where the status report must reflect the repository state after all server-side operations are complete.
-
-**Today’s developments**
-- [2026/09/09/14-51-35] Karthik Nayak posted v9 of the series, addressing Junio’s critical design flaw in patch 2/4 by replacing the `default: BUG("unknown report status version")` case with an explicit `REPORT_STATUS_UNKNOWN` case that `break`s, ensuring the code silently skips the status report when the client does not request one.
-- [2026/09/09/17-20-54] Junio explained why the test suite did not catch the `BUG()` flaw: the built-in `git send-pack` client always requests a status report if the server advertises the `report-status` or `report-status-v2` capabilities, and there is no mechanism to disable this behavior, making a test for this edge case impractical without a custom client or a way to suppress the server’s capability advertisement.
-
-**Subsystems affected**
-- Receive-pack plumbing
-- Hooks system
-- Server-side extensibility
-
-**Practical impact**
-The series is now feature-complete and ready for final review, with all prior feedback addressed. The critical fix in v9 resolves a crash risk when clients omit the `report-status` or `report-status-v2` capability, aligning with the existing behavior.
-
----
-
-### ODB alternates handling refactoring
-**What changed?**
-Patrick Steinhardt’s 9-patch series refactoring ODB alternates handling during repository creation received final documentation updates in v4, addressing Justin Tobler’s feedback.
-
-**Why it matters**
-The series removes the ability to write ODB alternates after repository creation, simplifying the ODB interface and preparing for alternates to become an implementation detail of the ODB backend.
-
-**Today’s developments**
-- [2026/09/09/05-48-42] Patrick Steinhardt posted v4 of the series, adding documentation for the new repository creation functions (`create_repository()`, `create_reference_database()`, and `create_object_database()`) and clarifying the `reinit_ok` parameter, addressing Justin Tobler’s feedback from v3.
-
-**Subsystems affected**
-- Object database
-- Repository creation
-- Alternates handling
-
-**Practical impact**
-The series is now well-documented and addresses all substantive review feedback, making it a strong candidate for integration. The refactoring simplifies the ODB interface and resolves latent bugs in worktree alternates handling.
-
----
-
-### Outreachy December 2026 cohort participation
-**What changed?**
-Christian Couder submitted Git’s application for the Outreachy December 2026 cohort, listing two approved project ideas for interns.
-
-**Why it matters**
-Outreachy provides opportunities for underrepresented groups in tech to contribute to open source projects. Git’s participation helps grow the contributor base and address technical debt.
-
-**Today’s developments**
-- [2026/09/09/09-12-03] Christian Couder submitted Git’s application, listing two approved project ideas: "Improve how command arguments and options are scanned and parsed" and "Reduce Git’s global state to enable Git's libification."
-
-**Subsystems affected**
-- Community engagement
-- Project planning
-
-**Practical impact**
-The application locks in Git’s intent to mentor and sponsor two interns. The thread now shifts to recruiting co-mentors and refining project details before the September 11 deadline.
-
----
-
-### Precompiled headers for faster builds
-**What changed?**
-SZEDER Gábor introduced a 4-patch build system series that implements precompiled headers for `git-compat-util.h`, targeting a ~35% build time reduction.
-
-**Why it matters**
-Precompiled headers can significantly reduce build times by avoiding redundant parsing of frequently included headers like `git-compat-util.h`.
-
-**Today’s developments**
-- [2026/09/09/19-50-02] SZEDER Gábor posted the 4-patch series, with the core change in patch 4/4 adding precompilation support for `git-compat-util.h`.
-- [2026/09/09/19-57-37] SZEDER Gábor demonstrated that finer-grained filtering of files excluded from precompiled-header processing yields only a 1% speedup (0.2s) and is not worth the added complexity.
-- [2026/09/09/21-07-20] Junio suggested reordering the commit message of patch 3/4 to state the series’ end goal upfront, then explain why reftable files are excluded, and finally describe the mechanical change.
-
-**Subsystems affected**
-- Build system
-
-**Practical impact**
-The series introduces a build-time optimization with measurable speedup on the author’s setup (29.4s → 21.7s with `-j12`). The implementation is careful to exclude files that don’t include `git-compat-util.h`, and the CMake adjustments may draw scrutiny from Windows builders.
-
----
+### `format-patch --[no-]range-diff-notes`
+Kristoffer Haugsbakk clarified that his design means `--no-range-diff-notes` disables range-diff notes entirely, and proposed a redesign offering only `--no-RD-notes` and `--RD-notes=<ref>` via a parse-opts callback, dropping the arg-less form and any revert-to-patch-notes behavior. Junio C Hamano confirmed agreement on the interpretation, agreed the "turn off this override" docs section is inaccurate, and noted the `warning: notes ref refs/notes/ is invalid` output from an empty `--notes=` is a UI bug that can be fixed.
 
 ## In brief
-- **[2026/09/09/06-56-39]** Aleksei Sviridkin provided performance measurements showing that initializing `timestamp_t date` to `0` in the `--force-if-includes` reflog walk imposes negligible performance penalty in typical repositories, addressing Junio’s concern about penalizing users who follow default reflog expiration policies.
-- **[2026/09/09/08-25-28]** Thomas Bachem posted v4 of the 3-patch series deferring auto maintenance until sequencer completion, addressing Junio’s and Patrick Steinhardt’s critiques by significantly tightening the commit messages.
-- **[2026/09/09/11-12-47]** Patrick Steinhardt posted a refactoring patch to the parse-options API, introducing `OPT_ALIAS_F()` to support hidden option aliases, enabling future patches to deprecate old option names while keeping them functional but out of help text.
-- **[2026/09/09/14-07-32]** Kristoffer Haugsbakk noted that the `maintenance-doc-bullet-fix` topic was missing from Junio’s "What’s cooking" report.
-- **[2026/09/09/18-08-17]** Kristoffer Haugsbakk proposed a simplified redesign for the `--[no-]range-diff-notes` feature, adopting Junio’s suggested rule and eliminating the toggle mechanism.
-- **[2026/09/09/18-15-29]** Junio clarified that the `maintenance-doc-bullet-fix` patch was not omitted accidentally but was deprioritized due to lack of author follow-up after review feedback.
-- **[2026/09/09/20-27-18]** Jeff King reviewed the v3 patch adding scope hints to Git’s advice system, raising concerns about the new `set%s` placeholder in the translatable string and suggesting reuse of Git’s existing `CONFIG_SCOPE` enum.
-- **[2026/09/09/22-46-03]** Jeff King argued that `CONFIG_SCOPE_UNKNOWN` is not semantically problematic for the `scope_hint` field, as it can simply mean “use the default location for writing config.”
+- Jeff King said the v3 "advice: use global config for default branch name" patch looks OK with nits; Junio C Hamano wants a small final reroll split into three patches (vadvise() API, scope mechanism, then defaultBranchName global) with the motivation in the commit message.
+- Aleksei Sviridkin reported benchmarks for the `--force-if-includes` fix when the remote-tracking ref has no reflog: the zero cutoff adds about 0.26s only on repositories still holding reflog entries older than 90 days where gc has not run.
+- Jeff King proposed NULL as the advice_setting for ad-hoc `vadvise()` calls; Junio C Hamano accepted the proposal.
+- Christian Couder submitted Git's Outreachy December 2026 community application offering to mentor and sponsor 2 interns with the two previously proposed projects, and suggested an "Outreachy sponsoring" topic for the Contributor's Summit.
+- Junio C Hamano noted the `CARGO_BUILD_TARGET` patch is based on a stale codebase and suggested `${CARGO_BUILD_TARGET+$CARGO_BUILD_TARGET/}` to avoid double slashes in `src/cargo-meson.sh`.
+- Tuomas Ahola posted a two-patch series adding `gitformat-loose(5)` and `gitpacking(7)` to `command-list.txt` and extending `Documentation/lint-manpages.sh` to check the guide list; Junio C Hamano praised the additions and pointed out quoting fixes.
+- Patrick Steinhardt queued a one-word commit-message reword in "submodule-config: stop registering submodule sources" but did not resend for that alone.
+- Kristoffer Haugsbakk noted a Sep 7 maintenance-doc topic was missing from the "What's cooking" listing; Junio C Hamano replied that resending a patch shows broader interest and that he had left the topic for a final reroll.
+- Patrick Steinhardt posted v3 01/13 introducing `OPT_ALIAS_F()`, which accepts flags so aliases can be hidden with `PARSE_OPT_HIDDEN`.
