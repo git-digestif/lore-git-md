@@ -1,40 +1,35 @@
 # Git mailing list daily digest for 2026/09/13
 
+## Long threads
+
+### Advice scoping for the defaultBranchName hint
+
+*Long thread: 20 replies so far from 4 participants over 5 days; 1 message that day.*
+
+Vsevolod Myalitsin's three-patch series in `advice.c` makes the `defaultBranchName` advice recommend disabling itself in the global configuration, because the current hint (`git config set advice.defaultBranchName false`) writes to the local repository, which is useless: the advice appears while initializing a repository, and the initialization scenario does not repeat for that repository, so the advice reappears on the next `git init`. Earlier reviews shaped the v4 series into passing the whole `advice_setting` to `vadvise()`, adding a scope hint, and setting the global scope for this advice. Today Junio C Hamano agreed that adding "--global" to the advice hint is acceptable since users can still cut-and-paste and tweak it, but clarified that the original intent was for users to decide the scope themselves, and suggested it may not be necessary to mark each advice individually for scope since the message could simply always say "--global".
+
 ## The day in brief
-Junio C Hamano approved and fast-tracked a two-patch series enabling Rust compilation in Git’s GitHub Actions Windows CI jobs, resolving a key blocker for the broader Rustification effort. Three new bugfix series were posted, addressing a race in the ODB transaction layer, incorrect `git worktree repair` behavior, and Windows-specific test failures. The Coccinelle rule discussion shifted toward accepting compiler warnings for correctness, while the advice scope hint thread saw Junio propose an even simpler design.
+
+Junio C Hamano judged the Windows CI Rust series ready and decided to merge it in `next` and fast-track it to `master` immediately. Two new bugfix series landed on the list: one validating `git worktree repair` targets before modifying cross-references, and one fixing ODB transaction commits that mix loose objects with large blobs under batch fsync.
 
 ## Notable threads
 
-### Rust compilation in Windows CI now ready for integration
-Johannes Schindelin’s two-patch series enabling Rust compilation in Git’s GitHub Actions Windows CI jobs is now ready for integration. The series configures the Rust toolchain to target the GCC ABI (MinGW) instead of the default MSVC ABI, ensuring Cargo produces a static library (`libgitcore.a`) compatible with Git for Windows’ linker. Junio C Hamano [2026/09/13/22-52-34] agreed to merge the series directly into `next` and fast-track it to `master`, bypassing the usual one-week cooking period due to the lower risk of Windows users building from source.
+### Using Rust in the Windows CI jobs
 
-The patches touch `.github/workflows/main.yml`, `ci/lib.sh`, `config.mak.uname`, and the `Makefile`, but do not affect core Git functionality or user-facing features. The series removes the `NO_RUST` opt-out in CI, unblocking the broader Rustification effort. Testing on GitLab’s Windows runners remains an open request but is not a blocker.
+Johannes Schindelin's series lets the Windows CI jobs build with Rust, which Git requires by default since v2.55.0; those jobs had opted out because the minimal Git for Windows SDK they download lacks Rust, but the GitHub runners come with Rust preinstalled, configured for the Visual C toolchain, so the series picks a GCC-compatible Cargo target under MSYS2/MinGW. Today Schindelin confirmed that `CARGO_BUILD_TARGET` works for this, noting the Makefile does not export it automatically so it must be exported explicitly; he posted v3 switching from `CARGO_TARGET`/`--target` to `CARGO_BUILD_TARGET`, then v4 whose only change is removing the now-incorrect commit-message paragraph about `--target`. Junio C Hamano judged v4 ready and decided to merge it in `next` and fast-track it to `master` immediately, reasoning that Windows has an unusually high ratio of binary users relative to source builders.
 
-### ODB transaction race fix posted
-Justin Tobler [2026/09/13/20-26-20] posted a two-patch series fixing a race in the ODB transaction layer during commit when loose objects and large blobs are present with `core.fsync` batching enabled. The bug occurs when a large blob is written to a packfile in a transaction’s temporary directory, but the transaction migrates to the main ODB before the packfile is finalized, leaving it unflushed and causing a "No such file or directory" error.
+### Validating `git worktree repair` targets
 
-The fix refactors `odb_maybe_flush_packfile()` to separate ODB reprepare logic from packfile flushing (patch 1/2) and adds a call to flush pending transaction packfiles before migration (patch 2/2). The series includes a new test in `t/t1050-large.sh` that reproduces the bug with a minimal repository setup. The patches are narrowly scoped to `object-file.c` and align with the ongoing ODB abstraction effort.
+Yoichi NAKAYAMA submitted a two-patch series fixing `git worktree repair` in `worktree.c` and `t/t2406-worktree-repair.sh`: the command did not sufficiently validate the cross-references between a linked working tree and its administrative data, so it could modify the wrong `.git` file or gitdir. The first patch refactors `repair_worktree_at_path()` to read the `.git` file once via `read_gitfile_raw()` and extract the worktree ID with a new `get_worktree_id()`; the second verifies that the recorded worktree ID matches the worktree being repaired and stops when the gitdir path cannot be inferred, preventing corruption when worktree directories are swapped or a linked worktree is copied.
 
-### Worktree repair validation added
-Yoichi NAKAYAMA [2026/09/13/03-20-11] posted a two-patch series preventing `git worktree repair` from incorrectly modifying unrelated worktrees. The bug manifests when cross-references between a linked worktree and its administrative data are not validated before repair, risking corruption of unrelated worktrees in edge cases like manually swapped directories.
+### Flushing the transaction packfile before migrating objects
 
-The series first refactors code to reduce redundant `.git` file reads and extract the worktree ID (patch 1/2), then adds validation logic using that ID to prevent repairs on unrelated worktrees (patch 2/2). The test script `t/t2406-worktree-repair.sh` is updated with two new test cases covering the validation. The changes are confined to `worktree.c` and the test script, with no broader behavioral changes.
-
-### Windows test fixes for Perl and UTF-8
-Johannes Schindelin [2026/09/13/19-11-05] posted a two-patch series fixing Windows-specific test failures that surfaced during full Windows/ARM64 test runs. The first patch adjusts Perl environment detection in `t/t9700/test.pl` to accommodate MSYS2 Perl now reporting itself as `cygwin`, while the second unconditionally skips UTF-8 tests in `t/t9129` on Windows due to fundamental encoding incompatibilities between Git for Windows and MSYS2 Perl.
-
-The patches are narrowly scoped to the test suite and do not affect core Git functionality. The UTF-8 skip is justified by the irreconcilable mismatch between Windows "Code Pages" and Unix-style `LC_ALL` environment variables. The series resolves the only failures encountered during Windows/ARM64 testing in preparation for Git for Windows v2.56.0-rc0.
-
-### Coccinelle rule discussion shifts toward compiler warnings
-The discussion about removing a risky Coccinelle rule (`if (!E) free(E)`) took a substantive turn when René Scharfe [2026/09/13/10-45-48] argued that the project should tolerate compiler warnings for the sake of correctness. He noted that GCC accepts `if (!E);` without warning, while Clang warns, and that removing the guarded `free(E)` call entirely is preferable to preserving flawed code for build hygiene.
-
-The thread remains unresolved, with no consensus on whether to adopt René’s blunt approach, Junio’s original rule removal, or another alternative. The discussion now hinges on the project’s tolerance for compiler warnings and the perceived risk of side effects from evaluating `E` in `if (!E)`.
-
-### Advice scope hint design simplified further
-Junio C Hamano [2026/09/13/16-32-37] proposed an even simpler design for Vsevolod Myalitsin’s advice scope hint series: the hint could *always* recommend `--global` without needing to mark individual advice settings for their intended scope. This would eliminate the need for the `is_global_hint` field entirely, further simplifying the design.
-
-Junio clarified that the original 2009 design of the `advice.*` config system never intended the scope-less hint to be a literal cut-and-paste command, and that adding scope hints now is an enhancement rather than a bugfix. The proposal conflicts with Jeff King’s argument that some settings (like `defaultBranchName`) are inherently global, but Junio’s stance leaves the door open for a more minimal solution.
+Justin Tobler posted a two-patch series fixing a commit failure in `object-file.c` when an ODB transaction contains both a loose object and a "large" blob with `core.fsyncMethod` set to `batch`: the transaction's temporary directory was migrated to the main ODB before the packfile was flushed, producing a rename error. The first patch lifts the `odb_reprepare()` call out of `flush_packfile_transaction()` and requires callers to invoke it explicitly; the second moves the packfile flush ahead of the object migration in `odb_transaction_files_commit()` and adds a `t/t1050-large.sh` test verifying no objects remain in temporary locations.
 
 ## In brief
-- **Documentation backtick-quoting**: Todd Zullinger [2026/09/13/14-14-05] plans to drop the lint script change from his v1 series and resubmit v2 with only the mechanical backtick-quoting conversions for `git-refs` and `git-pack-refs`.
-- **CMake UCRT64 update**: Johannes Schindelin [2026/09/13/20-41-12] posted a patch updating the CMake build system for Git for Windows’ migration from MINGW64 to UCRT64, ensuring `git.exe` locates its dependencies in the new `/ucrt64/` prefix.
+
+- Johannes Schindelin changed `contrib/buildsystems/CMakeLists.txt` so the CMake Windows x64 build defines `ENSURE_MSYSTEM_IS_SET="UCRT64"` and `MINGW_PREFIX="ucrt64"`, accommodating Git for Windows' migration to UCRT64.
+- Johannes Schindelin fixed two Perl-related Windows test failures: `t9700` now checks `$ENV{MSYSTEM}` because MSYS2 Perl reports `$^O` as `cygwin`, and `t9129` skips its UTF-8 cases on `MINGW`.
+- Jean-Noël AVILA argued against extending the documentation lint regex to commands, citing false positives in definition lists, and Todd Zullinger said he would drop the lint patch and wait before re-rolling the pack-refs and refs doc fixes.
+- René Scharfe noted that GCC accepts `if (!E);` while Clang warns, and agreed the polite course on the cocci `if (!E) free(E)` conversion is to leave the flawed code in place.
+- Orgad Shaneh pinged Junio C Hamano about tag content verification in the `fetch --prune-tags` tests; Junio replied he needs to swap the old discussion back into context and would not respond today.
