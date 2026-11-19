@@ -1,227 +1,70 @@
 # Git mailing list daily digest for 2026/09/01
 
+## Long threads
+
+### git-replay(1) `--linearize` option
+
+*Long thread (root 2026/06/08/18-37-18): 39 replies so far from 7 participants over 86 days; 1 message that day.*
+
+Toon Claes's series adds a `--linearize` option to `git-replay(1)` that drops merge commits and replays all reachable commits into a single linear history, mimicking `git-rebase(1)`'s default `--no-rebase-merges` behavior; it updates refs pointing to merges to the last replayed ancestor and rejects use with multiple branches or `--contained`. Earlier, Justin Tobler and Elijah Newren pressed for "multiple branches" wording instead of "multiple revision ranges" and simpler documentation of the restriction, and Claes agreed to those rewordings in v9. Today Elijah Newren reviewed the v9 series, stated "I think this version is good to go," and added a Reviewed-by trailer.
+
+### runtime `core.useNanosec` configuration
+
+*Long thread (root 2026/08/07/11-56-23): 38 replies so far from 6 participants over 26 days; 6 messages that day.*
+
+D. Ben Knoble's series converts the build-time `USE_NSEC` compile option into the runtime `core.useNanosec` configuration setting, so distributed builds can enable nanosecond racy-git checks in `read-cache.c` and `statinfo.c` instead of relying on `#ifdef USE_NSEC`. Earlier reviewers settled the `#ifdef` strategy, the absence of a warning on `NO_NSEC` builds, and Patrick Steinhardt's `defined`->`enabled` comment nit, which landed in v6. Today Junio C Hamano flagged a "comparisions" typo in the v6 documentation, Jeff King reviewed the `#ifndef NO_NSEC` guard and found the rest as expected, and Knoble confirmed the typo was amended locally; Hamano agreed to amend locally and said a final reroll can be skipped if nothing else surfaces.
+
+### packfile recovery when a multi-pack-index names a removed pack
+
+*Long thread (root 2026/08/18/22-34-04): 36 replies so far from 5 participants over 15 days; 5 messages that day.*
+
+Elijah Newren's series fixes objects being treated as missing despite being present when a stale multi-pack-index names a pack removed by a concurrent geometric repack; `find_pack_entry()` recovers by scanning the MIDX's packs for a surviving copy on `OBJECT_INFO_SECOND_READ`, with `midx_fill_entry()` returning a tri-state enum. Earlier revisions dropped the QUICK-reader patch in favor of a small `git mktree --batch` change that stops passing `OBJECT_INFO_QUICK`. Today Derrick Stolee completed an inline review of v3 4/4 with "Good patch. LGTM." and said he supports the series; Newren clarified that the fallback scan is O(num_packs_in_the_midx), and Stolee accepted both clarifications.
+
+### `receive-report` hook for git-receive-pack(1)
+
+*Long thread (root 2026/08/18/07-55-55): 28 replies so far from 5 participants over 15 days; 3 messages that day.*
+
+Karthik Nayak's series introduces a `receive-report` hook that runs after the reference transaction completes but before the report is sent to the client, receiving the pkt-line encoded report on stdin with its stdout replacing the report; a non-zero exit marks all references rejected. Earlier reviews renamed the hook from "report", moved report generation into `generate_report()`, and shaped the failure handling. Today Nayak posted v5, renaming `generate_response` to `generate_report`, overriding the cmd's error_strings, and adding documentation and a test for overriding the unpack status to fail the push. Junio C Hamano questioned the `bool detailed_report` parameter in 2/3, suggesting a protocol-version enum, and challenged the rationale for rejecting a reference-transaction hook, warning that divergent reported versus actual ref updates would desynchronize remote-tracking branches.
+
+### trace2: stop allowing die()
+
+*Long thread (root 2026/07/15/16-12-11): 25 replies so far from 6 participants over 49 days; 3 messages that day.*
+
+Derrick Stolee's series makes the low-level trace2 API safe from `die()` by introducing a root-level `banned-die.h` header included by all trace2 API `*.c` files, banning die-capable helpers one at a time (`xsnprintf`, `xstrdup`, `ALLOC_ARRAY`, `xstrfmt`, `ALLOC_GROW`, `xcalloc`) so tracing cannot retrigger during die() handling. Earlier reviews fixed the `BANNED()` casing, the `tr2_sysenv_cb()` return value, and a redaction length bug. Today Jeff King argued that fully pruning dependencies would amount to a ground-up rewrite and that static analysis of the complete call tree could eventually make `banned-die.h` unnecessary, though he is not opposed to it in the meantime; Stolee said the header helps demonstrate progress during the refactor but is less useful as long-term protection.
+
 ## The day in brief
-The Git mailing list saw significant activity around several key topics: a new `--missing-only` option for `git rev-list` was clarified and approved; a major refactoring of `git checkout` internals progressed with design discussions; a critical bugfix for geometric repacking race conditions received final approvals; and a discussion about binary file corruption in checkouts revealed platform-specific issues. Several performance optimizations and architectural improvements also moved forward.
+Elijah Newren gave the v9 `git-replay(1)` `--linearize` series a "good to go" review, Derrick Stolee approved the multi-pack-index removed-pack recovery patch, and Patrick Steinhardt posted a 12-patch series removing in-memory source registration from the object database.
 
 ## Notable threads
 
-### Git rev-list gains --missing-only option for GitLab's Gitaly workflow
-**What changed**: Siddharth Asthana's patch series implementing `--missing-only` for `git rev-list` was approved after clarifying GitLab's use case.
+### revision: use-after-free of freed argv elements
 
-**Problem/goal**: GitLab's Gitaly needed an efficient way to identify missing objects in partial clones during transaction packing without post-processing.
+Jeff King posted a patch to fix a use-after-free in `setup_revisions()`: overwritten argv strings would be collected in a new `argv_to_free` strvec on `rev_info` and released in `release_revisions()` instead of freed immediately, addressing garbled `--src-prefix`/`--dst-prefix` output from `git stash show` (with a new test in `t3903-stash.sh`). He also posted a follow-up simplifying `mark_argv_for_free()` callers. Patrick Steinhardt reviewed the proposal favorably, and Junio C Hamano approved the cleanup.
 
-**Technical details**:
-- New flag: `--missing-only` filters output to show only missing objects
-- Output format: one OID per line (no `?` prefix) or `path=`/`type=` fields with `--missing=print-info`
-- Implementation touches `builtin/rev-list.c`, documentation, and tests
-- Rejects incompatible options like `--count` and `--disk-usage`
+### last-modified: Bloom filter pre-filtering for wildcard pathspecs
 
-**Impact**: Enables GitLab's single-pass transaction packing workflow, eliminating the need to strip `?` prefixes from output. The feature is now ready for integration after resolving workflow questions about Gitaly's consumption pattern.
+*Long thread (root 2026/07/17/15-46-58): 22 replies so far from 4 participants over 47 days; 4 messages that day.*
 
-**Today's development**: [2026/09/01/20-27-51] Siddharth clarified that Gitaly uses the feature in a single-pass transaction packing workflow, not iterative onion-peeling, resolving Junio's workflow question.
+Toon Claes's series speeds up `git-last-modified(1)` on directory pathspecs by reusing the `git-log(1)` Bloom filter machinery to pre-filter commits, reporting about 1.95x speedup with `-t` and 3.74x without on ziglang/zig. Today Claes posted v4, overriding `GIT_TEST_COMMIT_GRAPH` when passing `-c core.commitGraph=` in the t8020 tests after Junio C Hamano pointed out the harness export made the `-c` ineffective; Hamano later noted the missing settings when queuing fixups.
 
----
+### checkout: separate autostash conflict advice from branch-switch message
+Harald Nordgren's patch makes `git checkout -m` print a blank line between the autostash conflict advice and the "Switched to branch" message, and makes `git stash apply`, `pop` and `branch` exit with status 2 when applying the stash entry resulted in conflicts (other failures exit 1), documented in the git-stash docs. Today Phillip Wood argued the exit-code convention is confusing since merge-tree, grep and diff use 1 for conflicts, and Junio C Hamano agreed that "1 if X, other non-zero if error" would be better.
 
-### git replay --linearize feature series receives final approval
-**What changed**: Elijah Newren's patch series adding `--linearize` to `git replay` received final Reviewed-by.
+### builtin/ident: new `ident` command
+Andrew Pleeter's patch adds a builtin `git ident` command to display the resolved author and committer identity along with commit signing configuration, with scope and component selectors and porcelain output. Today Jeff King proposed instead teaching `git var` to provide broken-down identity components, arguing the new command's features could enhance `git-var` and that another specialized command is undesirable; Junio C Hamano endorsed that assessment.
 
-**Problem/goal**: Provide a simpler alternative to Johannes Schindelin's merge-replay implementation that flattens merge commits into linear history.
+### odb: stop registering in-memory sources
 
-**Technical details**:
-- New CLI option: `git replay --linearize`
-- Restrictions: cannot be used with multiple revision ranges or `--contained`
-- Implementation in `replay.c`, `revision.h`, and documentation
-- Behavioral difference from `git rebase --no-rebase-merges`: drops merges and keeps only one branch
-
-**Impact**: Offers predictable, all-or-nothing flattening behavior that avoids dangling commits. The series is technically complete and ready for integration after addressing all prior feedback.
-
-**Today's development**: [2026/09/01/22-15-20] Elijah Newren provided Reviewed-by for the entire series, signaling technical completion and readiness for integration.
-
----
-
-### HTTP daemon test helpers race condition fix completes review
-**What changed**: Michael Montalbo's bugfix series for race conditions in HTTP daemon test helpers completed review.
-
-**Problem/goal**: Fix non-atomic state management in CGI scripts (`apply-one-time-script.sh` and `http-429.sh`) that could cause HTTP 500 errors under concurrent requests.
-
-**Technical details**:
-- Replaces racy shell operations with atomic alternatives: `rm` without `-f` and `mkdir`
-- Adds new test `t5567-one-time-script.sh` for deterministic verification
-- Documentation updates in `t/lib-httpd.sh`
-- Fixes observed flaky test failures in macOS CI runners
-
-**Impact**: Makes test infrastructure more robust against concurrent execution, addressing real-world flakiness in CI environments.
-
-**Today's development**: [2026/09/01/11-17-11] Patrick Steinhardt suggested minor wording improvement for documentation ("guarded by the marker" instead of "claims the marker"), which was accepted by the author.
-
----
-
-### Trace2 hardening series explores architectural alternatives
-**What changed**: Derrick Stolee's trace2 hardening series received architectural feedback about long-term solutions.
-
-**Problem/goal**: Eliminate all `die()`-triggering helpers from trace2 to prevent Git crashes during telemetry operations.
-
-**Technical details**:
-- Introduces `banned-die.h` to enforce compile-time bans on `die()`-prone functions
-- Replaces banned functions with defensive fallbacks
-- Current approach blocks direct calls but misses indirect calls via helpers like `strbuf`
-
-**Impact**: Makes trace2 more resilient to memory pressure and system call failures, though current implementation doesn't address all transitive dependencies.
-
-**Today's development**:
-- [2026/09/01/05-01-29] Jeff King proposed a "ground-up no-dependency rewrite" of trace2 as the only way to fully eliminate unsafe dependencies
-- [2026/09/01/13-42-46] Derrick Stolee floated removing `banned-die.h` entirely in a hypothetical v4, focusing on incremental reductions
-
----
-
-### git last-modified Bloom filter optimization completes review
-**What changed**: Toon Claes's performance optimization series for `git last-modified` completed review.
-
-**Problem/goal**: Speed up `git last-modified` by reusing Git's Bloom filter machinery for wildcard pathspecs.
-
-**Technical details**:
-- Reuses revision walk Bloom-filter logic
-- Maintains per-path Bloom filters for wildcard pathspecs
-- Restores `bloom_filter_settings` after `prepare_revision_walk()` clears it
-- Adds trace2 instrumentation to verify Bloom filter fast-path
-
-**Impact**: Achieves 3.7× speedup (60.7 ms → 16.2 ms) without `--show-trees` and 1.95× speedup (61.9 ms → 31.8 ms) with `--show-trees`.
-
-**Today's development**: [2026/09/01/09-14-13] Toon confirmed Junio's test-environment fix for `GIT_TEST_COMMIT_GRAPH` is already incorporated in v4.
-
----
-
-### Binary file corruption during checkout reveals platform-specific issues
-**What changed**: A new discussion revealed silent corruption of binary files during checkout due to overly broad `.gitattributes` rules.
-
-**Problem/goal**: Prevent binary file corruption (PNGs, JPEGs) during checkout caused by global `.gitattributes` rules like `* text diff=lfclean`.
-
-**Technical details**:
-- Issue affects binary files when global `.gitattributes` rules are applied
-- Platform-specific advice includes `core.autocrlf=input` and explicit binary declarations
-- Proposed safeguards include warnings and automatic binary detection
-
-**Impact**: Highlights fragility of binary data handling in Git and the need for better safeguards against silent corruption.
-
-**Today's development**:
-- [2026/09/01/20-14-05] Skybuck Flying reported silent corruption of binary files
-- [2026/09/01/21-37-42] Provided detailed reproduction steps and proposed safeguards
-- [2026/09/01/21-45-38] Randall S. Becker shared platform-specific advice and warned about filter fragility
-
----
-
-### git checkout refactoring series progresses with design discussions
-**What changed**: Junio C Hamano's refactoring of `git checkout` internals received design feedback.
-
-**Problem/goal**: Eliminate the monolithic `checkout_main()` choke point and extract reusable logic into standalone helpers.
-
-**Technical details**:
-- 8-patch series restructuring `git checkout`, `git switch`, and `git restore`
-- Extracts pathspec and branch setup helpers
-- Moves `post_checkout_hook` to `checkout.c`
-- Passes `cb_option` explicitly
-
-**Impact**: Places all callers on equal footing and prepares for future architectural improvements.
-
-**Today's development**:
-- [2026/09/01/11-31-21] Karthik Nayak proposed eliminating the `cb_option` parameter in favor of deriving information from `enum checkout_command`
-- [2026/09/01/17-47-29] Junio asked for clarification on a correctness issue in the third patch regarding option-compatibility check placement
-
----
-
-### Conflict-resolution safeguards extended to more commands
-**What changed**: Elijah Newren's bugfix series extending conflict-resolution safeguards posted v4.
-
-**Problem/goal**: Prevent unsafe commit operations (`git commit --amend` and `git commit <paths>`) during conflict resolution for `git am`, `git revert`, and all forms of `git rebase`.
-
-**Technical details**:
-- Blocks `--amend` and partial commits during conflict resolution
-- Uses `sequencer_ongoing_operation()` helper to detect active operations
-- Clear error messages for different scenarios
-- Comprehensive test coverage
-
-**Impact**: Improves user safety during conflict resolution by preventing operations that could corrupt repository state.
-
-**Today's development**: [2026/09/01/22-24-36] Elijah posted v4 incorporating mechanical renames (`FROM_REBASE_NOW_EMPTY`, `is_from_rebase_now_empty()`).
-
----
-
-### ODB alternates refactoring series receives surface-level approval
-**What changed**: Patrick Steinhardt's ODB alternates refactoring series received surface-level approval.
-
-**Problem/goal**: Remove the ability to write ODB alternates after repository creation, simplifying the ODB interface.
-
-**Technical details**:
-- 8-patch series deferring alternates setup to `odb_create_on_disk()`
-- Removes ad-hoc alternates writing API
-- Uses Git's standard lockfile API for atomic writes
-
-**Impact**: Prepares for alternates to become an implementation detail of the ODB backend.
-
-**Today's development**: [2026/09/01/06-09-39] Toon Claes provided surface-level approval: "This version looks good to me!"
-
----
-
-### git ident feature discussion explores git var extension
-**What changed**: Jeff King proposed extending `git var` instead of introducing a new `git ident` command.
-
-**Problem/goal**: Provide a unified, user-friendly command to consolidate Git's identity and signing configuration.
-
-**Technical details**:
-- Current proposal: standalone `git ident` command
-- Alternative: extend `git var` with new keys like `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`, `GIT_SIGNING_KEY`
-- Both approaches support machine-readable output and scripting
-
-**Impact**: Could avoid command proliferation while making `git var` more versatile.
-
-**Today's development**: [2026/09/01/04-39-44] Jeff King proposed extending `git var` instead of introducing `git ident`.
-
----
-
-### Use-after-free regression in git stash show receives final approvals
-**What changed**: Jeff King's bugfix for a use-after-free regression in `git stash show` received final approvals.
-
-**Problem/goal**: Fix use-after-free bug causing garbage diff headers when `--src-prefix` or `--dst-prefix` is used.
-
-**Technical details**:
-- Introduces `strvec argv_to_free` field in `struct rev_info`
-- Delays freeing "freed" `argv` elements until `release_revisions()`
-- Refactors `mark_argv_for_free()` to consolidate flag logic
-
-**Impact**: Restores correct diff header output and prevents crashes in scripted workflows.
-
-**Today's development**: [2026/09/01/11-08-18] Patrick Steinhardt provided final approval, accepting Jeff's rationale for the `const char *` parameter design.
-
----
-
-### ODB ad-hoc source linking removal series receives review feedback
-**What changed**: Patrick Steinhardt's ODB refactoring series received review feedback from Junio.
-
-**Problem/goal**: Remove the mechanism allowing registration of in-memory sources, simplifying the ODB subsystem.
-
-**Technical details**:
-- 12-patch series removing ad-hoc source linking API
-- Eliminates dual-use of ODB sources list for alternates and temporary sources
-- Prepares for future migration of alternate handling into "files" backend
-
-**Impact**: Simplifies ODB codebase and continues `the_repository` removal effort.
-
-**Today's development**:
-- [2026/09/01/22-03-44] Junio suggested making `cache_tree_fully_valid()` file-scoped static with a thin wrapper
-- [2026/09/01/22-47-04] Junio identified two potential correctness issues in repository context handling
+Patrick Steinhardt posted a 12-patch series removing the mechanism to link ad-hoc in-memory sources into the object database, so the source list is exactly the list of alternates, enabling moving alternates into the "files" backend later. It adapts cache-tree and submodule-config away from `the_repository` and drops `odb_add_to_alternates_memory()`. Today Junio C Hamano reviewed patches 01/12 and 06/12, suggesting a static wrapper for `cache_tree_fully_valid()` and noting patch 01/12 should pass `index_state->repo`.
 
 ## In brief
-
-- **[2026/09/01/04-19-21]** Junio pointed out test environment issue for `git last-modified` Bloom filter optimization
-- **[2026/09/01/04-35-07]** Junio flagged typo "comparisions" in `core.useNanosec` documentation
-- **[2026/09/01/05-00-56]** Junio endorsed Jeff King's `git var` extension proposal for identity configuration
-- **[2026/09/01/06-28-15]** Jeff King introduced fix for use-after-free regression in `git stash show`
-- **[2026/09/01/08-16-11]** Patrick Steinhardt fixed GitLab CI documentation job failure
-- **[2026/09/01/11-26-20]** Patrick Steinhardt requested eviction of parallel packfile URI fetching topic
-- **[2026/09/01/15-19-22]** Karthik Nayak posted v5 of `receive-report` hook series, ready for integration
-- **[2026/09/01/15-26-25]** Derrick Stolee provided line-by-line review of MIDX missing pack fallback fix
-- **[2026/09/01/17-32-44]** Junio confirmed typo fix for `core.useNanosec` documentation
-- **[2026/09/01/17-48-21]** Junio acknowledged eviction request for parallel packfile URI fetching topic
-- **[2026/09/01/17-58-32]** Junio endorsed Jeff King's observation about outdated Asciidoctor version pin
-- **[2026/09/01/18-02-27]** Junio approved refactoring of `mark_argv_for_free()` helper
-- **[2026/09/01/22-26-46]** Junio approved removal of transitional submodule ODB registration mechanism
+- Siddharth Asthana posted v2 of a `--missing-only` filter flag for `git rev-list` that requires `--missing=print` or `--missing=print-info` and dies with `--count` or `--disk-usage`; he explained Gitaly uses the missing list as a one-shot dependency set for transaction packing.
+- Patrick Steinhardt requested eviction of the `ps/fetch-packfile-uris-parallel` topic due to conflicts with an upcoming object-transactions series for `git-fetch-pack(1)`; Junio C Hamano acknowledged.
+- Karthik Nayak reviewed the checkout/switch/restore refactoring series; Junio C Hamano confirmed removing the monolithic `checkout_main()` makes `enum checkout_command` unnecessary. *Long thread (root 2026/08/27/18-29-00): 23 replies so far from 5 participants over 6 days; 6 messages that day.*
+- Johannes Schindelin posted a two-patch series enabling Rust in the Windows CI jobs by selecting a GCC-compatible Cargo target under MSYS2/MinGW and running `rustup target add`, removing the `NO_RUST` opt-out.
+- Elijah Newren posted v4 of the series refusing `git commit --amend` and partial commits during conflict resolution, with only a clarifying rename of the rebase-empty states. *Long thread (root 2026/08/26/05-21-21): 21 replies so far from 3 participants over 7 days; 1 message that day.*
+- Skybuck Flying reported PNG corruption from a global `* text diff=lfclean` rule with a sed textconv stripping CR bytes from binary files; rsbecker recommended `core.autocrlf=input` and explicitly declaring binary files.
+- Michael Montalbo posted v5 of the `t/lib-httpd` concurrency-safe CGI helper series, rewording the patch 3 advice after Patrick Steinhardt's review. *Long thread (root 2026/07/08/02-59-40): 22 replies so far from 3 participants over 56 days; 4 messages that day.*
+- Patrick Steinhardt fixed the CI "documentation" job by explicitly installing Ruby; Jeff King suggested dropping the pinned Asciidoctor 1.5.8 in favor of v2.0.x.
+- Toon Claes said the v2 "odb: write alternates at creation time" series looks good to him.
+- D. Ben Knoble shared a link to benchmarks related to the v2.55.0 release for the Git Rev News edition 138 draft.
