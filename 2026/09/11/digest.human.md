@@ -1,81 +1,57 @@
 # Git mailing list daily digest for 2026/09/11
 
+## Long threads
+
+### receive-report hook for git-receive-pack
+
+*Long thread: 57 replies so far from 7 participants over 25 days; 4 messages that day.*
+
+Karthik Nayak's series adds a `receive-report` hook that runs after the reference transaction completes but before the status report reaches the client; the hook reads the pkt-line report on stdin, its stdout replaces the report, and a non-zero exit marks all references rejected. Earlier revisions fixed a BUG() when no report was requested and a leak when reassigning command strings. Today Oswald Buddenhagen suggested trimming the verbose commit message, which Nayak agreed had grown clunky but left as-is. Junio C Hamano noted `FREE_AND_NULL()` is safe on an already-NULL pointer, so the guard in `override_cmds_error()` could be dropped, and supplied a follow-up diff plus a coccinelle rule; Nayak will skip a reroll and may send the coccinelle fixup separately.
+
+### Convert build-time USE_NSEC to runtime core.useNanosec
+
+*Long thread: 46 replies so far from 6 participants over 36 days; 3 messages that day.*
+
+D. Ben Knoble's series exposes `USE_NSEC` as the runtime `core.useNanosec` config so distributed builds can use nanosecond index timestamps and avoid racy-git false positives. Today Knoble resent v7, differing from v6 only in a documentation typofix, and Junio C Hamano queued the three patches, noting they matched what he had already queued from v6 with the typo reworded locally. Knoble explained the resend was mainly a nudge about the stale What's Cooking status.
+
+### Write object-database alternates at creation time
+
+*Long thread: 36 replies so far from 5 participants over 18 days; 2 messages that day.*
+
+Patrick Steinhardt's nine-patch series refactors `init_db()` into `create_repository()` and moves alternate writing into `odb_source_create_on_disk()`, removing the `odb_source_write_alternate()` callback. Today Steinhardt answered review comments on the alternates patch: the file-stream error indicator is sticky, so per-`fprintf` checks are unnecessary, and he declined to formalize backend errors for alternates since nothing would use them yet. He also acknowledged overlooking a comment on the v5 cover letter and said it needs no further changes.
+
+### Add path keys to git repo info
+
+*Long thread: 34 replies so far from 5 participants over 58 days; 4 messages that day.*
+
+K Jayatheerth's GSoC series adds seven `path.*` keys to `git repo info`: toplevel, superproject-root, hooks, index, and grafts with absolute and relative suffixes, plus git-prefix and cdup as single keys. Today he posted v6, refactoring `get_superproject_working_tree()` to take a `struct repository *` instead of the process working directory. Junio C Hamano noted dead null checks after `repo_get_index_file()` in patch 4/7, asked what `path.cdup` returns outside the working tree, and suggested splitting patch 2/7 into a fix with tests plus the new keys.
+
+### Run auto maintenance once at the end of a rebase/cherry-pick/revert sequence
+
+*Long thread: 27 replies so far from 5 participants over 8 days; 2 messages that day.*
+
+Thomas Bachem's series makes a sequence run `git maintenance run --auto` exactly once when done, from `builtin/rebase.c` and `builtin/revert.c`, while passing `maintenance.auto=false` to sequencer-spawned commands. Today Patrick Steinhardt objected that the proposed comment for `git_config_append_parameter()` was too specific to `-c key=value`, and disputed the claim that the sequencer lacks a single exit point, arguing cherry-pick, revert, rebase, `--continue` and `--skip` all reach `pick_commits()`; he prefers calling auto maintenance there and on abort.
+
 ## The day in brief
-The Git project saw active discussion on several fronts today. The `git history` signing series received final surface-level feedback, while the `git repo info` path keys series faced new edge-case and refactoring requirements. ODB abstraction efforts continued with pluggable fsck checks and alternates handling. CI modernization threads progressed, and a new `--matched-only` option for `git range-diff` was finalized. Several bugfixes and refactoring efforts also advanced toward integration.
+Junio C Hamano queued D. Ben Knoble's `core.useNanosec` runtime-config series after a typofix-only v7 resend, and decided to queue Jeff King's "ci: use system asciidoctor" patch once it was found never to have been picked up. Patrick Steinhardt posted v3 of the pluggable object-database consistency-check series, and Tyler Cipriani committed to a v4 of the `--force-if-includes` fix that generalizes the reflog check beyond HEAD.
 
 ## Notable threads
 
-### Teach `git history` to sign rewritten commits
-**What changed**: Patrick Steinhardt provided surface-level review feedback on Souma's v2 patch series that teaches `git history` to sign rewritten commits using GPG.
+### Use the system asciidoctor in CI documentation builds
+Jeff King's patch drops the pinned asciidoctor 1.5.8 gem install in `ci/install-dependencies.sh` in favor of the Ubuntu image's package. Today King explained the patch was missed when its topic branch was picked up; Tuomas Ahola corrected the view that it had been merged, showing the third patch of the series was never applied, and Junio C Hamano decided to queue it on top.
 
-**Problem/goal**: The series enables `git history` to sign commits created during operations like `drop`, `fixup`, `reword`, and `split` using the same configuration and command-line options already supported by `git commit`.
+### Fix --force-if-includes consulting the wrong ref
+Tyler Cipriani's series makes `git push --force-if-includes` check the reflog of the ref actually being pushed rather than a same-named local branch, fixing false rejections and potential data loss. Today Patrick Steinhardt and Junio C Hamano reviewed the patches, questioning deletion handling, the HEAD-only check, and missing test coverage; Cipriani confirmed the reflog lookup behavior, agreed to resolve symrefs to the target branch and reject unverifiable revisions in a v4, and proposed moving a guard into `apply_push_cas`.
 
-**Subsystem**: `git history` command, replay API, GPG signing.
+### Make object-database consistency checks pluggable
 
-**Impact**: Users can now maintain cryptographic signatures on rewritten commits, improving auditability in collaborative workflows. The series addresses all prior technical feedback and is close to ready for merging.
+*Long thread: 21 replies so far from 3 participants over 18 days; 8 messages that day.*
 
-**Today's developments**: Steinhardt suggested minor documentation and style cleanups:
-- Trim the commit message's in-body documentation of the `sign_commit` parameter in patch 1/3, as it is already documented in-code.
-- Remove two redundant sentences from the commit message of patch 2/3: one about the `drop` edge case and another summarizing test coverage.
-- Fix a style nit in the `OPT_HISTORY_GPG_SIGN` macro definition (backslash alignment).
-
-### Add path-related keys to `git repo info`
-**What changed**: Junio C Hamano identified two high-weight issues in K Jayatheerth's v6 series adding seven new path-related keys to `git repo info`.
-
-**Problem/goal**: The series exposes filesystem locations of repository components (e.g., hooks directory, index file, superproject root) in a scriptable format via `git repo info`. The new keys include `path.cdup`, the inverse of `path.git-prefix`, which was added to address prior design objections.
-
-**Subsystem**: `git repo info` command, repository path handling.
-
-**Impact**: Scripts can now access repository paths without direct access to Git's internals. The series is feature-complete and mechanically sound but faces new requirements before merging.
-
-### Today's developments
-
-1. **Edge-case discrepancy in `path.cdup`**: When `GIT_WORK_TREE` and `GIT_DIR` are set but the current directory is outside the working tree, `path.cdup` returns an empty string while `git rev-parse --show-cdup` returns the absolute path to the working tree root. This undermines the series' goal of consolidating repository path information. The fix will require modifying `get_path_cdup()` to handle the outside-working-tree case, likely by falling back to `get_git_work_tree()` when `repo->prefix` is empty.
-2. **Patch 2/7 refactoring**: Junio requested splitting the second patch (introducing `path.superproject-root`) into two: one to fix the `get_superproject_working_tree()` function (with tests in `t1500-rev-parse.sh`) and another to introduce the new keys (with tests in `t1900-repo-info.sh`). This isolates the correctness fix from the feature addition, improving clarity and bisectability.
-
-### Make ODB fsck checks pluggable
-**What changed**: Patrick Steinhardt posted v3 of his 10-patch series refactoring Git's object integrity verification (fsck) to make consistency checks pluggable per ODB backend.
-
-**Problem/goal**: The series restructures fsck so that each ODB backend (loose, packed, multi-pack, etc.) can implement its own consistency checks instead of relying on a single monolithic fsck function in `builtin/fsck.c`. This prepares the codebase for future pluggable ODB backends.
-
-**Subsystem**: ODB, fsck.
-
-**Impact**: No user-visible behavior changes; this is a pure refactoring that paves the way for alternate storage systems. The series also fixes a long-standing discrepancy in the `--full` flag's behavior.
-
-**Today's developments**: Steinhardt addressed the last unresolved feedback from Toon Claes:
-- Moved the `ODB_FSCK_FULL` filtering logic from the central `odb_fsck()` helper into the "files" backend's `fsck` callback, making the infrastructure more flexible for non-local backends.
-- Used early returns in `verify_midx()` for stylistic clarity.
-- Replaced a potential `BUG()` assertion with a call to `prepare_repo_settings()` to ensure repository settings are initialized gracefully.
-- Clarified that `ODB_FSCK_VERBOSE` and `ODB_FSCK_PROGRESS` are not mutually exclusive, as their outputs do not interfere.
-
-The series is now complete and ready for further review or integration.
-
-### Modernize GitLab CI's Asciidoctor installation
-**What changed**: Junio C Hamano confirmed the merge status of Jeff King's patch to modernize GitLab CI's Asciidoctor installation.
-
-**Problem/goal**: Replace the manual `gem install asciidoctor -v 1.5.8` with `apt-get install asciidoctor`, dropping the outdated version pin and relying on the Ubuntu image's default package (2.0.20). This aligns with the thread's broader goal of simplifying CI configuration.
-
-**Subsystem**: CI/build system.
-
-**Impact**: No user-visible changes; the patch ensures CI tests versions users are likely to have installed. The modernization effort is now complete.
-
-**Today's developments**: Junio confirmed that the patch was merged in commit `47ce80527c` ("A bit more for -rc1"), which postdates the v2.56.0-rc0 tag. The final patch in the series (replacing the version-pinned installation) is now queued for application, completing the modernization.
-
-### Add `--matched-only` option to `git range-diff`
-**What changed**: Harald Nordgren posted the final version of a feature patch adding the `--matched-only` option to `git range-diff`.
-
-**Problem/goal**: The new option filters `git range-diff` output to show only commits present in both input ranges, addressing the workflow pain point of reviewing rebases or range-diffs where users want to focus on how surviving commits changed rather than seeing added or dropped commits.
-
-**Subsystem**: `git range-diff` command.
-
-**Impact**: Users can now focus on the commits that survived a rebase or range-diff operation, improving the signal-to-noise ratio in review workflows. The implementation reuses existing suppression logic for `--left-only` and `--right-only`.
-
-**Today's developments**: The patch was updated to incorporate Junio C Hamano's final wording for the man page update and mechanical consistency improvements (use of `die_for_incompatible_opt3()`). The series is now resolved and ready for integration.
+Patrick Steinhardt's ten-patch series moves fsck checks into the ODB sources, including loose-object verification in the loose source and reverse-index verification in the packed source. Today Toon Claes reviewed, suggesting each source decide on `ODB_FSCK_FULL`/`--full` itself and use early returns instead of a `ret` variable; Steinhardt posted v3 agreeing to move the check into the "files" backend, prepare repo settings, and drop the variable.
 
 ## In brief
-- **ODB alternates handling**: Patrick Steinhardt resolved the last review comment on his 9-patch series refactoring ODB alternates handling during repository creation. The series is now ready for `next`.
-- **`--force-if-includes` bugfix**: Tyler Cipriani agreed to address all of Patrick Steinhardt's technical concerns in a forthcoming v4 of his series fixing `--force-if-includes` to check the correct reflog.
-- **Rust CI for Windows**: Junio C Hamano and James Le Cuirot provided feedback on Johannes Schindelin's series enabling Rust compilation in Git's GitHub Actions Windows CI jobs. The series will be revised to address Cargo's native build behavior and variable naming.
-- **`gitk` modernization**: Junio pulled Johannes Sixt's 8-patch series modernizing `gitk`'s color preference dialog and adding a README note about AI contributions.
-- **Coccinelle rules**: Junio C Hamano removed a risky Coccinelle rule that converted `if (!E) free(E);` into an unconditional `free(E)` and added a new rule to explicitly allow unconditional `FREE_AND_NULL(E)` calls.
-- **`git blame` ignore revs**: Ravi Mistry proposed making `git blame` automatically look for and use a `.git-blame-ignore-revs` file in the repository root if no explicit ignore file is configured.
+- Jeff King posted v2 cleaning up merge-ll external driver temporaries with the tempfile API; Elijah Newren flagged an LLP64 narrowing hazard when a result exceeds LONG_MAX and proposed a fail-fast die().
+- Ravi Mistry proposed making git-blame default to a `.git-blame-ignore-revs` file at the working-tree root, with opt-outs via config or `--no-ignore-revs-file`.
+- Johannes Schindelin posted v2 of using Rust in Windows CI jobs, fixing the UCRT64 target to `x86_64-pc-windows-gnu`; Junio C Hamano suggested `CARGO_BUILD_TARGET` over `CARGO_TARGET`.
+- Patrick Steinhardt reviewed Ariel Keselman's patch skipping the packed-refs lock for root-ref deletions, suggesting stronger test assertions.
+- Patrick Steinhardt argued against retaining NULL checks in repository config getters, proposing a redesign before further iteration.
