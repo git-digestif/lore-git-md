@@ -1,109 +1,58 @@
 # Git mailing list daily digest for 2026/10/02
 
+## Long threads
+
+### uploadpack.lazyFetchTrusted server-side lazy fetch control
+
+*Long thread: 34 replies so far from 3 participants over 85 days; 4 messages that day.*
+
+Christian Couder posted v5 of the series introducing the protected `uploadpack.lazyFetchTrusted` config variable, which lets server operators mark repositories whose git dir is trusted for lazy fetching when serving clones. The series touches `builtin/upload-pack.c`, `promisor-remote.c`, `setup.c`, and `upload-pack.c`. V5 is rebased on a018953688 with no functional changes from v4, only comment, documentation, test, and commit message updates, including a NEEDSWORK comment about silently ignoring misspelled allowlist paths and new tests for `--separate-git-dir`. Couder also corrected his earlier explanation of the documentation wording, clarifying that the variable controls the server lazily fetching missing objects _for_ the listed repository, not from it.
+
+### gitmergeconflicts documentation guide
+
+*Long thread: 29 replies so far from 6 participants over 9 days; 6 messages that day.*
+
+Julia Evans drafted a new "WHAT IS A MERGE CONFLICT?" section for the v2 of the new `gitmergeconflicts` manual page, giving a light introduction to 3-way merge and explaining that Git combines non-overlapping edits but refuses to guess on overlapping lines. Junio C Hamano gave review reactions -- "since there's no overlap", "cannot guess", "it remembers them as conflicted" -- and offered an illustration of why `diff3` conflict style is often essential. Evans incorporated several suggestions and explained she views Git's conservative approach as a feature compared to more aggressive mergers; Hamano agreed but preferred calling it "more honest".
+
+### format-patch --range-diff-notes
+
+*Long thread: 23 replies so far from 4 participants over 40 days; 7 messages that day.*
+
+Kristoffer Haugsbakk posted v3 of the series teaching `git format-patch` `--range-diff-notes=<ref>` and `--no-range-diff-notes` so the range diff can use a different notes ref than the patches. The only change from v2 is removing a redundant `test_when_finished`. Junio C Hamano reviewed both patches, calling the `get_notes_args` simplification good and asking for the conversational narrative to be stripped from commit messages and a condensed documentation paragraph; Haugsbakk agreed to all of the 2/2 suggestions.
+
+### rerere MERGE_RR.lock waiting
+
+*Long thread: 23 replies so far from 4 participants over 31 days; 1 message that day.*
+
+Thomas Bachem posted v6 of the series making rerere wait for `MERGE_RR.lock` up to `rerere.lockTimeout` milliseconds before failing, adding a hidden `--skip-locked` option to `git rerere gc` used by `git maintenance run --auto` and `git gc --auto`, and letting commands that stop at a conflict warn and go on without rerere via the renamed `RERERE_WARN_LOCKED` flag while `git commit` and `git am --continue` still fail.
+
+### git var -z, multiple variables, broken-out idents
+
+*Long thread: 22 replies so far from 6 participants over 39 days; 4 messages that day.*
+
+Andrew Pleeter's v9 series splits the work into four patches: string_list representation for multi-valued variables, a `-z` NUL-terminated output mode, support for multiple variable arguments, and new `GIT_AUTHOR_*`/`GIT_COMMITTER_*` identity variables. Phillip Wood reviewed the series and said it looks good, with only minor test-style nits about `test_env()` and collapsing per-component tests; Pleeter acknowledged both and said he would fold them in if a v10 happens.
+
 ## The day in brief
-
-The Git mailing list saw active discussion on several key topics today. The most consequential developments include:
-
-- **`git history` signing series** encountered integration issues with a related `git replay` signing series, requiring a rebase
-- **`uploadpack.lazyFetchTrusted`** series reached v5 with all feedback addressed, now ready for maintainer review
-- **`gitmergeconflicts(7)`** documentation series saw significant progress with new sections and design discussions
-- **MIDX reachability closure fixes** received substantive review feedback on data structure choices
-- **Windows memory regression** with fsmonitor was reported and is under investigation
+Christian Couder's v5 of `uploadpack.lazyFetchTrusted` and Thomas Bachem's v6 rerere lock handling both arrived as new revisions, while Patrick Steinhardt's packfile delta-base-cache fix drew discussion including an ASan suggestion from Jeff King. The refs copy/rename transaction patch hit a review impasse over apparently AI-generated content.
 
 ## Notable threads
 
-### `git history` signing series integration conflict
-**What changed**: Junio C Hamano identified a merge conflict between Souma's `git history` signing series (now in `seen`) and Patrick Monette's `git replay` signing series. The `git replay` series must wait for the `git history` work to land first.
+### packfile stale delta base cache corruption fix
 
-**Problem/goal**: Both series add GPG signing support to different commands but touch overlapping commit-creation logic in `replay.c`.
+*Long thread: 7 replies so far from 5 participants over 1 day; 8 messages that day.*
 
-**Impact**: The `git replay` signing feature is blocked until the `git history` series stabilizes. This affects users who want to sign commits during replay operations.
+Patrick Steinhardt posted a two-patch series fixing packfile corruption from stale delta base cache entries, which are keyed by `struct packed_git` address plus offset and were never evicted on pack close; the bug is reproducible via recursive submodule merges. Guillaume Chauvel proposed a deterministic test, which Steinhardt declined as too much infrastructure for the edge case; Jeff King characterized the core bug as use-after-free and suggested ASan would find it reliably.
 
-**Thread**: [2026/09/28/14-38-02]
+### history: sign rewritten commits
+Souma posted v4 of the series adding `-S`/`--gpg-sign` and `--no-gpg-sign` to the `git history` rewrite commands, now including `squash`, with a `sign_commit` option in the replay API. Junio C Hamano reported that with the topic merged, `seen` breaks t9902 and asked whether the completion output listing `--no-gpg-sign` is expected.
 
----
-
-### `uploadpack.lazyFetchTrusted` v5 ready for review
-**What changed**: Christian Couder posted v5 of the `uploadpack.lazyFetchTrusted` series, addressing all feedback from Junio's v4 review. The series replaces the earlier client-side `GIT_NO_LAZY_FETCH=fromAccepted` proposal with a server-side protected configuration variable.
-
-**Problem/goal**: Provide a server-side mechanism for operators to explicitly declare which repositories are safe to lazy-fetch from, addressing security concerns about untrusted repositories triggering arbitrary code execution.
-
-**Impact**: Server operators can now mark repositories as trusted for lazy fetching using `uploadpack.lazyFetchTrusted`, with recursion safeguards preventing infinite loops. This is a significant security improvement over the previous client-side approach.
-
-### Key technical details
-
-- New protected configuration variable: `uploadpack.lazyFetchTrusted`
-- Recursion depth counter via `GIT_INTERNAL_LAZY_FETCH_DEPTH` (limit of 5)
-- Files touched: `promisor-remote.c`, `setup.c`, `upload-pack.c`, and related documentation
-
-**Thread**: [2026/07/10/08-51-34]
-
----
-
-### `gitmergeconflicts(7)` documentation progress
-**What changed**: Julia Evans incorporated significant feedback into the new `gitmergeconflicts(7)` man page, adding a "WHAT IS A MERGE CONFLICT?" section and improving the explanation of `diff3` conflict style.
-
-**Problem/goal**: Consolidate scattered merge conflict advice into a dedicated guide to improve user experience and reduce documentation maintenance burden.
-
-**Impact**: Users will have a centralized resource for understanding and resolving merge conflicts, with clearer explanations of key concepts like "ours" vs. "theirs" and the benefits of `diff3` style.
-
-### Key additions
-
-- New "WHAT IS A MERGE CONFLICT?" section explaining the basics
-- Improved `diff3` documentation with concrete examples showing its importance
-- Clarification of terminology and edge cases
-
-**Thread**: [2026/09/23/20-20-20]
-
----
-
-### MIDX reachability closure fixes
-**What changed**: Jeff King (Peff) and Elijah Newren provided substantive review feedback on Taylor Blau's MIDX reachability closure series, particularly focusing on the data structure choice for `extra_roots`.
-
-**Problem/goal**: Fix corner cases where MIDXs can end up containing objects that are not closed under reachability, causing failures in bitmap generation.
-
-**Impact**: The series ensures reachability closure for bitmaps after incremental repacks, preventing subtle corruption issues in large repositories.
-
-### Key technical discussion
-
-- Peff and Newren argue for preserving pack-order correlation (root trees before subtrees) for delta compression quality
-- Taylor Blau defends the `oidset` approach for memory efficiency
-- The discussion highlights trade-offs between functional correctness and performance
-
-**Thread**: [2026/09/30/15-15-29]
-
----
-
-### Windows memory regression with fsmonitor
-**What changed**: Pierre Bruno reported unexpectedly high memory consumption (around 1 GB per process) when running `git status`-like commands in Git 2.56.0.windows.1 with fsmonitor enabled.
-
-**Problem/goal**: Investigate and resolve a memory usage regression that appears to be specific to Windows and fsmonitor.
-
-**Impact**: Users on Windows may experience excessive memory consumption when using fsmonitor, particularly with coding agents that spawn multiple Git processes.
-
-### Key details
-
-- Regression present in 2.56.0, absent in 2.55.0
-- Repository has many untracked files
-- Dozens of concurrent Git processes consume several GB of RAM total
-- Near-zero CPU usage with steady disk I/O
-
-**Thread**: [2026/10/02/11-04-00]
+### refs copy/rename through transactions
+Maciej Ciemborowicz's v2 patch represents branch copy and rename as reference transactions so the reference-transaction hook sees the logical updates. Patrick Steinhardt stopped reading, declaring the patch not reviewable and dominated by apparently AI-generated content; Ciemborowicz answered the technical questions, reported performance overhead measurements, apologized, and offered a v3 split into more commits.
 
 ## In brief
+- Patrick Steinhardt posted a 13-patch series moving alternates into the "files" object database backend, dropping the `read_alternates` callback from `struct odb_source`.
+- **fetch: commit-graph from updated refs only**: Kristofer Karlsson posted a series making fetch write the commit-graph from updated refs only; Patrick Steinhardt reviewed, noting no benchmark was provided, and the author answered with git.git numbers for a future reroll.
 
-- **[PATCH v3 0/2] format-patch: add --[no-]range-diff-notes**: Kristoffer Haugsbakk addressed Junio's feedback on commit message phrasing and documentation wording. The series is now technically complete and ready for maintainer approval. [2026/08/24/20-35-41]
-
-- **[PATCH 0/4] Fix MIDX reachability closure corner cases**: Taylor Blau's series received substantive review feedback on data structure choices, with Jeff King and Elijah Newren engaging in a detailed discussion about the trade-offs between `oidset` and `oid_array`. [2026/09/30/15-15-29]
-
-- **[PATCH 0/2] remote: support multiple remotes in remote.pushDefault**: Harald Nordgren proposed extending `remote.pushDefault` to accept a space-separated list of remote names, allowing a single global configuration to work across multiple repositories. [2026/10/02/07-17-50]
-
-- **[PATCH 0/2] packfile: fix corruption from stale delta base cache entries**: Patrick Steinhardt's bugfix series for packfile corruption received review feedback from Philippe Blain and Jeff King, with Peff suggesting the use of AddressSanitizer for more reliable testing. [2026/09/25/20-53-46]
-
-- **[PATCH 0/13] Move alternates into the files ODB backend**: Patrick Steinhardt posted a major refactoring series to move alternates handling into the "files" backend, eliminating a conceptual mismatch that caused performance regressions. [2026/10/02/10-08-11]
-
-- **[PATCH 0/2] fetch: optimize commit-graph write strategy for large repos**: Kristofer Karlsson clarified core design assumptions in response to Patrick Steinhardt's review, confirming that the seeds passed to `write_commit_graph()` are additive and providing benchmark numbers. [2026/10/02/08-33-36]
-
-- **[PATCH] doc: remove empty SYNOPSIS sections from section 7 man pages**: Julia Evans and Junio C Hamano discussed implementation details for the Perl linter script, with Junio providing a solution to handle multiple input files correctly. [2026/10/02/16-07-07]
-
-- **[PATCH] stash: extend `pop` with custom conflict-label options**: Harald Nordgren withdrew the patch after maintainer skepticism, with Junio C Hamano proposing a longer-term architectural improvement to integrate the functionality directly into `git rebase`. [2026/10/01/22-48-09]
+- Scott Chacon posted an RFC signing a SHA-256 digest of tree contents in commits and tags; brian m. carlson rejected it in favor of moving to SHA-256.
+- Jeff King proposed a "limbo" object-format state for empty repositories so the server adopts the client's hash on first push.
+- **Branch hook gaps**: Поникаров reported `git branch -C` and `reflog delete --updateref --rewrite` skip the reference-transaction hook while `-c`/`-m` invoke it without the new value, and carlsson linked a related patch thread.

@@ -1,122 +1,72 @@
 # Git mailing list daily digest for 2026/10/02
 
+## Long threads
+
+### uploadpack.lazyFetchTrusted server-side lazy fetch control
+
+*Long thread (root 2026/07/10/08-51-34): 34 replies so far from 3 participants over 85 days; 4 messages that day.*
+
+Christian Couder posted v5 of the series introducing the protected `uploadpack.lazyFetchTrusted` config variable, which lets server operators mark repositories whose git dir is trusted for lazy fetching when serving clones. The series touches `builtin/upload-pack.c`, `promisor-remote.c`, `setup.c`, and `upload-pack.c`. V5 is rebased on a018953688 with no functional changes from v4, only comment, documentation, test, and commit message updates, including a NEEDSWORK comment about silently ignoring misspelled paths and new tests for `--separate-git-dir` and non-propagation of trust to promisor remotes. Couder also corrected his earlier explanation of the documentation wording, clarifying that the variable controls server-side lazy fetching where the server fetches missing objects for the listed repository, not from it.
+
+### New gitmergeconflicts documentation page
+
+*Long thread (root 2026/09/24/14-44-15): 29 replies so far from 6 participants over 9 days; 6 messages that day.*
+
+Julia Evans's series adds a new `gitmergeconflicts` manual page explaining merge conflicts with examples and links to it from `git-merge`, `git-cherry-pick`, `git-pull`, `git-rebase`, and `git-revert`. Today she drafted a new "WHAT IS A MERGE CONFLICT?" section for v2 with a light introduction to 3-way merge, and put on her TODO list removing a sentence equating `git commit` with `git merge --continue` in favor of a vaguer statement. Junio C Hamano reviewed the section with wording suggestions ("since there's no overlap", "it marks them as conflicted") and offered an illustration of why `diff3` conflict style is often essential. Evans incorporated several suggestions and defended Git's conservative approach against more aggressive mergers like mergiraf, which Hamano agreed with but preferred to call "more honest".
+
+### format-patch --[no-]range-diff-notes
+
+*Long thread (root 2026/08/24/20-35-41): 23 replies so far from 4 participants over 40 days; 7 messages that day.*
+
+Kristoffer Haugsbakk posted v3 of the series teaching `git format-patch` `--range-diff-notes=<ref>` and `--no-range-diff-notes` so the range diff can use a different notes ref than the patches. The only change from v2 is removing a redundant `test_when_finished`; patch 1/2 simplifies `get_notes_args` to take only `struct rev_info`, and patch 2/2 adds the options via a parse-options callback with seven new tests in `t/t3206-range-diff.sh`. Junio C Hamano reviewed both patches, calling the 1/2 simplification good and suggesting a condensed documentation paragraph and wrapping `parse_opt_string_list` for 2/2; Haugsbakk agreed to all of the 2/2 suggestions.
+
+### rerere waiting for MERGE_RR.lock
+
+*Long thread (root 2026/09/02/08-31-37): 23 replies so far from 4 participants over 31 days; 1 message that day.*
+
+Thomas Bachem posted v6 of the series fixing rebase failures when a background `git rerere gc` holds `MERGE_RR.lock`. Patch 1/3 makes `setup_rerere()` wait up to `rerere.lockTimeout` milliseconds (default 1000) for the lock; patch 2/3 adds a hidden, undocumented `--skip-locked` option to `git rerere gc` passed by `git maintenance run --auto` and `git gc --auto`; patch 3/3 adds the `RERERE_WARN_LOCKED` flag so commands stopping at a conflict warn and go on without rerere while `git commit` and `git am --continue` still fail.
+
+### git var -z, multiple variables, and identity variables
+
+*Long thread (root 2026/08/25/20-46-42): 22 replies so far from 6 participants over 39 days; 4 messages that day.*
+
+Andrew Pleeter's v9 series splits the earlier single patch into four: string_list representation for multi-valued variables, a `-z` NUL-terminated output mode, support for multiple variable arguments printed as `VARIABLE=value` pairs, and broken-out `GIT_AUTHOR_*`/`GIT_COMMITTER_*` identity variables. Phillip Wood reviewed the series today and said it looks good to him, with only minor test nits (collapsing per-component identity tests, avoiding `test_env()` in favor of inline env assignment) that he did not think warranted a re-roll. Pleeter acknowledged both nits and said he would fold them in if a v10 happens, otherwise send them as a cleanup.
+
 ## The day in brief
 
-The Git mailing list saw significant activity around several key topics today. The most consequential developments include: Junio C Hamano reporting test failures in the `git history` signing series after merging it to `seen`; a new RFC proposing a SHA-256 tree digest signing mechanism as an alternative to switching Git's default object format; and Jeff King's proposal for a "limbo" object-format state to ease the transition to Git 3.0. Additionally, several long-running series received substantive reviews, including the MIDX reachability closure fixes and the alternates refactoring.
+Several series reached new revisions today: Christian Couder posted `uploadpack.lazyFetchTrusted` v5, Thomas Bachem posted rerere lock-handling v6, and Kristoffer Haugsbakk posted `format-patch` range-diff-notes v3 as refinements of earlier rounds. Patrick Steinhardt posted a fix for packfile corruption from stale delta base cache entries, and Junio C Hamano marked both Brigham Campbell's `git-contacts` stdin support and Harald Nordgren's `@{p}` shorthand for `next`.
 
 ## Notable threads
 
-### `git history` signing series breaks tests in `seen`
+### packfile stale delta base cache corruption fix
 
-**What changed**: Junio C Hamano reported that the `git history` signing series, which teaches `git history` to sign rewritten commits, breaks `t9902-completion.sh` in the `seen` integration branch. The series also has an edge case in command-line option parsing for `git history split` when invoked with conflicting options.
+*Long thread (root 2026/10/02/07-34-05): 7 replies so far from 5 participants over 1 day; 8 messages that day.*
 
-**Problem/goal**: The series aims to extend commit signing to all `git history` subcommands (`drop`, `fixup`, `reword`, `split`, `squash`) using the same configuration and command-line options already supported by other Git commands.
+Patrick Steinhardt posted a two-patch series fixing corruption caused by stale delta base cache entries: the cache is keyed by `struct packed_git` address plus offset and entries were never evicted on pack close, so a reallocated pack at the same address could reuse stale entries, reproducible via recursive submodule merges. Patch 2/2 adds `delta_base_cache_evict_entry()` called from `close_pack()`. Guillaume Chauvel proposed a deterministic test forcing address reuse, but Steinhardt declined, saying the infrastructure for such a specific edge case was not reasonable; Jeff King characterized the bug as a user-after-free that ASan would find reliably.
 
-**Subsystem**: `git history` command, replay API, GPG signing infrastructure
+### refs copy and rename through transactions
+Maciej Ciemborowicz's v2 patch represents reference copy and rename as transactions so the reference-transaction hook sees the logical updates. Patrick Steinhardt reviewed it but stopped reading, declaring the patch not reviewable and dominated by apparently AI-generated content, and said he did not want to invest time in the topic. Ciemborowicz responded with explanations of the design (operation state attached to the destination update, backend-specific reflog handling retained, new source/destination revalidation after backend locks) and performance measurements showing overhead from +3.4% to +137.7% depending on backend and hook presence, apologized, and offered a v3 split into more commits without guaranteeing it would meet standards.
 
-**Impact**: The test failure indicates a mechanical regression in shell completion that needs to be fixed before the series can graduate to `next`. The edge case in option parsing could lead to misleading completions.
+### history: sign rewritten commits
+Souma posted v4 of the series adding `-S`/`--gpg-sign[=<key-id>]` and `--no-gpg-sign` to `git history drop`, `fixup`, `reword`, `split`, and `squash`, with new signing support for `squash` including replayed descendants, via a `sign_commit` option in `replay_revisions_options` passed to `commit_tree_extended()`. Junio C Hamano reported that with the topic merged, `seen` breaks t9902, and asked whether the `git history split --git-completion-helper` output listing `--no-gpg-sign` after `--` is expected.
 
-**Today's news**: Junio reported two new issues that surfaced after merging the topic to `seen`:
-- The series breaks `t9902-completion.sh`, likely because the new `--gpg-sign` and `--no-gpg-sign` options are not handled correctly by the completion script.
-- The completion helper for `git history split` outputs all conflicting options when invoked with a sequence like `--gpg-sign --no-dry-run -- --no-gpg-sign`, which may not match the intended precedence rule (last option wins).
+### fetch: avoid fetching every branch in shallow repos
 
-[2026/10/02/22-47-13 by Junio C Hamano]
+*Long thread (root 2026/09/19/14-47-26): 21 replies so far from 4 participants over 14 days; 2 messages that day.*
 
-### RFC: SHA-256 tree digest signing mechanism
+Harald Nordgren posted v5 of the four-patch series adding `remote.<name>.refmap`, inferring branches to fetch from local upstreams, adding `git remote add --limited-fetch`, and defaulting to `--limited-fetch` in shallow repositories; the only change is renumbering the test file from t5585 to t5586. Junio C Hamano reviewed patch 3/4 and noted its commit message still says "plus the remote's default branch", which should have been removed when the series stopped fetching the default branch.
 
-**What changed**: Scott Chacon proposed a new signing mechanism that embeds SHA-256 digests of tree contents (including submodules) in signed commits and tags, without requiring the repository to use SHA-256 as its object format. The series adds a `--hash=sha256` option to `git commit -S` and `git tag -s`, and a `gpg.treeHash=sha256` config key to make it the default.
+### repack corner cases for cruft-less MIDXs
 
-**Problem/goal**: Provide a migration path away from SHA-1 for commit/tag signing that avoids the ecosystem-wide disruption of switching Git's default object format to SHA-256 in Git 3.0.
+*Long thread (root 2026/09/30/01-28-34): 21 replies so far from 5 participants over 3 days; 7 messages that day.*
 
-**Subsystem**: Signing infrastructure, commit/tag creation, submodule handling
-
-**Impact**: This proposal could offer similar security benefits to a full SHA-256 transition while avoiding the need for users to migrate their repositories. It's positioned as an alternative to the planned Git 3.0 object format switch.
-
-**Today's news**: Brian M. Carlson firmly rejected the approach, arguing that it fails to address the core problem of SHA-1's collision resistance weaknesses and that the Git project is already committed to a full transition to SHA-256 as the default object format in Git 3.0. Carlson emphasized that security researchers and other users need SHA-256 repositories to store colliding blobs, and the tree digest approach does nothing to enable this. He also noted that the Git 3.0 plan has been public for years and is scheduled for March 2027, with all major forges already supporting SHA-256.
-
-Junio C Hamano raised substantive design questions about the digest algorithm, specifically whether it should distinguish between file modes or symlinks pointing to the same content and whether it should reflect the internal structure of the tree object to detect corruption.
-
-[2026/10/02/19-06-08 by brian m. carlson]
-[2026/10/02/15-45-53 by Junio C Hamano]
-
-### Proposal: "limbo" object-format state for empty repositories
-
-**What changed**: Jeff King proposed a new "limbo" object-format state for empty repositories, allowing the server to dynamically adopt the format of the first incoming push. This would solve a usability pain point for first-time pushes to newly created repositories on forges.
-
-**Problem/goal**: When a user pushes to a newly created bare repository on a forge (e.g., GitHub), the repository must already be configured for either SHA-1 or SHA-256. If the client and server disagree, the push fails with a fatal error, forcing users to manually reconfigure or recreate the remote repository.
-
-**Subsystem**: Wire protocol, repository initialization
-
-**Impact**: This proposal would make the Git 3.0 transition smoother by allowing empty repositories to defer the object format decision until the first push, similar to how GitHub already handles the default branch on first push.
-
-**Today's news**: Jeff King proposed that empty repositories advertise a "limbo" state—no object format yet—allowing the server to dynamically adopt the format of the first incoming push. The idea is technically plausible but untested. Peff outlined the core concept: the server advertises `object-format=limbo`, the client responds with its own format, and the server atomically commits to that format before accepting the push. He acknowledged potential race conditions but saw no fundamental blockers.
-
-[2026/10/02/22-44-00 by Jeff King]
-
-### MIDX reachability closure fixes receive substantive review
-
-**What changed**: Jeff King provided substantive reviews of Taylor Blau's eight-patch series fixing corner cases in Git's multi-pack-index (MIDX) and cruft-pack machinery where MIDXs can end up containing objects that are not closed under reachability.
-
-**Problem/goal**: The series fixes four scenarios where MIDXs violate the invariant that they contain all objects reachable from their tips, causing failures in bitmap generation. The scenarios include `--stdin-packs=follow`, incremental repacks, `.keep` packs, and `--write-midx=incremental`.
-
-**Subsystem**: MIDX, cruft packs, `git repack`, `git pack-objects`
-
-**Impact**: These fixes ensure that MIDXs remain reachability-closed, preventing subtle corruption and enabling reliable bitmap generation. The series is a prerequisite for future ODB work.
-
-**Today's news**: Jeff King provided substantive reviews of several patches in the series:
-- He sided with Elijah Newren's argument that preserving pack-order correlation (root trees before subtrees) is valuable for delta compression quality, even if the solution is not perfect.
-- He raised two technical concerns about patch 2/8: (1) the explanatory comment about deferring tree/tag roots is placed in the wrong function, and (2) the patch calls `prepare_revision_walk()` twice on the same `rev_info` struct, which may introduce subtle bugs.
-- He suggested refactoring a double-negation in the conditional logic controlling whether `--keep-pack` arguments are passed to `git pack-objects` during geometric repacks.
-- He questioned whether the proposed refactoring to track the preferred pack explicitly in `midx_compaction_step` is strictly necessary, though he endorsed it as a cleaner design.
-- He expressed difficulty following the logic of patch 8/8 but deferred to the test coverage, noting that the key change appears correct.
-
-The discussion now centers on the data structure choice for `extra_roots` in patch 2/8, with no hybrid approach proposed yet.
-
-[2026/10/02/23-02-25 by Jeff King]
-[2026/10/02/23-13-36 by Jeff King]
-[2026/10/02/23-25-29 by Jeff King]
-[2026/10/02/23-28-34 by Jeff King]
-[2026/10/02/23-41-57 by Jeff King]
-
-### Alternates refactoring series posted
-
-**What changed**: Patrick Steinhardt posted a 13-patch series refactoring the Git object database (ODB) to move alternates handling into the "files" backend, eliminating a conceptual mismatch that caused performance regressions and blocked backend-agnostic extensions.
-
-**Problem/goal**: Alternates were previously managed at the ODB source level, which caused performance regressions, complicated data structures (bitmaps, commit graphs), and blocked backend-agnostic extensions to `GIT_OBJECT_DIRECTORY` and `GIT_ALTERNATE_OBJECT_DIRECTORIES`.
-
-**Subsystem**: ODB core, files backend, commit-graph subsystem
-
-**Impact**: This refactoring simplifies the ODB architecture and enables future work such as pluggable backends. It's a prerequisite for backend-agnostic extensions to environment variables like `GIT_OBJECT_DIRECTORY`.
-
-**Today's news**: Patrick Steinhardt posted the complete 13-patch series, which:
-- Introduces `struct odb_files_dir` to manage multiple object directories.
-- Refactors `odb_for_each_alternate()` and `odb_find_source()` to work with directories instead of sources.
-- Absorbs quarantine logic into `tmp-objdir` and manages it as an object directory.
-- Relocates alternates handling into the files backend, making it a backend-specific implementation detail.
-- Removes the now-unused `read_alternates` callback from the ODB source interface.
-
-The series touches 52 files, with significant changes to `odb/source-files.c` (482 lines added) and `odb.c` (439 lines removed). It has minor merge conflicts with `seen`, which are documented in the cover letter.
-
-[2026/10/02/10-08-11 by Patrick Steinhardt]
+Taylor Blau's v2 series addresses corner cases when `repack.midxMustContainCruft=false`, adding tree and tag roots, retaining cruft for ordinary incremental repacks, and including required packs in incremental MIDX writes so bitmap generation does not fail. Jeff King reviewed several patches today: he approved 4/8, suggested a De Morgan-equivalent form for the double-negation in 5/8, called 6/8 cleaner, but admitted he had a hard time following 8/8 and would rely on the functional tests.
 
 ## In brief
-
-- **`git var` extension series**: Andrew Pleeter confirmed the series is technically complete and ready for maintainer integration, acknowledging Phillip Wood's surface-level feedback on test style. [2026/10/02/17-41-38 by Andrew Pleeter]
-- **`gitmergeconflicts(7)` documentation**: Junio C Hamano provided detailed examples demonstrating why `merge.conflictstyle=diff3` is essential for correct conflict resolution, showing how the common ancestor reveals the intent behind conflicting changes. [2026/10/02/17-58-53 by Junio C Hamano]
-- **`git stash create` extension**: Kazumasa Shigeta accepted Junio's critique that the commit message focused too much on *what* the patch does rather than *why* it exists, and committed to rewriting it to emphasize the inconsistency being fixed. [2026/10/02/09-04-26 by 重田一聖]
-- **`git config --list --show-origin`**: Brian M. Carlson supported switching to an absolute, canonicalized path for `.git/config`, aligning with how other paths in the output are already handled. [2026/10/02/21-01-02 by brian m. carlson]
-- **`git fetch` commit-graph optimization**: Kristofer Karlsson clarified that the seeds passed to `write_commit_graph()` are **additive**, extending the existing graph rather than replacing it, and provided benchmark numbers showing a ~20% improvement in a synthetic setup. [2026/10/02/12-40-44 by Kristofer Karlsson]
-- **`git remote pushDefault` extension**: Harald Nordgren posted a two-patch series extending `remote.pushDefault` to accept a space-separated list of remote names, pushing to the first available remote in the list. [2026/10/02/07-17-50 by Harald Nordgren via GitGitGadget]
-- **`git bisect` plumbing**: Jeff King suggested using `git show bisect/bad` to retrieve the commit identified as the culprit after a successful `git bisect` run, avoiding parsing porcelain output. [2026/10/02/22-11-54 by Jeff King]
-- **`git config` pager documentation**: Todd Zullinger expanded the `core.pager` section to show more ways users can override the `LESS` environment variable settings that Git applies by default. [2026/10/02/23-41-52 by Todd Zullinger]
-- **`git branch --delete-merged`**: Junio C Hamano questioned whether defaulting to `**` (matching all upstreams) is a good comparison to other branch-listing options that default to the current branch. [2026/10/02/17-11-23 by Junio C Hamano]
-- **`git rerere` lock contention fixes**: Thomas Bachem posted the v6 series incorporating all feedback, including renaming `--auto` to `--skip-locked` for `git rerere gc` and adding test coverage for the merge recreated by `git rebase -r`. [2026/10/02/11-11-29 by Thomas Bachem via GitGitGadget]
-- **`git-contacts` stdin feature**: Junio C Hamano queued the v6 update in `next` for integration testing, marking it ready to graduate to `master` after cooking. [2026/10/02/14-50-00 by Junio C Hamano]
-- **`gitmergeconflicts(7)` documentation**: Julia Evans proposed a new "WHAT IS A MERGE CONFLICT?" section for the guide, adopting a lightweight, example-driven approach that avoids technical jargon. [2026/10/02/17-39-44 by Julia Evans]
-- **`git stash pop` custom conflict-label options**: Harald Nordgren withdrew the patch after Junio C Hamano and Phillip Wood questioned the fundamental motivation for exposing these options in user-facing commands. [2026/10/02/07-21-26 by Harald Nordgren]
-- **`git restore-mtimes` RFC**: Junio C Hamano proposed a concrete algorithm for computing historical mtimes and raised an edge case (file concatenation) that the original proposal did not address. [2026/10/02/01-28-09 by Junio C Hamano]
-- **`git refs` subcommand grouping**: Patrick Steinhardt posted the v2 series incorporating Junio's feedback, including a preparatory refactoring of `usage_with_options_internal()` and extending `OPT_SUBCOMMAND_F()` to accept a help string. [2026/10/02/08-09-45 by Patrick Steinhardt]
-- **`git repo info` path keys**: Junio C Hamano confirmed he will replace the previous iteration with K Jayatheerth's v2 series. [2026/10/02/17-03-51 by Junio C Hamano]
-- **`git submodule` merge corruption**: Jeff King suggested using AddressSanitizer (ASan) to detect the invalid memory access directly, rather than relying on the platform-dependent glibc allocation behavior. [2026/10/02/22-23-35 by Jeff King]
-- **Windows memory usage regression**: Jeff King proposed that the 1 GB per process may reflect *virtual* memory from Git's memory-mapped packfiles on Windows, and suggested checking whether the 1 GB figure is virtual or resident. [2026/10/02/22-19-29 by Jeff King]
-- **`git branch -m` reference-transaction hook**: Brian M. Carlson encouraged Никита Поникаров (or others) to submit manually written, higher-quality patches following Git's contribution guidelines, framing the fix as both a correctness issue and a performance opportunity for `git remote rename`. [2026/10/02/19-37-36 by brian m. carlson]
+- Patrick Steinhardt posted a 13-patch series moving alternates into the "files" object database backend, dropping the `read_alternates` callback from `struct odb_source` and handling `GIT_OBJECT_DIRECTORY` and `GIT_ALTERNATE_OBJECT_DIRECTORIES` in the files backend.
+- Kristofer Karlsson posted a series optimizing the post-fetch commit-graph write to seed from only newly updated refs, with a three-mode enum skipping no-op fetches, writing incrementally from updated tips, and falling back to a full scan; Patrick Steinhardt's review questions were answered with benchmark numbers on git.git.
+- Karthik Nayak posted v2 of the packed-refs optimization using `fwrite()` via a new `write_packed_entry_raw()` when passing unchanged refs verbatim, noting the loss of sanitation as a side effect.
+- Junio C Hamano noted Patrick Monette's `git replay -S` patch closely resembles another mid-July topic and asked him to review that instead, salvaging the remainder afterward.
+- Brigham Campbell posted v6 of `git-contacts` stdin support (`git contacts - <patch`); Junio C Hamano acknowledged it and marked the topic for `next`.
+- Harald Nordgren reposted v2 accepting `@{p}` as short for `@{push}`; Junio C Hamano called the commit message very well written and marked the patch for `next`.
+- Diogo Castro reported the negative pathspec fix for `git ls-files`/`git add` has been incorporated into the referenced thread and closed the PR.
