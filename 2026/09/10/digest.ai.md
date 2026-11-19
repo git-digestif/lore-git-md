@@ -1,82 +1,67 @@
 # Git mailing list daily digest for 2026/09/10
 
+## Long threads
+
+### receive-report hook series reaches v10
+
+*Long thread (root 2026/08/18/07-55-55): 53 replies so far from 6 participants over 24 days; 6 messages that day.*
+
+Karthik Nayak's series introduces a `receive-report` hook in `git-receive-pack` that runs after the reference transaction completes but before the pkt-line status report is sent to the client; the hook's stdout replaces the report and a non-zero exit marks all references rejected. Today he posted v10, which fixes a leak in `override_cmds_error()` by freeing `error_string_owned` with `FREE_AND_NULL` before reassigning the command strings, and adds a test covering a non-zero hook exit alongside a pre-existing `ng` from `proc-receive`. Earlier in the day Junio C Hamano raised the leak concern, Jeff King jokingly noted an interop test could trigger the v9 BUG() case, and Karthik agreed no simple test exists for that path and would add one for the leak instead.
+
+### odb: write alternates at creation time rolls to v5
+
+*Long thread (root 2026/08/25/14-11-49): 34 replies so far from 5 participants over 17 days; 12 messages that day.*
+
+Patrick Steinhardt's nine-patch series refactors the object database so alternates are written by `odb_source_create_on_disk()` at creation time, removing the ad-hoc `write_alternates()` callback and splitting `init_db()` into `create_repository()` plus caller-driven refdb/ODB setup. Today he posted v5, renaming `collect_one_alternate`/`collect_alternates_data`, dropping an extra `collect_alternates()` parameter, clarifying why `commondir` is computed even when unused, and fixing a "refernce" typo, after Karthik Nayak's review of v4 raised those points. Karthik reviewed v5 and said it otherwise looks good.
+
+### last-modified Bloom pre-filtering under review
+
+*Long thread (root 2026/07/17/15-46-58): 26 replies so far from 5 participants over 56 days; 4 messages that day.*
+
+Toon Claes's series makes `git-last-modified(1)` use the pathspec's Bloom key to pre-filter commits, with benchmarks on ziglang/zig showing roughly 1.95x speedup with `-t` and 3.74x without versus master. Today Patrick Steinhardt reviewed the v4 code: he noted `bloom_filter_contains()` can return -1 when the filter length is zero while the documentation only promises 0 or 1, suggested renaming `revs_maybe_changed_in_bloom_with_parents()` to `..._with_leading_dirs()` to avoid confusion with commit parents, asked for the performance rationale, and questioned restoring `bloom_filter_settings` after `prepare_revision_walk()` clears them, proposing instead to store the settings in `struct last_modified`.
+
+### sequencer auto maintenance series at v4
+
+*Long thread (root 2026/09/04/07-53-44): 25 replies so far from 5 participants over 7 days; 1 message that day.*
+
+Thomas Bachem's three-patch series makes rebase, cherry-pick and revert run `git maintenance run --auto` exactly once when a sequence completes, from `builtin/rebase.c` and `builtin/revert.c`, while passing `maintenance.auto=false` to sequencer-spawned commands via `GIT_CONFIG_PARAMETERS`. Today he sent v4 with no code change: commit messages condensed to about a third at Junio C Hamano's request, with 3/3 taking Junio's wording except that the setting goes only to the commit, merge and exec commands the sequencer spawns.
+
+### advice scoping mechanism in v4
+
+*Long thread (root 2027/08/29/00-49-58): 18 replies so far from 4 participants over 2 days; 12 messages that day.*
+
+Vsevolod Myalitsin's series fixes the `defaultBranchName` advice, whose suggested `git config` command writes to the just-initialized repository's local config and so never suppresses the advice on the next `git init`. The v4 series passes the whole `advice_setting` to `vadvise()`, adds a `scope_hint` field, and sets the default-branch advice to recommend the global scope. Today's discussion found that v4 2/3 fails `make DEVELOPER=YesPlease` with `-Werror=switch` over unhandled config scopes, that v4 1/3 has an unbalanced brace, and Vsevolod now favors a `bool is_global_hint` over the enum, a proposal Jeff King endorsed.
+
 ## The day in brief
-The Git project saw active development across multiple fronts today. Key highlights include a proposed simplification for the `advice: add scope hint` series, a critical memory leak fix in the `receive-report` hook, and a CI breakage in the Rust reorganization effort. The `git last-modified` Bloom filter optimization received substantive review feedback, and the `git history` memory leak fix is now merged. Junio C Hamano announced Git v2.56.0-rc0, marking a major milestone in the release cycle.
+Git v2.56.0-rc0 was announced for testing, comprising 635 non-merge commits since v2.55.0 from 82 contributors. Several long-running series posted new revisions: the receive-report hook (v10, leak fix), alternates-at-creation-time (v5), and the sequencer auto-maintenance change (v4, message-only). Review activity also flagged a build break and a missing brace in the advice-scoping series.
 
 ## Notable threads
 
-### Advice subsystem: scope hint simplification
-**Thread root**: 2027/08/29/00-49-58
+### Git v2.56.0-rc0 announced
+Junio C Hamano announced the availability of Git v2.56.0-rc0 for testing, with tarballs at kernel.org and the `v2.56.0-rc0` tag in the listed public repositories; the release comprises 635 non-merge commits since v2.55.0 contributed by 82 people, 32 of them new contributors.
 
-The ongoing discussion about adding scope hints to Git's advice messages took a significant turn today. Vsevolod Myalitsin proposed replacing the previously suggested `scope_hint` enum with a simpler boolean `is_global_hint` field in the `advice_setting` struct. This change would eliminate build failures and focus the implementation on the immediate goal of providing accurate scope hints for `--global` settings like `defaultBranchName`.
+### Git for Windows patch upstreaming at v4
+Johannes Schindelin posted v4 of the 13-patch series upstreaming more Git for Windows patches ahead of the UCRT64 switch; v4 reinstates a fly-by style fix as a separate commit, adds Helped-by trailers, and moves a paragraph between commit messages. Junio C Hamano acknowledged the reroll and said he will replace the previous version and mark the series for `next`.
 
-Jeff King (Peff) strongly endorsed this simplification, arguing that all advice settings should default to `--global` because advice messages are about silencing chatter for a user rather than a specific repository. He cited historical context from the 2009 introduction of the `advice.*` config system, noting that the original design never intended the scope-less hint to be a literal cut-and-paste command.
+### builtin/history: unuse the commit buffer after use
+Kaartic Sivaraam posted v3 of the fix for a leak in `git history reword` when the commit was parsed from the commit-graph: `commit_tree_ext()` in `builtin/history.c` now calls `repo_unuse_commit_buffer()` on the buffer, which a plain `free` would double-free on the cached path. Jeff King reviewed v3 as good with an accurate message, and Junio C Hamano agreed further message polishing has diminishing returns.
 
-Junio C Hamano acknowledged the merit of Peff's position but noted that some users might want to squelch advice per project when working across multiple repositories with different workflows. He clarified that the original design expected users to adapt the suggested command to their needs, leaving the door open for either the boolean simplification or a more flexible mechanism.
+### refs/files: avoid packed-refs lock for root ref deletion
+Ariel Keselman posted v2 skipping the packed-refs transaction when deleting root refs such as `AUTO_MERGE`, which cannot be packed, fixing post-commit cleanup errors in linked worktrees with read-only shared metadata. The v2 addresses Patrick Steinhardt's review: a focused comment, one existing root ref in the test, dropped timeout overrides, and a new test that a transaction deleting a root ref and a packed branch together still fails under a held packed-refs lock.
 
-The thread also produced a tangential documentation patch from both Junio and Peff to clarify the `<file-option>` placeholder in `git-config.txt`.
-
-**What's at stake**: This change affects how users receive instructions for disabling advice messages. The boolean simplification would make the implementation more robust and focused, but might limit future flexibility if additional scope options become necessary.
-
-### Rust reorganization CI breakage
-**Thread root**: 2026/02/04/23-22-08
-
-Junio C Hamano reported a CI breakage in the Rust reorganization effort, specifically in `ci/run-rust-checks.sh`. The script fails because it still expects Rust files in their original `src/` location, while the reorganization moved them to a dedicated `rust/` subdirectory.
-
-Mike Hommey acknowledged the issue as a rebase error and indicated he would provide an update. Junio subsequently removed the topic from the integration branch, pending resolution.
-
-**What's at stake**: This breakage blocks the Rust reorganization effort, which is crucial for Git's ongoing Rustification. The reorganization aims to improve project structure clarity and support downstream projects that vendor Git's C code while excluding its Rust components.
-
-### Memory leak in receive-report hook
-**Thread root**: 2026/08/18/07-55-55
-
-Junio C Hamano identified a memory leak in the `override_cmds_error()` helper of the `receive-report` hook implementation. The function overwrites `cmd->error_string` without freeing the existing string if it is owned by the `command` struct.
-
-Karthik Nayak posted v10 of the final patch, introducing a new `error_string_owned` flag to track ownership and conditionally free the existing string before overwriting it. He also committed to adding a test to trigger this error path.
-
-Jeff King confirmed that a previously identified `BUG()` flaw in the series was real but untestable with existing infrastructure, as older clients don't request status reports.
-
-**What's at stake**: This memory leak affects the new `receive-report` hook, which GitLab uses to implement MVCC (multi-version concurrency control) on the server side. The hook allows server administrators to intercept and modify the status report sent to clients after ref updates.
-
-### Git v2.56.0-rc0 release
-**Thread root**: 2026/09/10/17-20-21
-
-Junio C Hamano announced the first release candidate for Git v2.56.0. This release includes 635 non-merge commits from 82 contributors, covering new features, performance improvements, bugfixes, and internal refactoring.
-
-Key themes include ODB abstraction (Patrick Steinhardt), reftable backend optimizations (Karthik Nayak, Patrick Steinhardt), repository discovery refactoring (Patrick Steinhardt), Rust integration (brian m. carlson, Taylor Blau), and performance improvements in merge-base computation, ref filtering, and pack-objects.
-
-New user-facing features include `git history drop`, `git refs create/delete/update/rename`, `git replay --linearize`, `git branch --delete-merged`, and `git bisect --reset-when-found`.
-
-**What's at stake**: This release candidate represents a significant step toward Git 2.56, with substantial architectural work that will enable future features like alternative ODB backends and improved scalability.
+### Move rust gitcore crate to a rust/ subdirectory
+Mike Hommey posted v4 moving `Cargo.toml`, `build.rs`, `cargo-meson.sh`, meson files and the Rust sources into `rust/`, fixing the meson `subdir()` error and the `.gitignore`/clean-target paths that Tuomas Ahola and Junio C Hamano caught. Junio reported that v4 still leaves the tree inconsistent per CI and does not know whether `ci/run-rust-checks.sh` or the file moves need tweaking.
 
 ## In brief
-
-- **[2025/10/10/01-14-05]** Delilah Ashley Wu proposes dropping the Windows path normalization patch entirely and modifying tests to export `XDG_CONFIG_HOME` with forward slashes only, avoiding platform-agnostic code changes.
-
-- **[2026/06/14/14-15-40]** Jeff King confirms the `BUG()` flaw in the `receive-report` hook series was real but untestable with existing infrastructure. Kaartic Sivaraam offers to send a v4 with Peff's proposed commit message wording.
-
-- **[2026/07/17/15-46-58]** Patrick Steinhardt provides substantive review of the `git last-modified` Bloom filter optimization series, identifying correctness issues in `bloom_filter_contains_any_vec()` and naming clarity in `revs_maybe_changed_in_bloom_with_parents()`. He also proposes an alternative design for managing `bloom_filter_settings`.
-
-- **[2026/08/05/14-26-26]** Johannes Schindelin posts v4 of the MinGW/Windows build and runtime adjustments series, a procedural resend with a fly-by style fix split into its own commit.
-
-- **[2026/08/25/14-11-49]** Karthik Nayak provides surface-level and substantive reviews of Patrick Steinhardt's ODB alternates refactoring series, identifying a robustness issue in error handling and raising a question about backend error reporting.
-
-- **[2026/09/03/01-05-47]** Junio C Hamano and Aleksei Sviridkin continue their discussion about the fallback timestamp value in the `--force-if-includes` safety mechanism, with Aleksei providing timing data to support the `0` (epoch start) fallback.
-
-- **[2026/09/03/15-26-44]** Kristoffer Haugsbakk confirms the commit graph as a triggering factor for the memory leak in `git history reword --dry-run`.
-
-- **[2026/09/04/07-53-44]** Thomas Bachem posts v4 of the sequencer auto-maintenance deferral series, tightening commit messages to address Junio's and Patrick Steinhardt's critiques about verbosity.
-
-- **[2026/09/04/21-01-20]** Tyler Cipriani posts v3 of the `--force-if-includes` fix series as a procedural resend to correct threading.
-
-- **[2026/09/07/07-15-57]** Patrick Steinhardt approves v2 of Brigham Campbell's documentation patch fixing AsciiDoc formatting in `git-config(1)`.
-
-- **[2026/09/08/15-24-26]** James Le Cuirot posts v3 of the Rust cross-compilation fix, addressing Junio's feedback from earlier versions.
-
-- **[2026/09/10/06-45-46]** Ariel Keselman posts v2 of the patch avoiding spurious `packed-refs` locks when deleting root refs, incorporating Patrick Steinhardt's feedback about test coverage and the mixed-transaction edge case.
-
-- **[2026/09/10/15-06-07]** Jeff King proposes an alternative solution for merge driver temporary file cleanup using Git's `tempfile` API, eliminating custom signal handling.
-
-- **[2026/09/10/17-07-35]** Junio C Hamano provides surface-level review of Mark C. Chu-Carroll's test modernization patch, pointing to documentation for commit message and patch presentation polish.
-
-- **[2026/09/10/17-39-02]** Junio C Hamano's "What's cooking" report lists new topics needing review, including `vm/advice-config-global-hint`, `jc/rust-cargo-build-target`, and `kn/receive-report-hook`.
+- Michal Koutný patched `merge-ll.c` to clean up `.merge_file_*` temporaries after Ctrl+C by sigchaining SIGINT/SIGQUIT around the external merge driver; Jeff King suggested using `xmks_tempfile()`/`delete_tempfile()` instead.
+- Andrew Pleeter posted v7 of `git var` extensions (broken-down idents, `GIT_SIGNING_KEY`, multiple args, `-z`), with doc grouping, BUG() checks, and cleaner `-z` tests.
+- Junio C Hamano posted a coccinelle-based rewrite introducing `advice_if_enabled()` across seven files; Jeff King noted it misses complex conditionals and questioned whether the extra turn-off lines would feel overwhelming.
+- Aleksei Sviridkin clarified that the 20,000-entry reflog benchmark was a worst case and argued the `--force-if-includes` cutoff only helps when it wrongly rejects a valid push.
+- James Le Cuirot posted v3 respecting `CARGO_BUILD_TARGET` in the Rust build output path in the `Makefile` and `src/cargo-meson.sh`, avoiding double slashes when unset.
+- Kristoffer Haugsbakk confirmed the commit graph was the triggering factor for the `git history reword` memory leak.
+- Tyler Cipriani posted v3 of the `--force-if-includes` fix with corrected patch threading; both patches are unchanged from v2.
+- Brigham Campbell's v2 fixing conjoined maintenance-strategy bullets in `git-config(1)` was approved by Patrick Steinhardt; Jeff King explained the rendering difference between asciidoc and asciidoctor.
+- Mark C. Chu-Carroll posted v2 modernizing t4001, t4009 and t4010; Junio C Hamano pointed him to `Documentation/SubmittingPatches` for commit-message style.
+- Tuomas Ahola posted v2 keeping `Documentation/Makefile` and `command-list.txt` in sync, adding `gitformat-loose(5)` and `gitpacking(7)` and a lint-manpages check.
+- Mark C. Chu-Carroll's v2 3/3 updates `t/t4010-diff-pathspec.sh` to modern style with inline heredocs.
+- Delilah Ashley Wu proposed dropping the forward-slash patch in favor of setting a forward-slash `XDG_CONFIG_HOME` in the tests, asking Junio C Hamano for his view.
