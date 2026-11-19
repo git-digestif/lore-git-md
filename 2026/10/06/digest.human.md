@@ -1,114 +1,61 @@
 # Git mailing list daily digest for 2026/10/06
 
+## Long threads
+
+### New `gitmergeconflicts` manual page
+
+*Long thread: 38 replies so far from 6 participants over 13 days; 2 messages that day.*
+
+This documentation series adds a new `gitmergeconflicts` manual page explaining merge conflicts with examples, linked from commands that cause conflicts. Julia Evans previously noted that `git status` recommends `git commit` rather than `git merge --continue` during a merge. Today D. Ben Knoble agreed, citing `wt-status.c:show_merge_in_progress()`, and proposed either changing the status output or documenting the commands as equivalent for merges; he noted a patch on this point is already in flight.
+
+### `uploadpack.lazyFetchTrusted` server-side lazy-fetch control
+
+*Long thread: 36 replies so far from 3 participants over 89 days; 1 message that day.*
+
+This series introduces a protected `uploadpack.lazyFetchTrusted` config variable so server operators can mark trusted repositories for lazy fetching during clone or fetch, with refactorings across `promisor-remote.c`, `setup.c`, and `builtin/upload-pack.c`. Today Christian Couder agreed the v5 series should be marked for `next`, since it adds mostly refactorings and a new protected config variable rather than substantial new code or features.
+
+### Keeping `die()` out of the trace2 API
+
+*Long thread: 26 replies so far from 6 participants over 84 days; 1 message that day.*
+
+This series introduces a root-level `banned-die.h` header included by the trace2 API sources, banning die-capable helpers one at a time so the low-level tracing code cannot trigger a recursive die. Today Derrick Stolee said the topic has sat idle because the `banned-die.h` protections are incomplete, and that his RFC for making strbuf and friends more robust was similarly unsatisfying, though interesting alternative ideas exist.
+
+### Linking CI failure and leak annotations to test scripts
+
+*Long thread: 24 replies so far from 4 participants over 12 days; 2 messages that day.*
+
+This CI series makes GitHub Actions annotations for test failures and leaks name the test script and line. Today Harald Nordgren posted a revision (labeled v6, with changes described as v7) that reverts direct file/line linking -- which fails when the error points to a file unchanged in the PR -- in favor of showing the file and line as plain text in the annotation, and omits the line number for leaks where it is never available. Phillip Wood reviewed it and said "Lets get this merged!"
+
+### Removing `gittutorial-2`
+
+*Long thread: 21 replies so far from 4 participants over 9 days; 5 messages that day.*
+
+This documentation series deletes the stale `gittutorial-2` page, leaving a stub redirecting readers to `gitdatamodel` and `gitcore-tutorial`. Today Tuomas Ahola showed the v1->v2 interdiff adds `gittutorial-2` to `command-list.txt`, making `git(1)` advertise the obsolete tutorial in its GUIDES list. Junio C Hamano proposed ejecting both topics and having Julia Evans send a v3 without the `command-list.txt` entry; Julia agreed, Tuomas said stacking his topic on top is cleaner than an evil merge, and Junio agreed to queue the reroll on a synthetic base.
+
 ## The day in brief
 
-The Git mailing list saw **116 emails** today, with key developments in several long-running threads. The most consequential were:
-
-- **Git 3.0 planning** took center stage as the Git Contributor's Summit notes were shared, revealing consensus on a two-stage rollout (2.99 → 3.0) with SHA-256 support and Rust inclusion, but unresolved questions about LTS status and Rust mandates.
-- **Trace2 hardening** was abandoned after Derrick Stolee signaled the protections provided by `banned-die.h` were "incomplete and thus less exciting," marking a pivot in the thread’s trajectory.
-- **CI improvements** advanced with Harald Nordgren’s v6 of the leak sanitizer series, now including a compromise solution for broken annotation links.
-- **Documentation efforts** saw progress with Julia Evans’ beginner-focused tutorial and the `gitmergeconflicts(7)` guide, though open questions remain about conflict style preservation and beginner workflows.
+Taylor Blau shared contributor summit notes covering Git 3.0 timing, pluggable ODB, and protocol v2 for pushes. Christian Couder agreed the `uploadpack.lazyFetchTrusted` series is ready for `next`, and Harald Nordgren's revised CI annotation patch drew an enthusiastic review. A new bug report shows pushes resending common history when a pre-push hook repacks the object database.
 
 ## Notable threads
 
-### Git 3.0 planning (Git Contributor's Summit notes)
-**What’s changing?**
-The Git project is planning a two-stage rollout for Git 3.0 (2.99 → 3.0), with SHA-256 support and Rust inclusion as key features. The 3.0 release will differ only in flipped defaults for breaking changes, minimizing disruption.
+### Notes from the 2026 Git Contributor's Summit
 
-### Why it matters:
+*Long thread: 0 replies so far from 1 participant over 1 day; 8 messages that day.*
 
-- **SHA-256 adoption** is confirmed for GitHub (GA November 2026) and GitLab (already public), but JGit and Bitbucket lag behind. Interoperability between SHA-1 and SHA-256 repositories is complete on brian m. carlson’s personal branch but not yet upstreamed.
-- **Rust support** drew no objections, but no decision was made on whether it will be mandatory or merely allowed in 3.0.
-- **LTS status** for 2.99 was proposed (Gentoo expressed interest), but no consensus was reached.
+Taylor Blau shared notes covering seven topics: security process, Git 3.0 (possible 2.99 and 3.0 in March 2027; consensus to release 2.99.1 and 3.0 together with only `BREAKING_CHANGES` defaults flipped), documentation, Outreachy, pluggable ODB, AI policy, and protocol v2 for pushes.
 
-### Open questions:
+### Fixing packfile corruption from stale delta base cache entries
+Patrick Steinhardt posted v2 of a two-patch series that evicts delta base cache entries when closing a pack, fixing corruption reproducible via recursive merges with submodules whose packfiles look similar. Junio C Hamano reviewed the fix, noting the new test detects the bug only under the glibc allocator and questioning the value of an unreliable reproducer for an already-fixed bug.
 
-- How to synchronize with downstream distribution cycles?
-- Will SHA-256 adoption surface latent bugs in Git itself?
-- Funding for JGit and gitoxide SHA-256 support (Google declined JGit; gitoxide may secure funding).
-
-### Next steps:
-
-Follow-up discussions on each technical track (SHA-256 interoperability, Rust integration, LTS planning) are expected.
-
----
-
-### Trace2 hardening abandoned
-**What’s changing?**
-Derrick Stolee announced he is setting aside the RFC series (`ds/trace2-tolerate-failed-timestamp`) that aimed to eliminate `die()`-prone helpers in the trace2 subsystem. The series introduced `banned-die.h` to enforce a no-`die()` policy but was deemed too complex for the benefits it provided.
-
-### Why it matters:
-
-- The trace2 subsystem must not crash Git, even under memory pressure or system call failures. The abandoned series sought to replace banned functions (e.g., `xsnprintf()`, `xstrdup()`, `ALLOC_ARRAY()`) with defensive fallbacks.
-- Jeff King (Peff) had proposed a ground-up rewrite of trace2 as the only way to fully eliminate `die()`-prone dependencies, but this was not pursued due to complexity.
-
-### Key takeaway:
-
-The thread’s pivot reflects the challenges of hardening low-level subsystems without introducing excessive complexity. The core goal (preventing trace2 crashes) remains, but the path forward is now less certain.
-
----
-
-### CI improvements: Leak sanitizer v6
-**What’s changing?**
-Harald Nordgren posted v6 of the CI leak sanitizer series, reviving the abandoned second patch with a compromise solution. The series now:
-1. Stops leak-sanitizer scripts at the first failure (`--immediate`) and annotates leaks with the test script name and sanitizer output.
-2. Embeds file and line context directly in annotation text, avoiding the earlier regression where annotation links were broken unless the test file was modified in the same pull request.
-
-### Why it matters:
-
-- The compromise resolves the show-stopper issue from v5 (broken annotation links) while preserving usability improvements.
-- Phillip Wood accepted the compromise, and the series is now a candidate for `next`.
-
-### Files touched:
-
-- `ci/lib.sh` (enables `--immediate` for leak sanitizer jobs)
-- `t/test-lib-github-workflow-markup.sh` (new functions for finding test case lines and formatting annotations)
-- `t/test-lib.sh` (reorders annotation logic to ensure failures are reported before `--immediate` exits)
-
----
-
-### Documentation: Beginner-focused tutorial
-**What’s changing?**
-Julia Evans posted a two-patch series replacing the outdated `gittutorial` with a beginner-focused guide tested on 112 users. The new tutorial covers:
-- Local repository creation and commits
-- Pushing to a remote host (GitHub/GitLab)
-- SSH authentication and troubleshooting
-
-### Why it matters:
-
-- The existing tutorial is 18 years old and outdated, while user testing shows the new approach works despite rough edges.
-- Open questions remain about repository creation (start with `git init` locally or clone from a forge?) and authentication (how to handle SSH/HTTPS setup generically?).
-
-### Files touched:
-
-- `Documentation/gittutorial.adoc` (replaced)
-
----
-
-### `gitmergeconflicts(7)` guide refinements
-**What’s changing?**
-The `gitmergeconflicts(7)` guide saw further refinements, including:
-- A new "WHAT IS A MERGE CONFLICT?" section, endorsed by D. Ben Knoble for its clarity.
-- Clarification on `git commit` vs. `git merge --continue`, with the guide now steering users toward the latter as the more modern choice.
-- Junio C Hamano’s detailed examples demonstrating how `diff3`’s common ancestor reveals the *intent* behind conflicting changes, transforming it from a stylistic preference into an essential tool for correct resolution.
-
-### Open question:
-
-Should `git checkout -m` remember and restore the original conflict style (e.g., `diff3`) as a fallback when the user does not explicitly request a different style?
-
----
+### Push resending common history after a pre-push repack
+Jens Röcker reported that a push resends common history when a pre-push hook repacks the local object database and removes loose common objects, reproduced on Apple Git 2.54.0 and upstream Git 2.56.0 with receiver pack sizes of 4,196,026 bytes versus 300 bytes without the repack. D. Ben Knoble asked for clarification on whether objects are being sent more than once.
 
 ## In brief
+- Karthik Nayak reviewed the 13-patch `odb/source-files` alternates series, accepted Patrick Steinhardt's explanations, and said the whole series looks good. *Long thread: 10 replies so far from 2 participants over 5 days; 8 messages that day.*
+- Kristofer Karlsson posted v2 of "fetch: write commit-graph using updated refs only", with benchmarks showing updated-ref fetches dropping from about 357 ms to under 10 ms.
+- Kristofer Karlsson clarified the incremental connectivity check verifies incoming commit trees against their parents only, scaling with the number of changes rather than preexisting objects.
+- Karthik Nayak posted v3 of the packed-refs `fwrite()` optimization; Patrick Steinhardt called the ~20% deletion win welcome, and Junio C Hamano's "sanitation" typo nit was confirmed.
+- **Clean-merge label write questioned**: Junio C Hamano asked what would be written to MERGE_LABELS on clean merges, suggesting '(null)' lines.
 
-- **`git fetch --prune-tags` bugfix**: Orgad Shaneh gently pinged Junio C Hamano for a substantive response on the series aligning implementation with documentation. The thread remains stalled pending Junio’s input or clarification from Ævar Arnfjörð Bjarmason (original implementer).
-- **`git history` signing**: Junio C Hamano confirmed the literal placeholder `...` in the completion test is correct, resolving the last blocking question. The series is now unblocked and ready to graduate to `next`.
-- **`post-worktree` hook**: Phillip Wood raised design concerns about Domen Kožar’s v3 1/2 patch, questioning the worktree identifier’s usefulness, the four-argument interface, and the timing of the `remove` event. Domen has not yet responded.
-- **Incremental connectivity check**: Kristofer Karlsson and Patrick Steinhardt resolved Patrick’s lingering question about trust boundary detection, confirming the incremental mode reuses the same mechanism as the full check (`git rev-list --not --all`).
-- **`git stash create` extensions**: Kazumasa Shigeta and Phillip Wood narrowed the scope of the proposed changes, ruling out `--patch` and positional pathspecs while endorsing `--pathspec-from-file` and `-m`/`--message`.
-- **Packfile corruption fix**: Junio C Hamano accepted the test’s platform dependency as a pragmatic trade-off, noting it either reproduces the bug or silently passes.
-- **`git repo structure`**: Patrick Steinhardt reviewed Mark C. Chu-Carroll’s v2 patch, questioning the commit message’s lack of motivation and the restrictiveness of the `setup_revision_opt` struct.
-- **`git(1)` man page rewrite**: D. Ben Knoble approved Julia Evans’ v2 revision, which incorporates feedback to use `git help push` as an alternative to `git push --help`.
-- **Push negotiation bug**: Jens Röcker reported a bug where a pre-push hook repacking the local object database causes Git to resend common history that was already advertised to the receiver. No maintainer response yet.
-- **`git status`/`git push` enhancements**: Harald Nordgren posted a six-patch series to better handle rebased push branches, introducing more granular tracking of divergence and adjusting advice messages.
-- **Test modernization**: Muhammed Dilshad A updated `t/t0450-txt-doc-vs-help.sh` to use Git’s helper functions `test_path_is_file` and `test_path_is_missing` instead of raw shell test assertions. Patrick Steinhardt approved the patch.
-- **Clock-skew warning**: Junio C Hamano raised fundamental objections to Devi Srinivas Vasamsetti’s patch, questioning its usefulness and noting the warning cannot address the root problem (clocks on other machines may already be wrong).
+- Phillip Wood reviewed the post-worktree lifecycle hook proposal, questioning the four-argument design and the usefulness of the worktree id.
+- Harald Nordgren posted a 6-patch series making `git status` and `git push` suggest `git push --force-with-lease` after a clean rebase.
