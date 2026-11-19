@@ -1,48 +1,30 @@
 # Git mailing list daily digest for 2026/09/18
 
 ## The day in brief
-The Git mailing list saw a flurry of activity today, with a **v2 bugfix series for a repack data-loss race** landing, **Rust infrastructure reorganization queued for `next`**, and an **RFC introducing a "safe" `strbuf` API** to prevent fatal errors in trace2. A **test modernization series** also reached v4, addressing prior feedback.
+
+qeesung posted v2 of a five-patch series fixing a race in which `git repack -d` can delete a pack whose objects were never copied when a `.keep` file appears mid-run. Derrick Stolee opened an RFC for a "safe" strbuf API that cannot reach `die()`, aimed at recursive die loops in trace2 under allocation failure. Junio C Hamano confirmed a bug in `git rerere remaining` that skips consecutive conflicted paths and supplied a fix.
 
 ## Notable threads
 
-### Rust infrastructure reorganization queued for `next`
-The long-running effort to reorganize Git’s Rust code into a dedicated `rust/` subdirectory reached a milestone today. Junio C Hamano reviewed Mike Hommey’s v5 patch, confirming it applies cleanly on Git 2.56-rc1 and correctly updates the build system (Makefile, meson.build, CI scripts) to reference the new locations. The patch moves Rust sources from `src/` to `rust/src/` while keeping build artifacts in their original locations, addressing project hygiene and downstream vendoring concerns.
+### repack: don't lose objects to a ".keep" that appears mid-run
 
-Junio raised a minor stylistic question about whether setting `CARGO_MANIFEST_DIR` in the Makefile would be cleaner than repeatedly passing `--manifest-path`, but this is not a blocker. Mike clarified that `current_source_dir` in meson.build refers to the directory containing meson.build, while `project_source_root` would place the target directory at the Git top-level, differing from the Makefile’s behavior. The patch is now queued for `next`, marking a key step toward Git 3.0’s mandatory Rust components.
+This is a bugfix for the repack and pack-objects code. A concurrent push or fetch can make `git repack -d` delete a pack whose objects were never copied anywhere and still exit 0: repack scans for `.keep` files and decides which packs to delete, then spawns pack-objects with `--honor-pack-keep`, which scans again; if an `index-pack --keep` installs a `.keep` next to a pack repack already decided to delete, pack-objects leaves that pack's objects out and repack deletes the pack anyway. qeesung posted v2 of the series, dropping the former patch 1/6 because Justin Tobler is going to fix the receive-pack side by having the ODB transaction create the `.keep` itself at commit time, and renumbering the remaining five patches. The core change has repack write its startup snapshot of `.keep` packs to a tempfile and pass it to pack-objects via a new `--keep-pack-from-file=<file>` option instead of `--honor-pack-keep`, so both processes work from one snapshot; pack names containing newlines are refused. Supporting patches make a `--keep-pack` pack behave as kept-open under `--stdin-packs=follow`, invalidate the kept-pack cache after re-marking fresh packs for the cruft walk, and sort the `--keep-pack` list once for binary lookup, the file option existing because command-line length limits can be exceeded with many kept packs.
 
-### Repack data-loss race fix (v2)
-Qin ShiCheng posted v2 of a critical bugfix series addressing a race condition in `git repack -d` where concurrent pushes could cause objects to vanish despite `.keep` files. The series replaces the `--honor-pack-keep` mechanism with a snapshot-based approach, ensuring `.keep` files are managed consistently. Key changes in v2 include:
-- **Patch 1/5**: Corrects `--stdin-packs=follow` behavior to treat `--keep-pack` packs as "kept-open" (`!`) instead of closed (`^`), allowing traversal through their objects.
-- **Patch 2/5**: Fixes a stale kept-pack cache in cruft-pack walks by exposing `clear_kept_pack_cache()`.
-- **Patch 3/5**: Optimizes `--keep-pack` lookups with binary search, yielding an 11× speed-up for repositories with many kept packs.
-- **Patch 4/5**: Adds `--keep-pack-from-file` to handle repositories where the number of kept packs exceeds command-line limits.
-- **Patch 5/5**: Eliminates the race by passing `pack-objects` a snapshot of `.keep` packs observed at repack startup.
+### RFC: a "safe" strbuf API that cannot reach die()
 
-The series is well-tested, with each patch including a test that fails without it. The fix is production-tested and merges cleanly into `next` and `seen`, addressing a serious data-loss bug that would become critical once `--honor-pack-keep` is removed.
+Derrick Stolee posted an RFC series proposing a `strbuf-safe` API in new `strbuf-safe.c` and `strbuf-safe.h` files whose methods cannot transitively call `die()` or `exit()`. The motivation is that the trace2 API uses json-writer, which uses the strbuf API, so an allocation failure there can trigger recursive die() loops; Stolee asked whether the direction is worthwhile or should be abandoned. The series moves the strbuf struct definition and `STRBUF_INIT` into `strbuf-safe.h`, adds `sstrbuf_grow()`, `sstrbuf_init()` and `sstrbuf_release()` under an `s` prefix naming convention, adds `safe_memory_limit_check()` which returns an error code without dying while `memory_limit_check()` dies only outside gentle mode, reads `GIT_ALLOC_LIMIT` proactively during `setup_environment()` and documents it in `Documentation/git.adoc`, and adapts `json-writer.c` to use `sstrbuf_release()` and return error codes from `jw_release()`, `fmt_double()` and `append_sub_jw()`, while noting that callers of those json-writer methods are not yet adapted to the new return values.
 
-### "Safe" strbuf API RFC
-Derrick Stolee posted an RFC series introducing a subset of the `strbuf` API that cannot call `die()` or `exit()`, motivated by trace2’s need to avoid recursive fatal errors during memory allocation failures. The series is structured in six patches:
-1. Moves `strbuf` struct definitions to `strbuf-safe.h` to enable the safe API.
-2. Proactively initializes `GIT_ALLOC_LIMIT` during Git’s startup to avoid `die()`-prone environment parsing.
-3. Refactors `memory_limit_check()` to introduce `safe_memory_limit_check()`, which never calls `die()`.
-4. Implements `sstrbuf_grow()`, the first safe method, using `srealloc()` and returning an error code.
-5. Switches `json-writer.c` to include `strbuf-safe.h` to prepare for safe API adoption.
-6. Adds `sstrbuf_init()` and `sstrbuf_release()` to the safe API and begins converting `json-writer.c` to use them.
+### `rerere remaining` skips consecutive conflicted paths
 
-The series is technically sound, with CodeQL used to verify the safety property. However, the transition is incomplete: `json-writer` methods are now "safe," but their callers (e.g., trace2) are not yet error-aware. Stolee plans to split this into two phases if the RFC is accepted. Key discussion points include the `sstrbuf_*` naming convention, the fate of `GIT_ALLOC_LIMIT`, and the transition plan for callers.
-
-### Test modernization (v4)
-Mark C. Chu-Carroll posted v4 of a test modernization series updating three legacy test scripts (`t4001-diff-rename.sh`, `t4009-diff-rename-4.sh`, `t4010-diff-pathspec.sh`) to use current Git test conventions. The changes are purely mechanical, improving readability and maintainability without altering behavior. Key improvements include:
-- Replacing setup functions with `test_expect_success 'setup'` blocks.
-- Standardizing capitalization in assertions and test names.
-- Adopting `expect`/`actual` file naming and `<<-` here-doc syntax.
-- Consistent tab-based indentation.
-
-The series reduces the total line count by 20 across the three files and addresses all prior feedback from Junio C Hamano. The patches are uncontroversial and part of the ongoing "test modernization" effort.
+Junio C Hamano confirmed Mikko Rantalainen's diagnosis that `check_one_conflict()` in `rerere.c` skips consecutive conflicted paths when each has only a stage-1 index entry, because its stage-1 skipping loop lacks a same-path check. He posted a patch adding `ce_same_name(e, istate->cache[i])` to the while-loop condition so only stage-1 entries for the same path are skipped, which also fixes `git mergetool` exiting successfully while conflicts remain.
 
 ## In brief
-- **`git status --ignored` substring matching**: René Scharfe posted a patch fixing a regression where ignored directories were incorrectly matched when the pathspec was a substring of the directory name. The fix ensures `match_pathspec_with_flags()` is called for excluded directories with nested repositories.
-- **`git rerere remaining` bugfix**: Junio C Hamano posted a patch fixing a bug where consecutive conflicted paths with only stage-1 entries were incorrectly skipped. The fix adds a same-path check (`ce_same_name()`) to `check_one_conflict()` in `rerere.c`.
-- **`git diff --no-index -R` file/directory conflicts**: Haokai Ding posted a patch fixing a regression where file/directory conflicts were incorrectly reported as deletions or additions instead of being reversed. The fix swaps filespecs of the early queue entry when `reverse_diff` is set.
-- **Git for Windows hardening**: Johannes Scharfe and Junio C Hamano debated a patch addressing GPG signature-prefix matching. Johannes argued for propagating a `slen` parameter to handle signatures with embedded NULs, while Junio proposed removing the parameter entirely, citing redundancy.
-- **GitHub Actions Windows CI**: Junio noted that Rust is not preinstalled on GitLab’s Windows runners (`saas-windows-medium-amd64`), confirming Johannes Schindelin’s earlier question. This does not affect the merged series, which is scoped to GitHub Actions.
+
+- Mike Hommey's v5 patch moving the Rust `gitcore` crate into a `rust/` subdirectory drew review questions from Junio C Hamano about `--manifest-path` usage and the meson `subdir()` choice; Hommey answered that `--manifest-path` is needed because `Cargo.toml` is no longer in `$PWD` and explained the meson path change.
+- Haokai Ding fixed `diff --no-index -R` for file/directory conflicts, where `queue_diff()` queues the file before recursing and bypasses reverse handling; the fix swaps the filespecs of the early queue entry when `reverse_diff` is set, with regression tests in `t/t4053-diff-no-index.sh`.
+- René Scharfe posted a `dir.c` fix so an excluded directory containing a nested repository is pathspec-matched on prefix match, adding a `dir_match()` helper and a test in `t/t7061-wtstatus-ignore.sh`.
+- Junio C Hamano noted a GitLab CI failure with "cargo: command not found" in the Windows CI Rust thread.
+- Johannes Schindelin defended keeping the `slen` parameter in `check_signature()` in `gpg-interface.c`, arguing that falling back to `strlen()` would truncate signatures with embedded NULs before verification; Junio C Hamano concluded the existing code is not worth changing.
+- Mark C. Chu-Carroll accepted Junio C Hamano's review suggestions on modernizing `t/t4001-diff-rename.sh` and said he would send an update.
+- Mark C. Chu-Carroll posted v4 of the three-patch "t40*: modernize" series, using a `test_expect_success 'setup'` block, consistent capitalization, improved rename test names, and tab indentation.
+- Junio C Hamano grumbled that GitHub's web cache serves stale content for the git/git Actions workflow page.
