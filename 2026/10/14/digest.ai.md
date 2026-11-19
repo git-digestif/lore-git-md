@@ -1,168 +1,70 @@
 # Git mailing list daily digest for 2026/10/14
 
+## Long threads
+
+### New `gitmergeconflicts(7)` documentation page
+
+*Long thread (root 2026/09/24/14-44-15): 64 replies so far from 6 participants over 21 days; 3 messages that day.*
+
+Julia Evans's six-patch series introduces a new `gitmergeconflicts(7)` man page that explains merge conflicts with examples, and links to it from the git-merge, git-rebase, git-revert, git-cherry-pick, and git-pull documentation instead of repeating the guidance in each command. Today Julia Evans agreed to fix missing full stops in an enumeration, update the "ways to handle a conflict" bullet to cover multi-step operations like `rebase`, replace "added" with "has" in the fruit example, and adopt Junio C Hamano's alternative diff3 example showing the correct resolution. She also made bullet punctuation more consistent, agreed to spell out `--patch` instead of `-p`, proposed deleting the `zdiff3` note because she could not write a compelling example, and declined Patrick Steinhardt's suggestion to add a sentence about always verifying merge results. Junio C Hamano responded that `apply -3` is itself a 3-way merge among the working tree state, the patch preimage, and the patch postimage.
+
+### Rerere lock waiting and credential lock timeout
+
+*Long thread (root 2026/09/02/08-31-37): 36 replies so far from 5 participants over 43 days; 4 messages that day.*
+
+Patrick Steinhardt agreed to mark Thomas Bachem's v8 series "rerere: wait for MERGE_RR.lock, but not in auto maintenance" ready for `next`; earlier, the series had been reworked so `setup_rerere()` waits up to `rerere.lockTimeout` milliseconds for the lock and auto-maintenance passes a hidden `--skip-locked` to `git rerere gc`. Separately, Okhuomon Ajayi submitted an Outreachy patch adding `credentialStore.lockTimeout` as the preferred setting for credential lock retries in `builtin/credential-store.c`, retaining `lockTimeoutMS` as a deprecated alias, after volunteering for the leftover task of giving the old name a synonym without the MS suffix.
+
+### CI housekeeping and modernizations
+
+*Long thread (root 2026/10/08/10-01-18): 31 replies so far from 6 participants over 7 days; 21 messages that day.*
+
+Patrick Steinhardt's eight-patch series fixes CI issues and moves jobs off EOL Docker images. Today he posted v3, adopting "linux-feature-testbed" for the renamed job after earlier discussion of names. Jeff King reviewed several points: whether the t5004 big-file test would still run once SHA-256 becomes the default (suggesting it create its own SHA-1 repo), a loose `*breaking-changes*)` pattern for the CI script, and whether the new linux-reftable-sha256 job adds coverage. Patrick Steinhardt answered that SHA-256 is part of breaking changes but reftables is not, so the new job does add coverage, and agreed to punt on pulling the ref storage format from build options. Junio C Hamano noted the v3 cover letter mislabels its changelog and backported the series onto v2.56.0 for `maint` CI.
+
+### Limited fetch for new remotes in shallow repositories
+
+*Long thread (root 2026/09/19/14-47-26): 31 replies so far from 4 participants over 26 days; 1 message that day.*
+
+Harald Nordgren's series avoids fetching every branch of a new remote in a shallow repository. Today he posted v9 of the five-patch series, moving the `do_fetch()` if/else-if/else split into the refmap-inference commit. The series adds a per-remote `remote.<name>.refmap` config variable, extracts a `collect_upstream_from_remote()` helper in remote.c, makes a refspec-less fetch infer what to fetch from local branches whose `@{upstream}` is on that remote, adds a `--limited-fetch` option to `git remote add`, and defaults to it when the repository is already shallow.
+
+### Object database files-backend cleanups for alternates
+
+*Long thread (root 2026/10/13/07-36-24): 14 replies so far from 3 participants over 2 days; 10 messages that day.*
+
+Patrick Steinhardt's series contains cleanups and improvements to the object database "files" backend now possible after migrating alternates into it. Today he posted v2, adding a fifth patch so corrupt objects are not re-fetched from a promisor remote, and agreed to fold Tyrie Vella's regression test into the first patch with a `Helped-by` trailer. Johannes Schindelin noted that patch fixes the same performance bug Microsoft Git had patched independently. Patrick Steinhardt also answered Justin Tobler's review questions about the `OBJECT_INFO_QUICK` fallback, the `local` flag, and `ODB_FOR_EACH_OBJECT_LOCAL_ONLY`, and Justin Tobler accepted the explanations.
+
 ## The day in brief
-The Git mailing list saw **159 emails** today, with key developments including:
-- **`git fast-import` crash fix** queued for `master` after four iterations.
-- **`git worktree repair` bugfix series** restructured into five focused patches, addressing Junio’s review.
-- **`git push` refspec matching** v2 series posted, targeting 10–100x speedups for large-scale deletions.
-- **`git fetch` matching-inspired mode** v9 series now technically complete, awaiting final maintainer feedback.
-- **`git stash` performance refactoring** v2 series expanded to seven patches, eliminating redundant index operations.
-- **CI housekeeping** v3 series modernizing GitHub Actions/GitLab CI configurations, with naming dispute resolved.
-- **`gitmergeconflicts(7)` documentation** finalized and merged to `next`.
-- **`git repo structure` revision filtering** v5 patch addressing all prior feedback, now very close to ready.
+
+Patrick Steinhardt agreed to mark the rerere lock-wait series ready for `next`, and Jon Simons posted a series cutting push refspec-matching time for 100 deletes against 100k advertised refs from seconds to ~0.15s. Documentation work also advanced, with Julia Evans accepting final review points on the new `gitmergeconflicts(7)` page, while Junio C Hamano said he will queue several small fixes.
 
 ## Notable threads
 
-### `git fast-import` crash fix (2026/10/10/17-24-38)
-**What changed?**
-Marc Becker’s four-iteration bugfix for `git fast-import` is now **queued for `master`**. The patch resolves a crash when resolving commits or tags created earlier in the same session but not yet reachable via the object database.
+### Faster client-side refspec matching in push
+Jon Simons posted v2 of a 12-patch series speeding up client-side refspec matching in push: pushing 100 delete refspecs to a server advertising 100k refs drops from ~2.5s from an empty client and ~6.6s from a mirror to ~0.15s-0.19s. The series reuses `match_parse_rule()` in `refname_match()`, converts linear ref traversals in remote.c to strmap lookups, plugs a send-pack memory leak, and adds tests and a p5516 benchmark.
 
-**Why it matters:**
-- **Critical correctness fix** for a niche but important code path used by tools like `git p4` and `git svn`.
-- **No regressions**: preserves existing behavior for objects outside the cache.
-- **Test coverage**: new tests in `t9300-fast-import.sh` for SHA-1 and SHA-256 repositories.
+### `core.indexLockTimeout` for waiting on the index lock
+Jun Wu's two-patch series adds `core.indexLockTimeout` so commands like `add` can wait for the index lock instead of failing, motivated by IDEs running `git status` periodically in the background. Today Jun Wu explained why `--no-optional-locks status` slows over time, Jeff King identified a pre-existing race in `commit` where the index is read before the lock is taken, and Jun Wu answered Junio C Hamano's questions about the read-before-lock skip rule and the default timeout.
 
-**Today’s delta:**
-- [2026/10/14/22-42-49] Junio: "Thanks. This round I have nothing more to add. Will queue."
+### Fewer index loads in stash creation
 
----
+Phillip Wood posted v2 of a seven-patch series removing redundant index loads and refreshes in `git stash push` and `git stash create`, cutting lstat() calls per changed path by eight and four respectively. Junio C Hamano reviewed, noting a commit message likely meant `do_push_stash()` rather than `do_stash_push()`, and asked for clearer commit-message structure in one patch.
 
-### `git worktree repair` bugfix (2026/09/13/03-20-11)
-**What changed?**
-Yoichi NAKAYAMA posted **v2 of the five-patch series** fixing a bug where `git worktree repair` could incorrectly modify unrelated worktrees. The series now splits the original refactoring into four smaller commits (patches 1–4) and retains the validation logic in patch 5.
+### Safer `git worktree repair`
+Yoichi NAKAYAMA posted v2 of a five-patch series making `git worktree repair` validate the cross-references between a linked working tree and its administrative data before repairing them, so it no longer modifies an unrelated `.git` file or gitdir. The patches align `.git` file handling with `repair_gitfile()`, centralize inferred backlink selection, and reduce `.git` file reads. Junio C Hamano reviewed the cover letter as a sensible progression of smaller pieces.
 
-**Why it matters:**
-- **Correctness fix**: prevents accidental corruption of unrelated worktrees (e.g., when worktree directories are manually swapped).
-- **Incremental refactoring**: addresses Junio’s feedback about commit splitting and error-handling consistency.
-- **Test coverage**: expanded `t/t2406-worktree-repair.sh` to verify stricter `.git` file parsing and validation logic.
-
-**Key patches:**
-1. [2026/10/14/21-20-32] Aligns `.git` file handling with `repair_gitfile()`.
-2. [2026/10/14/21-20-33] Centralizes inferred backlink selection logic.
-3. [2026/10/14/21-20-34] Ensures consistent `.git` file parsing in `infer_backlink()`.
-4. [2026/10/14/21-20-35] Reduces redundant `.git` file reads.
-5. [2026/10/14/21-20-36] Adds validation to prevent repairs on unrelated worktrees.
-
-**Today’s delta:**
-- [2026/10/14/22-46-53] Junio: "Makes more sense to have this series as a logical progression of smaller pieces compared to v1."
-
----
-
-### `git push` refspec matching speedup (2026/10/10/17-24-38)
-**What changed?**
-Jon Simons posted **v2 of the 12-patch series** speeding up refspec matching for large-scale deletions. The series replaces O(n²) linear traversals with `strmap` lookups, achieving **10–100x speedups** (e.g., 100 delete refspecs to a 100k-ref server drops from 2.5–8.9s to 0.15–0.19s).
-
-**Why it matters:**
-- **Performance fix**: addresses a real-world bottleneck in CI/CD pipelines.
-- **Correctness fixes**: resolves long-standing quirks in `refname_match()` and duplicate-destination handling.
-- **Test coverage**: new perf script (`t/perf/p5516-push-delete-refspec.sh`) and expanded test cases.
-
-**Key patches:**
-1. [2026/10/14/03-13-36] Adds input validation for `--force-with-lease`.
-2. [2026/10/14/03-13-37] Adds perf test script for baseline measurements.
-3. [2026/10/14/03-13-38] Removes `mkpath()` from `refname_match()`, delivering 55–82% of the speedup.
-4. [2026/10/14/03-13-43] Adds client-side rejection of duplicate destinations.
-5. [2026/10/14/03-13-47] Optimizes `--force-with-lease` overhead, reducing 100-lease timings from 0.45–0.49s to 0.16–0.19s.
-
-**Today’s delta:**
-- [2026/10/14/12-15-25] Patrick Steinhardt: Suggested a small correction to the error message in patch 3/12.
-
----
-
-### `git fetch` matching-inspired mode (2026/09/19/14-47-26)
-**What changed?**
-Harald Nordgren posted **v9 of the five-patch series** introducing a matching-inspired fetch mode for shallow repositories. The series is now **technically complete**, addressing Junio’s two review points from v8:
-1. Moved the `if/else if/else` control-flow reorganization from Patch 2/5 to Patch 3/5.
-2. Restored the NULL-check for `branch` in `collect_upstream_from_remote()`.
-
-**Why it matters:**
-- **Performance fix**: resolves slow/hanging `git fetch` operations in shallow repositories with many branches.
-- **Design consensus**: `remote.<name>.refmap` reuses Git’s existing `--refmap` mechanism.
-- **Test coverage**: 119 lines of new tests in `t/t5586-fetch-refmap.sh`.
-
-**Today’s delta:**
-- [2026/10/14/07-04-07] Cover letter: "All review concerns from prior versions remain resolved."
-
----
-
-### `git stash` performance refactoring (2026/10/05/16-35-29)
-**What changed?**
-Phillip Wood posted **v2 of the seven-patch series** refactoring `git stash` to eliminate redundant index loads and refreshes. The series now reduces `lstat()` calls per changed path by **4 for `create` and 8 for `push`**.
-
-**Why it matters:**
-- **Performance improvement**: measurable reduction in filesystem overhead.
-- **Code hygiene**: consolidates duplicate `check_changes()` calls and simplifies `reset_tree()`.
-- **Test coverage**: existing test suite verifies no regressions.
-
-**Key patches:**
-1. [2026/10/14/15-40-13] Introduces `enum create_result` to distinguish "no changes" from "nothing stashed."
-2. [2026/10/14/15-40-15] Eliminates a redundant `check_changes()` call in `do_push_stash()`.
-3. [2026/10/14/15-40-17] Replaces `reset_tree()` with `create_index_from_tree()` in `stash_working_tree()`.
-4. [2026/10/14/15-40-19] Simplifies `reset_tree()` by removing unused parameters.
-
-**Today’s delta:**
-- [2026/10/14/18-16-22] Junio: "The original is doubly bad" (approving patch 6/7).
-
----
-
-### CI housekeeping (2026/09/13/14-47-26)
-**What changed?**
-Patrick Steinhardt posted **v3 of the eight-patch series** modernizing Git’s CI configurations. The series resolves the naming dispute over the `linux-TEST-vars` job by renaming it to `linux-feature-testbed` (Junio’s preferred choice).
-
-**Why it matters:**
-- **Maintenance**: removes outdated dependencies (EOL Docker images, Python 2).
-- **Coverage**: preserves reftable/SHA-256 test coverage while simplifying configurations.
-- **Test reliability**: fixes a typo in `ci/run-build-and-tests.sh` that disabled breaking changes for the Fedora Meson job.
-
-**Key patches:**
-1. [2026/10/14/08-30-27] Adds `SHA1` prerequisite to skip a SHA-1-specific test in SHA-256 repositories.
-2. [2026/10/14/08-30-28] Fixes typo in `ci/run-build-and-tests.sh` (restores `WITH_BREAKING_CHANGES`).
-3. [2026/10/14/08-30-31] Renames `linux-TEST-vars` to `linux-feature-testbed`.
-4. [2026/10/14/08-30-34] Repurposes `linux-reftable` job to test reftable with SHA-256.
-
-**Today’s delta:**
-- [2026/10/14/14-28-00] Junio: "I've backported this to apply cleanly on top of Git v2.56.0 for potential `maint` integration."
-
----
-
-### `gitmergeconflicts(7)` documentation (2026/09/24/14-44-15)
-**What changed?**
-Julia Evans posted the **final updates** to the `gitmergeconflicts(7)` documentation series, incorporating Junio’s and Patrick Steinhardt’s feedback. The series is now **merged to `next`**.
-
-**Why it matters:**
-- **Usability**: centralizes merge conflict advice in a dedicated man page.
-- **Clarity**: improves explanations of "ours" vs. "theirs" and promotes `merge.conflictstyle=diff3`.
-- **Test coverage**: exhaustive list of commands that can cause conflicts (e.g., `git am -3`).
-
-**Today’s delta:**
-- [2026/10/14/19-24-13] Julia: "Will change to '30 days'" (reflog expiry period).
-- [2026/10/14/22-08-21] Junio: "Yes, `git am -3` is a three-way merge operation."
-
----
-
-### `git repo structure` revision filtering (2026/09/24/16-45-02)
-**What changed?**
-Mark C. Chu-Carroll posted **v5 of the single-patch series** adding revision filtering to `git repo structure`. The patch addresses all prior feedback, including:
-- Improved commit message motivation.
-- Restored the "empty repository" test.
-- Cleaned up control flow redundancies.
-
-**Why it matters:**
-- **Diagnostic tool**: enables targeted analysis of subsets of the object graph.
-- **Test coverage**: 208 lines of new tests for edge cases (e.g., overlapping includes/excludes).
-
-**Today’s delta:**
-- [2026/10/14/12-15-25] Patrick Steinhardt: "I'm now happy with the v5 patch."
+### Connectivity check with alternates in deepening fetches
+Igor Wiedler posted v2 fixing the connectivity check when alternates are present: `--alternate-refs` is now negated in both deepening and non-deepening fetches so the alternate's refs act as a boundary, and `odb_for_each_alternate_ref()` ignores refs of shallow and grafted alternates. This fixes a check that took 227s with a 7M-object alternate after a fetch receiving an empty pack.
 
 ## In brief
-- **`git fast-import` crash fix** (2026/10/10/19-29-38): v5 posted, addressing all prior feedback.
-- **`git describe` i18n** (2026/10/13/17-23-13): Jeff King: "obviously correct" but questions translating debug messages.
-- **`git pull --rebase` custom refspecs** (2026/10/13/16-01-09): Junio confirms the issue is real; no patch yet.
-- **`git log --follow` regression** (2026/10/13/07-36-24): Miklos Vajna acknowledges the 14× slowdown as a trade-off for correctness.
-- **`git stash` completion updates** (2026/10/06/16-41-34): D. Ben Knoble: "dynamically discover subcommands and correct a Zsh-specific formatting issue."
-- **Test modernization** (2026/10/14/07-26-46): Junio: "mentors should tell [contributors] to read the review exchanges on other candidates' patches."
-- **ODB alternates refactoring** (2026/10/13/13-55-01): v2 posted, addressing Justin Tobler’s error-handling feedback.
-- **Reftable backend bugfix** (2026/10/14/14-58-03): Matthew Suozzo adds bounds check to prevent buffer overflow.
-- **Files ref backend bugfix** (2026/10/14/15-32-08): Andy Koppe fixes loose ref cache inconsistency with root refs.
-- **Sequencer bugfix** (2026/10/14/16-58-24): Andy Koppe fixes ref-name clobbering in `--update-refs` logic.
-- **Pretty-printing bugfix** (2026/10/14/17-23-33): Andy Koppe fixes indentation loss after newline in `%w()` format.
+- Marc Becker posted v4 letting `fast-import`'s `from` reference new commits and tags by OID; Junio C Hamano said he will queue it.
+- **pack-check threshold fix**: Patrick Steinhardt proposed fixing a bogus `git-fsck` report when a packed blob equals `core.bigFileThreshold`; Junio C Hamano said "Will queue."
+
+- Andy Koppe fixed `add_decorations_to_list()` in sequencer.c clobbering the HEAD branch name when another branch on the same commit is checked out in a different worktree; Junio C Hamano will queue it.
+- Johannes Schindelin posted a five-patch series addressing Coverity overflow reports in archive-tar.c, http.c, wrapper.c, git-compat-util.h, and date.c.
+- Miklos Vajna discussed the `git log --follow` performance regression, saying the slowdown is partly expected from the new rename-following design.
+- Matthew Suozzo bounded an object record's offset count by its remaining length in `reftable_obj_record_decode()`.
+- Patrick Steinhardt reviewed v5 of the `repo structure` revision-filtering patch and is happy aside from a few nits.
+- Julia Evans agreed to Junio C Hamano's fixes for the detached-HEAD documentation rewrite.
+- Jeff King confirmed `make test-greplint` is slow and proposed an early-return optimization in t/greplint.pl.
+- Andy Koppe fixed root refs being omitted from `git for-each-ref --include-root-refs --merged=main` in the files backend.
+- Andy Koppe fixed lost indentation after a newline in the `%w()` pretty format.
+- Jeff King gave the "hostname:" includeIf series a cursory read and saw nothing to complain about.
