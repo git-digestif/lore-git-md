@@ -1,102 +1,71 @@
 # Git mailing list daily digest for 2026/10/13
 
+## Long threads
+
+### New `gitmergeconflicts(7)` manual page linked from merge-causing commands
+
+*Long thread (root 2026/09/24/14-44-15): 61 replies so far from 6 participants over 20 days; 2 messages that day.*
+
+Documentation work: Julia Evans's six-patch series adds a new `gitmergeconflicts(7)` man page explaining merge-conflict resolution with examples, and links to it from the `git-merge`, `git-rebase`, `git-revert`, `git-cherry-pick`, and `git-pull` docs instead of re-explaining the process in each. Today Patrick Steinhardt reviewed the page and said he is happy with the version aside from a handful of nits: inconsistent bullet punctuation, a suggestion to always verify the result of a merge, spelling out `-p` as `--patch`, and wording around zdiff3 and "ours"/"theirs". He also noted the `git-cherry-pick` patch's commit message is inaccurate because it claims to remove the merge-conflict discussion when the patch actually replaces it with a link to the new guide. Earlier, v3 of the series had been posted after Junio C Hamano's detailed reviews, which had objected to author-added `Reviewed-by` trailers and proposed rewordings that v3 incorporated.
+
+### `uploadpack.lazyFetchTrusted` config for server-side lazy fetch control
+
+*Long thread (root 2026/07/10/08-51-34): 37 replies so far from 3 participants over 96 days; 1 message that day.*
+
+Server-side fetch work in `upload-pack.c`, `promisor-remote.c`, and `setup.c`: Christian Couder's series introduces the protected `uploadpack.lazyFetchTrusted` config variable so server operators can mark repositories whose promisor remotes, configuration, and hooks are trusted for lazy fetching during clone and fetch responses, addressing the failure where a server using large-object promisors cannot serve blobs in the gap between the client's filter and the promisor threshold. Today Junio C Hamano marked the topic ready for `next`. Earlier, v5 had been rebased onto Git 2.56 with documentation and test updates, and Couder had agreed with Hamano that the mostly-refactoring series was worth marking for `next` without waiting for more reviews.
+
+### rerere waiting for `MERGE_RR.lock` outside auto maintenance
+
+*Long thread (root 2026/09/02/08-31-37): 33 replies so far from 4 participants over 42 days; 4 messages that day.*
+
+A fix in `rerere.c` and the maintenance path: Thomas Bachem's two-patch series makes `setup_rerere()` wait up to `rerere.lockTimeout` milliseconds (default 1000) for `MERGE_RR.lock` so a rebase hitting a conflict while a background `git rerere gc` holds the lock no longer dies, and adds a hidden `--skip-locked` to `git rerere gc` that auto maintenance passes so a background gc does nothing while the lock is held. Today Bachem posted v8 with the agreed test and wording changes, Patrick Steinhardt retracted his earlier suggestion of a separate `enum rerere_gc_flags` in favor of reusing `RERERE_NOWAIT` and called v8 "in a good enough state by now", and Junio C Hamano asked whether the topic should now be marked ready for `next`. Earlier, v7 had dropped the conflict-go-on patch and adopted the lock-wait design after review.
+
+### `git branch --delete-merged` detecting squash-merged branches
+
+*Long thread (root 2026/09/29/07-30-30): 30 replies so far from 5 participants over 15 days; 1 message that day.*
+
+A change to `builtin/branch.c`: Harald Nordgren's series makes `--delete-merged` treat a branch as merged when some upstream commit since the fork point contains all of its changes, naming that commit as "landed as" in the output, and adds `--no-squashed` to skip the slower squash search. Today Junio C Hamano said that after further thought he was no longer sure of his earlier suggestions: he argued `--delete-merged` should remain a stable, strict check deleting only branches whose commits were merged and saved upstream, with a separate `--delete-irrelevant` removing branches made irrelevant by similar upstream work. Earlier, v2 had been posted with per-upstream-commit diffing shared across branches, and reviewers had debated patch-ID versus tree comparison, rename detection, and partial-clone costs.
+
+### CI annotations naming the failing test script and line
+
+*Long thread (root 2026/09/25/18-54-03): 25 replies so far from 4 participants over 19 days; 1 message that day.*
+
+CI work in `t/test-lib-github-workflow-markup.sh`: Harald Nordgren's series links failure and leak annotations in GitHub Actions to the test script, showing the file and line as plain text in the annotation (direct links fail for files unchanged in the PR) and adding `--immediate` to leak-sanitizer jobs so they stop at the first failure with the sanitizer report in a log group. Today Junio C Hamano marked the topic ready for `next`. Earlier, the series had gone through revisions reverting direct file/line linking after Phillip Wood showed the links do not navigate for unchanged files, and Wood had said "Lets get this merged!".
+
 ## The day in brief
-The Git mailing list saw significant activity around platform compatibility fixes for macOS, performance optimizations in the object database, and usability improvements in commands like `git blame` and `git checkout`. Key developments include Junio's scrutiny of a CRLF conversion fix for macOS, Patrick Steinhardt's ODB alternates refactoring series receiving positive reviews, and the `git blame` default ignore-revs feature being approved for `next`. Several Outreachy microprojects were also submitted, focusing on i18n improvements and test modernization.
+Three topics were marked ready for `next` today: the `uploadpack.lazyFetchTrusted` server config, the `history` signing options, and the CI annotation improvements. Meanwhile Junio C Hamano reopened the design of squash-merge detection in `branch --delete-merged`, and Patrick Steinhardt delivered final nits on the new merge-conflicts manual page.
 
 ## Notable threads
 
-### macOS CRLF conversion fix faces maintainer scrutiny
-**Thread root:** 2026/01/11/19-51-49
+### Signing rewritten commits in `git history`
+A change to the history-rewriting commands and replay machinery: the series adds a signing-key option to the replay API and exposes `-S`/`--gpg-sign[=<key-id>]` and `--no-gpg-sign` on `drop`, `fixup`, `reword`, `split`, and `squash`, so rewriting signed history no longer leaves the resulting commits unsigned; `commit.gpgSign` supplies the default and the last command-line option wins, matching rebase, cherry-pick, and revert. Today Junio C Hamano marked the topic ready for `next`, noting that at v3 it had already received a "looks good enough" that he had missed.
 
-Curtis Allen Smith's patch series addressing a CRLF conversion bug in macOS environments continues to evolve, with Junio C Hamano raising concerns about the patch's interaction with Git's racy Git logic and potential disruption of other performance trade-offs. The series, now at v5, fixes a long-standing issue where Git incorrectly reports modifications when external tools rewrite files with CRLF line endings after checkout.
+### Default `.git-blame-ignore-revs` for `git blame`
 
-The core debate remains unresolved: Johannes Sixt argues the fix should target `git add` to ensure the index records the correct post-conversion size, while Curtis maintains the fix belongs in index refresh operations. Junio's latest review signals deeper scrutiny is needed before the patch can progress.
+*Long thread (root 2026/09/11/23-29-44): 23 replies so far from 4 participants over 33 days; 6 messages that day.*
 
-**Key technical details:**
-- Affects commands that refresh the index (`git status`, `git rebase`, `git pull --rebase`)
-- Introduces `ce_modified_check_fs()` to verify size changes when conversion is active
-- Performance impact: 12 microseconds per modified 2.6 KB file in realistic scenarios
-- 45 new test lines in `t/t0020-crlf.sh` covering CRLF rewrites and lone-CR edge cases
+A change to `builtin/blame.c`: Ravi Mistry's series makes `git blame` and `git annotate` automatically use `.git-blame-ignore-revs` at the working-tree root (or `HEAD:.git-blame-ignore-revs` in bare repositories) without per-clone `blame.ignoreRevsFile` configuration. Today Mistry posted v5 reading the working-tree copy in non-bare repositories for ergonomics, then v6 after Junio C Hamano's review, passing the list string through `build_ignorelist()` into `parse_default_ignore_revs()` and setting `->util = (void *)1` with an explanatory comment; Hamano approved the v6 design as "Very cleanly done" and said he would replace the previous version unless objections arrived.
 
-### ODB alternates refactoring series receives positive reviews
-**Thread root:** 2026/10/13/07-36-24
+### `checkout -m` recreating original conflict labels
 
-Patrick Steinhardt's five-patch series refactoring and optimizing alternates handling in the Git object database's "files" backend received substantive reviews from Justin Tobler. The series addresses performance inefficiencies in reading and streaming objects when alternates are present, with the first patch achieving a 2x speedup in object lookup.
+*Long thread (root 2026/09/30/09-48-47): 22 replies so far from 3 participants over 14 days; 3 messages that day.*
 
-Justin's reviews confirmed the technical rationale and implementation for all five patches, endorsing the design decision to handle optimizations within the "files" backend rather than introducing new ODB flags. While minor questions were raised about error handling and abstraction boundaries, the series appears ready to progress.
+A change to the merge-ort machinery and `builtin/checkout.c`: Phillip Wood's series teaches merge-ort to write conflict labels to `.git/MERGE_LABELS` when switching to a conflicted result so `git checkout -m <path>` reuses the original labels instead of "base"/"ours"/"theirs". Today Wood posted v4, adding a patch authored by Junio C Hamano (from a lightly edited version of his earlier diff) that caches merge config settings and conflict labels once per invocation, and Hamano reviewed v4 as sensible and said he will replace the previous version.
 
-**Key technical details:**
-- Reorders loops to prioritize packfile checks over loose-object `stat()` calls
-- Moves second object read logic into the "files" backend
-- Removes redundant read loop in `do_oid_object_info_extended()`
-- Drops the `local` flag from the generic ODB source struct
-- Net reduction of 42 lines across 12 files
+### `read-cache` size shortcut with active conversion
 
-### `git blame` default ignore-revs feature approved for `next`
-**Thread root:** 2026/09/11/23-29-44
+*Long thread (root 2026/01/11/19-51-49): 10 replies so far from 7 participants over 276 days; 10 messages that day.*
 
-Ravi Mistry's patch series making `git blame` automatically use `.git-blame-ignore-revs` as the default ignore-revs file when no explicit file is configured has been approved for the `next` branch. The series, now at v6, addresses all prior feedback and aligns local behavior with hosting platforms like GitHub and GitLab.
+A fix in `read-cache.c`'s `ie_modified()`: Curtis Smith's patch stops treating a working-tree size change as proof of modification when the path is subject to conversion (text/eol attributes, `core.autocrlf`, clean filters), where different bytes can convert to the same blob -- the case where `git status` reports a file modified while `git diff` and `git add` see no change. Today Smith posted v4 and v5 with the fix inlined, new `t0020-crlf.sh` tests, and benchmarks, after clarifying with Torsten Bögershausen that they are not collaborating off-list; Junio C Hamano corrected the commit message's "nothing to commit" wording and warned the new tests may hit racy-git comparison paths.
 
-Junio praised the v6 implementation as "very cleanly done," particularly the removal of a "cute hack" in favor of clearer code using `.util = (void *)1` with an explanatory comment. The series includes security hardening to handle upstream-controlled content safely, with NUL-byte rejection, promisor fetch prevention, and a 100MB size cap.
-
-**Key technical details:**
-- Reads working-tree file in non-bare repositories (matching `.mailmap` behavior)
-- Falls back to `HEAD:.git-blame-ignore-revs` in bare repositories
-- User-configured ignore files take precedence over the default
-- 233 new test lines in `t/t8013-blame-ignore-revs.sh`
-
-### `rerere` race condition fix queued for integration
-**Thread root:** 2026/09/02/08-31-37
-
-Thomas Bachem's two-patch series fixing a race condition in the `rerere` subsystem has been queued for integration in the `next` branch. The series introduces a configurable timeout (`rerere.lockTimeout`) for non-maintenance callers and a `--skip-locked` mode for `git rerere gc` that skips silently when the lock is held.
-
-The v8 series incorporates all remaining feedback, including Junio's request to remove redundant documentation about lock behavior and Patrick Steinhardt's suggestion to revert to a shared `RERERE_NOWAIT` flag instead of introducing a dedicated enum. The series addresses a long-standing locking flaw exacerbated by the geometric maintenance strategy introduced in Git 2.54.
-
-**Key technical details:**
-- Configurable timeout (`rerere.lockTimeout`, default 1000 ms)
-- `--skip-locked` mode for `git rerere gc` (hidden/undocumented)
-- Test coverage in `t/t4200-rerere.sh` and `t7900-maintenance.sh`
-- Conservative design: fails outright if the lock remains held after timeout
-
-### Incremental connectivity check series faces design questions
-**Thread root:** 2026/09/14/09-47-54
-
-Kristofer Karlsson's series introducing an opt-in incremental connectivity check (`transfer.connectivityCheck=incremental`) continues to face design questions. The feature aims to reduce the cost of verifying object connectivity during fetches and pushes by processing incoming commits in topological order.
-
-Junio has signaled strong interest in the feature but raised questions about a potential dynamic fallback mechanism for very long incoming histories. SZEDER Gábor confirmed a performance regression in `git log --follow`, showing a 14× slowdown in the Linux kernel repository, which may inform the connectivity check design.
-
-**Key technical details:**
-- New config key: `transfer.connectivityCheck=incremental`
-- New internal `rev-list` flag: `--verify-trees-incremental`
-- 316-line implementation in `tree-verify.c`
-- Up to 190x speedup for small pushes to large repos
+### Letting OpenSSL verify hostnames in `imap-send`
+A change to `imap-send.c`: Beat Bolli's patch replaces Git's own hostname verification with OpenSSL's. Today Patrick Steinhardt reviewed it, warning that relying solely on `SSL_get_verify_result()` permits a MITM attack that strips the certificate since `X509_V_OK` can be returned without a peer certificate, so the `SSL_get_peer_certificate()` call must be retained; he also questioned the `X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS` choice, asked for an introduction and a minimum-OpenSSL note, and asked whether hostname-verification tests exist.
 
 ## In brief
-
-- **`git fast-import` crash fix:** Marc Becker's patch fixing a crash when resolving unreachable in-session commits received maintainer feedback requesting commit message clarifications and test hygiene improvements. [2026/10/08/10-01-18]
-
-- **`git repo structure` revision filtering:** Mark C. Chu-Carroll's patch adding revision-based filtering to `git repo structure` continues to face questions about revision-parsing defaults and test coverage for trees/blobs. [2026/09/28/23-43-49]
-
-- **`includeIf.hostname` implementation:** Isabella Caselli's series implementing `includeIf.hostname:<pattern>` for Git's configuration system is ready for final review, with all prior feedback addressed. [2026/09/11/23-29-44]
-
-- **`git mergeconflicts` documentation:** Julia Evans's documentation series introducing `gitmergeconflicts(7)` received polish-only feedback from Junio, who provided a squashable patch to revise the `diff3` example. [2026/09/24/16-45-02]
-
-- **`git repack` regression fix:** Siddharth Shrimali's patch fixing a regression in `git repack --drop-filtered --dry-run` is queued for integration, with Patrick Steinhardt noting a potential follow-up cleanup. [2026/09/28/23-43-49]
-
-- **`git log --follow` performance regression:** Patrick Steinhardt forwarded a user report of a severe slowdown in `git log --stat --follow`, bisected to commit 304812ed33. SZEDER Gábor confirmed the regression and isolated the bottleneck. [2026/10/13/13-55-01]
-
-- **Outreachy microprojects:** Several Outreachy applicants submitted microprojects, including pluralization fixes for `git describe` and `delta-islands.c`, and test modernization in `t0081-find-pack.sh` and `t2030-unresolve-info.sh`. [2026/10/13/14-25-29, 2026/10/13/16-44-19, 2026/10/13/10-37-16, 2026/10/13/15-04-50]
-
-- **Index lock timeout feature:** Jun Wu's series adding a configurable timeout (`core.indexLockTimeout`) for Git's index lock received substantive feedback from D. Ben Knoble and Junio, focusing on the performance rationale and race-avoidance logic. [2026/10/13/17-23-13]
-
-- **`git log --graph` rendering bug:** herr.kaste reported a rendering error in `git log --graph --all --oneline` where an orphaned commit is drawn with a spurious parent connection. [2026/10/13/19-00-00]
-
-- **`git log` completion:** Mirko Faina added shell completion support for `--graph-indent` and `--no-graph-indent` to `git log`. [2026/10/13/19-50-49]
-
-- **`git fetch` regression fix:** Rong Bao posted a patch fixing a regression in `git fetch --all --depth=<n>` and `git fetch --all --unshallow` where the flags are not forwarded to fetcher subprocesses. [2026/10/13/14-44-39]
-
-- **`git pull --rebase` and custom refspecs:** jyotish kumar raised a concern about `git pull --rebase` miscomputing the fork-point when custom fetch refspecs are configured. [2026/10/13/16-01-09]
-
-- **CI housekeeping updates:** Patrick Steinhardt's CI housekeeping series continues to face a naming dispute for the `linux-TEST-vars` job, with Junio proposing 14 alternative names. [2026/10/07/14-52-01]
-
-- **fsmonitor bug report:** Erik Cervin-Edin reported a bug in the Linux fsmonitor daemon where it fails to track edits in renamed directories. [2026/10/13/13-39-28]
+- SZEDER Gábor reproduced a `git log --follow` performance regression (8.8s vs 3.3s) and traced 4.45s of the runtime to `propagate_follow_pathspec_to_parent()` on second..N-th parents of merge commits.
+- Rong Bao fixed `git fetch --all --depth=` and `--all --unshallow` not deepening shallow clones by passing `--depth` to the fetcher subprocess in `builtin/fetch.c`.
+- Jun Wu proposed `core.indexLockTimeout` (default 1s) so commands like `add` wait for the index lock; D. Ben Knoble and Junio C Hamano questioned the cover letter and the trade-offs.
+- Erik Cervin-Edin reported the Linux fsmonitor daemon deterministically missing edits in subdirectories of a renamed directory because `add_watch()` returns early on EEXIST.
+- Patrick Steinhardt posted five `odb/files` alternates cleanups, including packfiles-before-loose-objects reads benchmarked 1.89x faster; Justin Tobler reviewed all five positively.
+- Mark C. Chu-Carroll posted v5 of revision filtering for `git repo structure`, after Patrick Steinhardt insisted the no-args command succeed on empty repositories.
+- Kristofer Karlsson discussed the incremental connectivity check, planning to experiment with removing the global repository dependency and asking about a safety-net fallback for large pushes.
