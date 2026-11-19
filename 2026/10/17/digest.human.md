@@ -1,58 +1,39 @@
 # Git mailing list daily digest for 2026/10/17
 
+## Long threads
+
+### branch: let --delete-merged find squash merged branches
+
+*Long thread: 31 replies so far from 5 participants over 19 days; 1 message that day.*
+
+This series changes `git branch --delete-merged` so that branches merged on GitHub with "Squash and merge" or "Rebase and merge" are treated as merged when some upstream commit contains all of their changes, naming that commit in the output as "landed as". The v2 reroll diffs each upstream commit once and shares the result between all branches, fixes a branch merged with a merge commit being misreported when another branch was searched first, and adds `--no-squashed` to skip the squash search. Earlier, Phillip Wood and Junio C Hamano pressed for a clear account of the detection tradeoffs, and Junio proposed that `--delete-merged` stay a strict reachability check while a separate `--delete-irrelevant` would remove branches made irrelevant by similar upstream work. Today Harald Nordgren argued the feature should focus on the case of his own work being slightly mangled by a squash or merge: he would be very surprised if his branch were deleted because someone else wrote almost the same code in parallel, and he sees no reason to keep a branch once it is picked up by the mainline, regardless of whether it arrived via squash, merge, or preserved commit hash.
+
 ## The day in brief
-The Git mailing list saw significant activity around performance fixes, refactoring efforts, and design discussions. A critical performance regression in shallow fetches over protocol v2 was identified and fixed, while the ongoing `the_repository` removal effort advanced with several patches. Design debates continued around branch management features, particularly `git branch --delete-merged` and its handling of squash merges and gone upstreams. Several Outreachy applicants introduced themselves, seeking microprojects in the parse-options subsystem.
+
+Jun Wu rerolled the series that makes index-writing commands wait briefly for the index lock via a new `core.indexLockTimeout`, Yoichi NAKAYAMA posted v3 of the worktree-repair hardening series, and Harald Nordgren submitted a patch fixing slow protocol v2 fetches from shallow repositories.
 
 ## Notable threads
 
-### Performance fix for shallow fetches over protocol v2
-**[2026/10/17/22-11-46 by Harald Nordgren]**
-Harald Nordgren posted a patch to fix a severe performance regression in `git fetch` from shallow repositories over protocol v2. The issue causes fetches to take minutes instead of seconds due to inefficient history traversal when advertising shallow commits. The fix aligns protocol v2 behavior with protocol v0 by directly advertising shallow grafts when no specific depth is requested, avoiding redundant traversal. Harald reports the fix reduces fetch time from 7 minutes to 1 second in a repository with 900k commits. The patch touches `shallow.c` and `upload-pack.c` and is marked as RFC, seeking feedback on correctness.
+### upload-pack: fix slow fetches from a shallow repository
 
-This fix addresses a real-world performance problem that likely affects users of large, shallow repositories. The minimal diff (4 insertions, 4 deletions) suggests a targeted solution, but the RFC status indicates the author wants to ensure the approach doesn't introduce edge cases in other shallow-fetch scenarios.
+Harald Nordgren submitted a patch/RFC fixing fetches from a shallow repository hanging over protocol v2: in a clone with 900k commits, fetching one new commit took 7 minutes over v2 versus about a second over v0, because the server walks its whole history to work out which shallow commits to advertise. The patch makes `upload-pack` advertise all shallow grafts when the client does not request a depth, as v0 does; this also makes `git clone --reject-shallow` refuse a shallow repository over v2 in every case and lets `git fetch --unshallow` visit each commit only once.
 
-### `git branch --delete-merged`: squash merge detection debate
-**[2026/10/17/22-23-11 by Harald Nordgren]**
-Harald Nordgren pushed back against Junio C Hamano's proposal to split `git branch --delete-merged` into two distinct options: a strict `--delete-merged` (tip-reachability only) and a looser `--delete-irrelevant` (change-based detection for rebases, squash merges, and cherry-picks). Harald argues that once a branch's changes are upstream—regardless of integration method—the branch is no longer needed, and users can recover the work from the mainline if necessary. This pragmatic stance prioritizes workflow efficiency over the safety concerns Junio raised about ambiguous cases (e.g., independently solved problems).
+### Wait for the index lock instead of failing
 
-The debate highlights a fundamental tension in Git's design philosophy: should commands prioritize strict correctness and predictability, or should they adapt to real-world workflows where integration methods vary? The discussion remains unresolved, with no clear consensus on whether to adopt Junio's proposed CLI split or proceed with Harald's unified approach.
+Jun Wu posted [PATCH v2 0/4], adding `core.indexLockTimeout` (default 1s; 0 disables retry, -1 waits indefinitely) so commands like `git add`, `git checkout` and `git commit` wait briefly for the index lock instead of failing immediately when another process, often a periodic `git status` from an IDE, holds it. The series adds `repo_try_hold_locked_index()` for optional-lock users such as `git status`, and fixes write races in `commit` and `reset` (except `--soft`) by reordering from "read -> lock -> write" to "lock -> read -> write" so they qualify for the wait behavior.
 
-### Configurable index lock timeout for IDE workflows
-**[2026/10/17/07-32-27 by Jun Wu]**
-Jun Wu posted v2 of a series introducing a configurable timeout (`core.indexLockTimeout`) for Git's index lock, addressing lock contention between background IDE `git status` calls and user-initiated commands. The v2 series expands the scope to fix pre-existing write-race conditions in `git commit` and `git reset`, which could silently discard concurrent index updates. The series now includes four patches: a mechanical refactoring, the core timeout logic, and race fixes for `commit` and `reset`.
+### worktree repair: avoid breaking unrelated .git file and gitdir
 
-The default timeout (1 second) remains open to debate, but the implementation is conservative, skipping the timeout for commands that read the index before locking to avoid amplifying race windows. The series is well-structured and addresses prior feedback, making it a strong candidate for integration. Users frustrated by lock contention in IDE workflows should find this series particularly valuable.
-
-### `git repo structure`: SHA-256 compatibility issue in tests
-**[2026/10/17/03-59-41 by Junio C Hamano]**
-Junio C Hamano identified a SHA-256 compatibility issue in the new test for the `git repo structure` revision-filtering feature. The test hardcodes 40-character SHA-1 object IDs and will fail when Git defaults to SHA-256 in version 3.0. Junio suggests either guarding the test with a `SHA1` prerequisite or rewriting it to be hash-agnostic, citing a recent example (`pull.2252.v4`) as inspiration. The patch is otherwise ready for merging, with Patrick Steinhardt's sign-off confirming it is procedurally clean.
-
-This issue underscores the importance of forward-compatible testing as Git transitions to SHA-256. The author's response will determine whether the fix is a simple prerequisite addition or a more involved hash-agnostic rewrite. The patch's readiness for integration depends on resolving this test compatibility issue.
-
-### `git worktree repair`: v3 series with robust path handling
-**[2026/10/17/12-54-57 by Yoichi NAKAYAMA via GitGitGadget]**
-Yoichi NAKAYAMA posted v3 of a five-patch series fixing a bug in `git worktree repair` where the command could incorrectly modify `.git` files or gitdirs belonging to unrelated worktrees. The v3 update addresses Junio C Hamano's review feedback by hardening the `get_worktree_id()` helper to handle non-canonical path separators (backslashes, duplicate slashes) in `.git` file contents. The series now includes test cases for `.git` files with extra separators and Windows-style backslashes, ensuring robust validation across platforms.
-
-The series is narrowly scoped to `worktree.c` and the associated test script, with no changes to on-disk formats or user-visible behavior beyond the intended bugfix. The refactoring in patches 1–4 improves code clarity and reduces redundant file I/O, while patch 5/5 introduces the validation logic that prevents the original issue. The series is now ready for broader review or integration, though it has not yet been queued in `seen` or `next`.
-
-### `git imap-send`: OpenSSL compatibility and correctness fixes
-**[2026/10/17/10-09-54 by Beat Bolli]**
-Beat Bolli posted v3 of a three-patch series addressing OpenSSL compatibility and correctness in `git imap-send`. The series replaces deprecated APIs (`SSLv23_method()` → `TLS_method()`) and rewrites manual hostname verification to use OpenSSL's built-in `SSL_set1_host()` API. However, patch 2/3 introduces two critical regressions: a **security regression** (certificate stripping) and an **error reporting regression** (loss of hostname-specific error messages). The series remains blocked until these issues are resolved.
-
-The v3 series includes a new patch (3/3) implementing Xiangfei Ding's proposed verification callback to restore lost error context, but it does not address the security regression. Patrick Steinhardt's review identified both regressions and highlighted the lack of test coverage for this security-sensitive code path. The series is not ready for merging in its current form, and the next iteration will need to restore the `SSL_get_peer_certificate()` check and ensure error messages remain informative.
-
-### Outreachy applicants introduce themselves
-**[2026/10/17/09-34-59 by Muritala Mudi]**
-Several Outreachy applicants introduced themselves, seeking microprojects in the parse-options subsystem. Muritala Mudi completed initial onboarding steps (building Git, running `parse-options` tests, following *MyFirstContribution*) and is now seeking guidance on a microproject. The parse-options subsystem is a common target for Outreachy contributions, as it offers well-scoped, mechanical refactoring opportunities that help new contributors become familiar with Git's codebase and contribution process.
-
-These introductions signal the start of a new contributor engagement cycle, with established contributors likely to follow up with microproject suggestions and mentorship.
+Yoichi NAKAYAMA posted [PATCH v3 0/5] hardening `git worktree repair` in `worktree.c`, which previously did not sufficiently validate the cross-references between a linked working tree and its administrative data and could modify the wrong `.git` file or gitdir. V3 makes the separator check in `get_worktree_id()` more lenient; the final patch validates the worktree ID in `repair_gitfile()` to report "unrelated .git file" and skip repair on mismatch, stops `repair_worktree_at_path()` when the gitdir path cannot be inferred, and rewrites `get_worktree_id()` to skip trailing and repeated separators and accept both `/` and `\` before "worktrees".
 
 ## In brief
-- **[2026/10/17/16-43-05 by Kristoffer Haugsbakk]** Confirmed his `git symbolic-ref refs/H HEAD` workaround meets his needs and does not oppose stricter validation of `@` as a branch name.
-- **[2026/10/17/04-10-04 by Junio C Hamano]** Rejected Simon Richter's `off_t` suggestion for `http.c`'s `posn` variable, reinforcing `size_t` on memory-safety grounds.
-- **[2026/10/17/16-34-13 by Kristoffer Haugsbakk]** Clarified that `git diff-tree -z` uses separators, not terminators, making it unsuitable for incremental parsing in scripts.
-- **[2026/10/17/00-35-25 by DonQuinleone]** Proposed `--into <ref>` modifier for `git branch --delete-merged` to handle branches with gone upstreams.
-- **[2026/10/17/06-40-39 by Ammaar Bakshi via GitGitGadget]** Fixed missing `_()` wrapper for `git difftool --dir-diff` error message, enabling translation.
-- **[2026/10/17/10-52-43 by Okhuomon Ajayi]** Refactored `merge-blobs.c` to stop using `the_repository`, advancing the ongoing removal effort.
-- **[2026/10/17/15-17-02 by Gingrspacecadet]** Reported a crash in `git apply --check` with assertion `patch->is_new <= 0` when processing a new-file patch.
-- **[2026/10/17/22-53-26 by Okhuomon Ajayi]** Refactored `checkout.c` to pass repository parameter in `unique_tracking_name()`, advancing the `the_repository` removal effort.
+
+- Andy Koppe's [PATCH v2] keeps root refs such as `HEAD` and `ORIG_HEAD` out of the files backend's loose ref cache, reading them into a temporary cache only when `REFS_FOR_EACH_INCLUDE_ROOT_REFS` is requested, fixing `git for-each-ref --include-root-refs --merged=main` silently omitting merged root refs; it also corrects the `--include-root-refs` documentation, which had wrongly claimed pseudorefs are listed.
+- **Beat Bolli posted [PATCH v3] imap-send TLS updates**: Patches 1-2 replace deprecated SSLv23_method() with TLS_method() and use OpenSSL's built-in hostname verification (since 1.1.0); patch 3 adds defines for OpenSSL 4.0's SSL_set1_dnsname().
+
+- Gingrspacecadet reported that `git apply --check` crashes with "Assertion `patch->is_new <= 0' failed" at `apply.c:3856` when checking a patch that creates a new file, on git 2.54.0.
+- On the report that `git checkout -b @`, `git switch -c @` and `git branch @` create a branch named `@` despite `check-ref-format` rejecting it, Kristoffer Haugsbakk said deprecating `@` as a `HEAD` synonym would not affect him, and Junio C Hamano agreed such removal would not happen given Git's inertia around long-standing features.
+- Junio C Hamano reported that the new test in `t/t1901-repo-structure.sh` is broken with SHA-256 and in Git 3.0 because it hardcodes SHA-1-specific 40-hex-digit constants, suggesting either shared test code across hash algorithms or a SHA1 prerequisite.
+- DonQuinleone proposed an RFC extending `git branch --delete-merged` to delete gone-upstream branches only when their tip is reachable from an explicitly named ref, presenting a `--into <ref>` modifier and composable `--upstream-gone`/`--merged=` filters, and asking which shape the list prefers.
+- Andy Koppe posted [PATCH v2] fixing `strbuf_add_wrapped_text()` in `utf8.c` losing one column of indentation after a hard line break in `%w()`, with a new test and dedicated `%w` documentation.
+- Kristoffer Haugsbakk corrected his earlier claim that `git diff-tree` lacks NUL support for pretty printing, and suggested a `--use-terminator` option for commands using `log-tree.c` so `git diff-tree` could serve piecemeal consumers like `git format-rev --stdin-mode=revs`.
