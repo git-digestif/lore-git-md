@@ -1,100 +1,66 @@
 # Git mailing list daily digest for 2026/10/01
 
-## The day in brief
-The Git mailing list saw significant activity around **bugfixes for long-standing regressions**, including a `filter-branch` commit mapping inversion and a reference-transaction hook OID reporting issue. **Documentation improvements** advanced with new conflict-resolution guidance and tutorial modernization discussions. **Performance optimizations** for packed-refs and CI failure reporting were refined, while **new features** like `@{p}` shorthand and stash sharing workflows were proposed. The maintainer’s "What’s cooking" report highlighted progress toward Git 3.0, with nine topics graduating to `master`.
+## Long threads
 
----
+### stash: in-core index merge for `stash apply --index`
+
+*Long thread (root 2026/09/19/21-26-34): 53 replies so far from 5 participants over 13 days; 2 messages that day.*
+
+D. Ben Knoble's series fixes a bug in the interaction between autostashing, staged index entries, and `stash.index=true`, where `git stash apply --index` used a subprocess dance of `git diff-tree`, `git apply --cached`, and `git reset`. The latest revision replaces that with an in-core `merge_incore_nonrecursive()` call in `builtin/stash.c`, with a tri-state check distinguishing `result.clean < 0` (hard error) from `!result.clean` (conflict). Earlier rounds drew review on a NULL-dereference risk and a t5520 reflog-expiry interaction. Today Phillip Wood confirmed the v5 range-diff looks as expected and expressed pleasure at removing subprocesses from `git stash`, and Junio C Hamano said the series looks very good to him and marked it for `next`.
+
+### refs: report old values to reference-transaction hooks
+
+*Long thread (root 2026/09/19/13-34-15): 29 replies so far from 5 participants over 13 days; 1 message that day.*
+
+Maciej Ciemborowicz's v6 fixes reference-transaction hooks reporting an all-zero old OID for unconditional updates with a single change in the common transaction layer in `refs.c`, resolving old values for the hook before "preparing" and refreshing them after the backend locks the refs, only when a hook exists; earlier versions had taken a caller-specific three-patch approach that reviewers argued was the wrong layer. Today Maciej lowered the priority of the bug after resolving his branch and tag deletion issues using data returned by the transaction in the prepared state, identified branch renaming as the remaining issue he cannot reasonably address without this fix, and asked for more attention to that bug.
+
+### rerere: wait for MERGE_RR.lock and skip a held lock in auto gc
+
+*Long thread (root 2026/09/02/08-31-37): 23 replies so far from 4 participants over 30 days; 2 messages that day.*
+
+Thomas Bachem's series makes every rerere writer wait `rerere.lockTimeout` for `MERGE_RR.lock`, adds a skip for auto-maintenance gc, and lets conflict-time callers warn and go on. Patrick Steinhardt had proposed renaming the option to `--skip-locked` as a hidden, undocumented flag. Today Thomas agreed to remove caller documentation from git-rerere(1), rename the option to `--skip-locked`, rename patch 3's `RERERE_SKIP_LOCKED` flag to `RERERE_WARN_LOCKED`, and reported that calling `rerere_gc()` directly from `builtin/gc.c` would die with exit code 128 on a held lock instead of reporting a failed maintenance task, so he plans to keep the option; Patrick agreed to keep the hidden option.
+
+### Documentation: new gitmergeconflicts man page
+
+*Long thread (root 2026/09/24/14-44-15): 23 replies so far from 6 participants over 8 days; 2 messages that day.*
+
+Julia Evans's series adds `Documentation/gitmergeconflicts.adoc`, a guide to resolving merge conflicts, and links it from `git-merge`, `git-cherry-pick`, `git-rebase`, `git-revert`, and `git-pull`. Today Patrick Steinhardt proposed extending conflict-marker labels to include the commit ID, commit message, and date, arguing it would spare users from learning refs like `MERGE_HEAD`; he said he would open a GitLab issue to have someone try it, and agreed `merge.conflictstyle=diff3` should become the default. Julia Evans endorsed including dates and commit messages as very helpful.
+
+### xdiff: use size_t for mmfile_t and consolidate mmbuffer_t
+
+*Long thread (root 2026/09/29/06-49-35): 21 replies so far from 4 participants over 3 days; 4 messages that day.*
+
+Jeff King's v2 series cleans up `read_mmfile()` error handling, replaces `mmbuffer_t` with `mmfile_t`, switches buffer sizes to `size_t`, NUL-terminates buffers, and makes `merge-ll` use `read_mmfile()` for external merge results, reporting an error when the read fails. Today Patrick Steinhardt flagged a commit-message nit on the NUL-termination patch and said "Okay" on the `merge-ll` patch, and Junio C Hamano accepted keeping the name `mmfile_t` and agreed the error-reporting fix is much easier after the `read_mmfile()` switch because there is a single spot to error-check.
+
+## The day in brief
+
+Junio C Hamano marked D. Ben Knoble's in-core index merge for `git stash apply --index` for `next` and said he will mark Patrick Steinhardt's reftable reflog-timezone fix for `next`. Separately, Coy Geek reported that merge-ort's `--no-overwrite-ignore` protection is bypassed when directory rename detection targets an ignored file, and Patrick Steinhardt confirmed the delta-base cache as the cause of a submodule merge bug.
 
 ## Notable threads
 
-### 1. `filter-branch`: Fix commit mapping inversion with `--state-branch`
-**What changed?**
-Grant Moyer’s v2 patch fixes a regression introduced in Git 2.50.0 where `git filter-branch --state-branch` stored commit mappings in "from_commit:to_commit" format but read them back as "to_commit:from_commit". This caused the map directory to be populated backwards, leading to "Is a directory" errors when `--prune-empty` was used.
+### merge-ort: `--no-overwrite-ignore` bypassed at directory-rename destination
+Coy Geek reported that `git merge --no-overwrite-ignore` overwrites an ignored, untracked file when directory rename detection moves a committed file to that path: with `merge.directoryRenames=true` the merge succeeds and overwrites the content, and with the default `conflict` mode it stops with a file-location conflict but the file has already been overwritten, losing data `git merge --abort` cannot restore. A direct collision is correctly refused, so the protection is bypassed only for rename-detection destinations; reproduced on versions 2.54.0 through 2.56.0.
 
-**Why it matters**
-The bug affects users who rely on `--state-branch` for incremental repository splitting. The fix is minimal (two lines in `git-filter-branch.sh`) and includes expanded test coverage, including a new test case from Michele Locati that directly verifies the commit mapping correctness in incremental runs with `--prune-empty` and `--subdirectory-filter`.
+### submodule merge reads B's commit from A
+A bug report describes merges of a superproject with submodules where Git tries to read from submodule A a commit that exists only in submodule B, reporting "repository corrupt". Patrick Steinhardt confirmed the cause: the delta-base cache retains entries after packfiles are closed, so a pack from another submodule reusing the same `packed_git` address and base offset can return stale cached data; he said he would investigate further.
 
-**Today’s developments**
-- [2026/10/01/05-36-10] Patrick Steinhardt proposed a rewritten commit message naming the regressing commit (f6d855091e) and using imperative mood.
-- [2026/10/01/06-33-06] Michele Locati corrected a factual error: the state branch file’s format is *original-commit:rewritten-commit*, not the reverse, and added his `Signed-off-by` as a co-author.
+### refs/reftable: fix on-disk reflog timezone representation
+Patrick Steinhardt's v2 series makes the reftable backend store reflog timezones as a signed offset in minutes per the reftable specification instead of the `[+-]HHMM` format, adding `tz_to_minutes()`/`minutes_to_tz()` helpers in `date.c` and converting `refs/reftable-backend.c`, plus a segfault fix in `test-tool dump-reftable -t` and new tests in `t/t0610-reftable-basics.sh`. Today Karthik Nayak reviewed the v2 series and said it looks good to him, and Junio C Hamano stated the series looks really ready and that he will mark the topic for `next`.
 
-**Status**
-The patch is technically complete, with comprehensive test coverage. The only remaining tasks are clarifying the commit message and addressing a typo in the patch subject ("fiter-branch"). Junio has not indicated whether he will edit the subject during merge or request a v3.
+### repack: corner cases for cruft-less MIDXs
 
----
+*Long thread (root 2026/09/30/01-28-34): 14 replies so far from 5 participants over 2 days; 8 messages that day.*
 
-### 2. `rerere`: Fix race condition between rebase and background maintenance
-**What changed?**
-Thomas Bachem’s three-patch series makes `rerere` wait for the `MERGE_RR.lock` with a configurable timeout (`rerere.lockTimeout`) instead of failing immediately. The series also introduces a `--skip-locked` mode for `git rerere gc` to skip held locks silently, matching the behavior of other auto-maintenance tasks.
+Taylor Blau posted v2 of an eight-patch series fixing corner cases when `repack.midxMustContainCruft=false`: it adds tree/tag roots to the follow walk so the retained MIDX set stays closed under reachability, uses an `oidset` for the extra roots, traverses kept packs during geometric repacks, and fixes `--write-midx=incremental` to include required packs. Elijah Newren objected that the `oidset` conversion can regress pack quality because walk paths affect namehash-based delta selection, presenting examples where subtree-first iteration causes blobs to be written in full instead of delta-compressed.
 
-**Why it matters**
-The race condition was exacerbated by the geometric maintenance strategy in Git 2.54, which triggers `git rerere gc` more aggressively. The fix ensures that conflict-stopping commands (e.g., `git rebase`) can proceed with a warning if the lock remains held after the timeout, while post-resolution recording and explicit `git rerere` commands still fail immediately.
-
-**Today’s developments**
-- [2026/10/01/08-08-16] Thomas Bachem accepted Patrick Steinhardt’s feedback to rename `--auto` to `--skip-locked` (hidden/undocumented) and move caller-specific documentation to `Documentation/config/rerere.adoc`.
-
-**Status**
-The v5 series is ready for final review, with all prior feedback incorporated. Patch 2 will be updated to v6 to address the feedback. The series is well-motivated and narrowly scoped, addressing a real race condition with clear test coverage.
-
----
-
-### 3. Reference-transaction hook: Fix all-zero OIDs on branch/tag deletion
-**What changed?**
-Maciej Ciemborowicz’s v6 patch fixes a regression introduced in Git 2.31 where high-level commands (`git branch -d`, `git tag -d`, `git remote prune`, `git fetch --prune`) report all-zero OIDs for both old and new fields in the reference-transaction hook when deleting branches or tags. The patch moves the fix into the transaction hook layer, ensuring the hook always receives the correct old OID without altering transaction semantics.
-
-**Why it matters**
-The regression broke external tools (Gerrit, GitLab, CI systems) that rely on the hook to monitor ref changes. The v6 approach resolves architectural concerns raised by Patrick Steinhardt and Junio C Hamano, preserving unconditional deletion semantics while restoring pre-regression behavior.
-
-**Today’s developments**
-- [2026/10/01/17-37-05] The author deprioritized this bugfix in favor of addressing a separate but related issue (branch renaming), but the v6 patch remains technically sound and ready for review.
-
-**Status**
-The patch is well-tested, with updated regression tests covering batched deletions, remote pruning, and concurrent updates. The only open question is whether the on-demand resolution of old OIDs introduces unacceptable latency for large batches, but this is now considered an acceptable trade-off.
-
----
-
-### 4. Documentation: Introduce `gitmergeconflicts(7)` man page
-**What changed?**
-Julia Evans’ patch series introduces a new `gitmergeconflicts(7)` man page to consolidate merge conflict resolution guidance previously scattered across multiple command man pages. The guide is organized as a practical, example-driven document with sections covering when conflicts occur, resolution paths, conflict markers, tools, and terminology.
-
-**Why it matters**
-The current documentation duplicates advice across `git merge`, `git rebase`, `git revert`, `git cherry-pick`, and `git pull`, leading to omissions and user confusion. The new guide improves clarity (e.g., clarifying "ours" vs. "theirs") and provides practical examples based on user feedback.
-
-**Today’s developments**
-- [2026/10/01/05-14-03] Patrick Steinhardt proposed embedding commit details (IDs, messages, dates) directly into conflict markers, transforming them into active resolution tools.
-- [2026/10/01/12-10-11] Julia Evans enthusiastically endorsed Patrick’s proposal, highlighting the practical benefits of including commit messages and dates.
-
-**Status**
-The series is under review, with the first patch merged into Junio’s `seen` branch for integration testing. The discussion has elevated two concrete improvements: (1) commit accessibility and (2) promoting `merge.conflictstyle=diff3` as a best practice. The guide is expected to actively promote these enhancements, and the discussion may foreshadow a broader shift in Git’s default behavior.
-
----
-
-### 5. CI: Improve leak sanitizer failure reporting in GitHub Actions
-**What changed?**
-Harald Nordgren’s two-patch series improves GitHub Actions failure reporting by linking leak sanitizer failures and regular test failures directly to the test script line where they occur. The first patch stops leak-sanitizer scripts at the first failure (using `--immediate`) and annotates leaks with the test script name and full sanitizer output in a collapsible log group. The second patch ensures regular test failures and fixed known breakages point to their exact file and line in the test script.
-
-**Why it matters**
-The current CI output buries failures at the end of test runs, producing only a generic "Process completed with exit code 1" message. The series provides actionable failure annotations while balancing early failure (simpler debugging) and comprehensive reporting (catching all leaks).
-
-**Today’s developments**
-- [2026/10/01/18-44-13] Harald Nordgren simplified the escaping logic in v4: `github_escape_message_` now only escapes percent signs (`%`), dropping the previous attempt to escape carriage returns (`\r`).
-- [2026/10/01/19-49-08] Phillip Wood identified an escaping consistency issue: the patch escapes percent signs in new annotations but not in existing ones, which could cause GitHub to misparse those annotations.
-
-**Status**
-The series is cooking in `next` and appears ready for broader testing. The changes are well-motivated, narrowly scoped, and address a real pain point for reviewers. The remaining open questions are usability refinements rather than correctness issues.
-
----
+### filter-branch: fix commit map init from state branch
+Grant Moyer reposted v2 fixing `git filter-branch` populating the commit map dir from the state branch with an inverted mapping, correcting it to `from_commit:to_commit` and adding a test that `--state-branch` incremental rewrites use the rewritten parents. Patrick Steinhardt proposed a revised commit message attributing the regression to f6d855091e; Michele Locati corrected the map format description and added his Signed-off-by; Junio C Hamano asked for an explanation of a test change from `--tree-filter "touch file || :"` to `--tree-filter "exit 1"`.
 
 ## In brief
-- **`gittutorial-2` removal**: Julia Evans’ series to remove the obsolete `gittutorial-2` document was merged to `master`, with a follow-up patch addressing a build break in `seen`. The thread now centers on whether the older `gittutorial` should be preserved or removed as part of a broader cleanup. [2026/10/01/22-21-30]
-- **`git stash create`**: Kazumasa Shigeta’s patch extending `git stash create` to support `--include-untracked` (`-u`) and `--all` (`-a`) options received substantive review from Junio C Hamano, who requested the commit message be rewritten to focus on *why* the patch exists rather than *what* it does. [2026/10/01/17-03-13]
-- **`git config --list --show-origin`**: Patrick Steinhardt suggested an intermediate solution for displaying `.git/config` as a relative path when the user is not in the repository root, flagging potential script compatibility concerns. [2026/10/01/06-37-01]
-- **`@p` shorthand**: Junio C Hamano provided historical context for the 2015 `@{push}` introduction, noting the asymmetry with `@{u}` was already noticed in 2014 but not acted upon. The patch to add `@{p}` as a shorthand for `@{push}` remains queued in `seen`. [2026/10/01/03-29-50]
-- **`git stash pop` conflict labels**: Junio C Hamano and Phillip Wood questioned the fundamental motivation for extending custom conflict-label options to `git stash pop`, given their origin as internal machinery for `git checkout -m`. [2026/10/01/17-58-40]
-- **Unexpected history divergence**: A user reported unexpected history divergence requiring force-pushes, asking whether this could originate from Git’s reference tracking, fetch logic, or background updates. [2026/10/01/07-19-56]
-- **Stash sharing workflow**: Hanan Arshad proposed a porcelain workflow for sharing stashes through remotes, seeking feedback on remote ref namespace, user-provided names vs. object-derived identifiers, listing behavior, and command naming. [2026/10/01/08-53-09]
-- **`git restore-mtimes`**: Artem S. Tashkinov proposed a new command to preserve per-file historical modification timestamps derived from Git commit history, asking whether this should be a standalone command, an option to existing commands, or integrated into `git archive`. [2026/10/01/09-43-25]
-- **Subcommand grouping**: Patrick Steinhardt’s series introducing subcommand grouping to the parse-options API and applying it to `git refs` received structural feedback from Junio C Hamano, who suggested refactoring the option-formatting logic into a helper function. [2026/10/01/17-46-24]
-- **Incremental rebase helpers**: The discussion about including a helper script for incremental rebase conflict resolution in `contrib/` converged on `git-bisect-rebase` as the leading candidate, with Nico Williams endorsing Alejandro Colomar’s simplified implementation. [2026/10/01/21-01-01]
-- **`--no-overwrite-ignore` regression**: Coy Geek reported a regression in the `--no-overwrite-ignore` option where directory rename detection moves a tracked file into a path containing an ignored, untracked file, causing Git to silently overwrite the ignored file instead of aborting the merge. [2026/10/01/23-54-12]
-- **What’s cooking**: Junio C Hamano’s report highlighted progress toward Git 3.0, with nine topics graduating to `master` and 25 cooking in `next`. Notable graduations include reflog expiry, reference storage terminology, ODB alternates, and the new `receive-report` hook. [2026/10/01/22-48-09]
+- Karthik Nayak's packed-refs `fwrite()` optimization shows ~20% faster ref deletion; Toon Claes listed sanitizations lost by verbatim copying (uppercase OIDs, tab separators, broken peelable refs) and proposed a separate preformatted-entry helper.
+- Kazumasa Shigeta's v2 teaches `git stash create` the `-u`/`--include-untracked` and `-a`/`--all` modes via `parse_options()` with `PARSE_OPT_STOP_AT_NON_OPTION`; Junio C Hamano critiqued the commit message for internal mechanics over user-visible implications.
+- Julia Evans's series removes `gittutorial-2`; she reported 22 new-user testers of her draft `gittutorial` and prefers shipping it without a branching guide for now.
+- Harald Nordgren posted v4 linking CI failure and leak annotations to the test script file and line; Phillip Wood noted the existing annotations are still not escaped.
+- Patrick Steinhardt's series adds subcommand groups to `git refs` under "Reference database", "Reading references", and "Writing references"; Junio C Hamano affirmed the `builtin/refs.c` patch with "Nice."
+- Phillip Wood defended storing conflict labels in `.git/MERGE_LABELS` over an index extension, fixed CRLF parsing with `strbuf_getline()`, and proposed documenting common repository files in gitrepository as a separate series, which Junio C Hamano agreed to.
+- Junio C Hamano posted a maintainer note recording the Git 2.56 release, the roles of the master/maint/next/seen branches, and authoritative external repositories.

@@ -1,49 +1,62 @@
 # Git mailing list daily digest for 2026/10/01
 
+## Long threads
+
+### stash: in-core index merge for `stash apply --index`
+
+*Long thread: 53 replies so far from 5 participants over 13 days; 2 messages that day.*
+
+D. Ben Knoble's series fixes a bug in the interaction between autostashing, staged index entries, and `stash.index=true` by replacing the subprocess-based index merge in `builtin/stash.c` with an in-core `merge_incore_nonrecursive()` call, with a tri-state check on `merge_result.clean`. Phillip Wood confirmed the v5 range-diff looks as expected and was pleased to see subprocesses removed from `git stash`, and Junio C Hamano said the series looks very good to him and marked it for `next`.
+
+### refs: report old values to transaction hooks
+
+*Long thread: 29 replies so far from 5 participants over 13 days; 1 message that day.*
+
+Maciej Ciemborowicz's single-patch v6 resolves old object IDs in the common reference-transaction hook layer, before the "preparing" hook and again after the backend locks refs, so batched branch, tag, and remote-ref deletions report real old values without constraining updates. Today he lowered the priority of the underlying bug after resolving his branch and tag deletion issues using data returned by the transaction in the prepared state, naming branch renaming as the remaining issue he cannot address without this fix.
+
+### rerere: wait for MERGE_RR.lock and skip in auto gc
+
+*Long thread: 23 replies so far from 4 participants over 30 days; 2 messages that day.*
+
+Thomas Bachem's three-patch series makes every rerere writer wait `rerere.lockTimeout` for `MERGE_RR.lock`, adds a `git rerere gc --auto` that quietly skips a held lock for `git maintenance run --auto` and `git gc --auto`, and lets conflict-time callers warn and go on. Today he agreed to rename the option to a hidden, undocumented `--skip-locked`, rename patch 3's flag to `RERERE_WARN_LOCKED`, and keep the option after finding that calling `rerere_gc()` directly from `builtin/gc.c` would die with exit code 128 on a held lock; Patrick Steinhardt agreed to keep the hidden option.
+
+### Documentation: new gitmergeconflicts guide
+
+*Long thread: 23 replies so far from 6 participants over 8 days; 2 messages that day.*
+
+Julia Evans's seven-patch documentation series adds a `gitmergeconflicts` manual page explaining merge conflicts with examples and links to it from `git-merge`, `git-cherry-pick`, `git-rebase`, `git-revert`, and `git-pull`. Today Patrick Steinhardt proposed extending conflict-marker labels to include commit ID, message, and date, and agreed `merge.conflictstyle=diff3` should become the default; Julia Evans endorsed including dates and commit messages in markers.
+
+### xdiff: use size_t for mmfile_t
+
+*Long thread: 21 replies so far from 4 participants over 3 days; 4 messages that day.*
+
+Jeff King's seven-patch v2 consolidates `mmbuffer_t` into `mmfile_t`, switches buffer sizes to `size_t`, NUL-terminates buffers read by `read_mmfile()`, and makes `merge-ll` report errors when reading external merge results fails. Today Patrick Steinhardt flagged a commit-message nit in the NUL-termination patch and okayed the `merge-ll` change, and Junio C Hamano accepted keeping the `mmfile_t` name and agreed the error-reporting fix is much easier after the `read_mmfile()` switch.
+
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. A regression in `git filter-branch`'s `--state-branch` feature received final clarifications before merging, while a new `gitmergeconflicts(7)` man page sparked debate about embedding commit details in conflict markers. CI improvements for leak sanitizer reporting advanced, and a long-standing `rerere` race condition fix neared completion. The day also featured proposals for new features like `git restore-mtimes` and stash sharing through remotes, alongside design discussions about incremental rebase helpers and reference storage terminology.
+
+Junio Hamano marked D. Ben Knoble's stash merge for `next` and said Patrick Steinhardt's reftable reflog-timezone fix looks ready. Patrick Steinhardt agreed a delta-base cache issue "seems to be the issue indeed" for submodule merge bug, to investigate. Elijah Newren objected that oidset conversion in the cruft-less MIDX series can regress pack quality.
 
 ## Notable threads
 
-### `git filter-branch` state branch fix nears completion
-The two-patch series fixing a commit mapping inversion regression in `git filter-branch --state-branch` received its final clarifications today. Michele Locati corrected a factual error about the state branch file's format (it stores *original-commit:rewritten-commit*, not the reverse), while Patrick Steinhardt proposed a rewritten commit message that names the regressing commit (f6d855091e) and uses imperative mood. The patch is now technically complete, with comprehensive test coverage that fails on current `master` without the fix and passes with it. The only remaining task is addressing a typo in the patch subject ("fiter-branch"), which Junio C Hamano may edit during merge or request a v3 to fix.
+### submodule merge reads foreign commit from wrong repository
 
-This bugfix targets a regression introduced in Git 2.50.0 that affects users relying on `--state-branch` for incremental repository splitting. The fix is minimal (two lines in `git-filter-branch.sh`) and preserves the documented "from_commit:to_commit" format, making it a strong candidate for merging.
+A bug report describes `git merge` on a superproject with submodules sometimes trying to read from submodule A a commit that exists only in submodule B, reporting A as corrupt. Patrick Steinhardt agreed that a delta-base cache issue "seems to be the issue indeed," noting that packfiles should be cleared from the delta-base cache when closing but currently are not, and said he would investigate further.
 
-### Conflict marker enhancements proposed for `gitmergeconflicts(7)`
-The ongoing effort to introduce a dedicated `gitmergeconflicts(7)` man page took an innovative turn today with Patrick Steinhardt's proposal to embed commit details directly into conflict markers. The suggested format would transform markers from passive indicators into active resolution tools:
-```
-<<<<<<< HEAD: abcdefg (fruits: add apple, 2026-10-01)
-    "cherry",
-=======
-    "banana",
->>>>>>> add-fruit: 12345678 (fruits: add banana, 2024-02-03)
-```
-Julia Evans enthusiastically endorsed the idea, highlighting the practical benefits of including commit messages and dates, which provide immediate context about conflicting changes. While she stopped short of fully embracing Patrick's vision of embedding commit IDs directly into markers, she suggested making commit information *discoverable* via commands like `git show HEAD` or `git show add-fruit`.
+### merge-ort: `--no-overwrite-ignore` bypassed at rename destination
+Coy Geek reported that `git merge --no-overwrite-ignore` fails to protect an ignored, untracked file when directory rename detection moves a committed file onto that path: with `merge.directoryRenames=true` the merge succeeds and overwrites the ignored content, and in the default `conflict` mode the ignored file is already overwritten when the conflict stops the merge. A direct collision is correctly refused, so only rename-detection destinations bypass the guard; reproduced on versions 2.54.0 through 2.56.0.
 
-The discussion also gained momentum around making `merge.conflictstyle=diff3` the default, with both Patrick and Junio C Hamano strongly advocating for this change. Julia's observation that "every time I show people diff3 someone tells me how happy they are" reinforces its practical impact. These enhancements could significantly improve Git's conflict resolution experience and may foreshadow broader changes to default behavior.
+### repack: corner cases for cruft-less MIDXs
 
-### CI improvements for leak sanitizer reporting advance
-Harald Nordgren's two-patch series improving GitHub Actions failure reporting for leak sanitizer jobs took a step forward today with a v4 iteration that simplifies escaping logic. The patch now only escapes percent signs (`%`) in annotations, dropping the previous attempt to escape carriage returns (`\r`), which resolves Phillip Wood's concern about overreach for single-line test descriptions.
+*Long thread: 14 replies so far from 5 participants over 2 days; 8 messages that day.*
 
-The series addresses a real pain point for reviewers by making leak sanitizer failures and regular test failures point directly to their exact file and line in the test script. While the critical issue of clickable links in the GitHub Actions UI remains unresolved, the changes are well-motivated and narrowly scoped. The simplification in v4 reduces complexity without sacrificing functionality, making the series ready for broader testing in `next`.
-
-### `rerere` race condition fix nears finalization
-Thomas Bachem's three-patch series fixing a long-standing race condition in the `rerere` subsystem received its final design decisions today. The patch introduces `--skip-locked` mode for `git rerere gc` that skips a held lock silently, matching the behavior of other auto-maintenance tasks. The `RERERE_SKIP_LOCKED` flag has been renamed to `RERERE_WARN_LOCKED` to avoid confusion with the new `RERERE_NOWAIT` flag, and caller-specific documentation has been moved to `Documentation/config/rerere.adoc`.
-
-This fix targets a general robustness flaw in `rerere` locking that was exacerbated by the geometric maintenance strategy introduced in Git 2.54. The series makes all `rerere` writers wait for the lock with a configurable timeout, while allowing conflict-stopping commands to proceed with a warning if the lock remains held. The changes are narrowly scoped to the `rerere` subsystem and address a real-world issue affecting users who rely on incremental repository maintenance.
-
-### Reference transaction hook regression remains deprioritized
-Maciej Ciemborowicz reported that they have deprioritized their bugfix for the reference-transaction hook regression in favor of addressing a separate but related issue (branch renaming). The v6 patch remains technically sound and ready for review, fixing a long-standing regression where high-level Git commands report all-zero OIDs for both old and new fields in the reference-transaction hook when deleting branches or tags.
-
-The patch moves the fix into the transaction hook layer, resolving architectural concerns raised by Patrick Steinhardt and Junio C Hamano in earlier iterations. While the author now considers this bug a lower priority, the patch is still a strong candidate for merging as it resolves a persistent regression with a clean, layer-appropriate fix. The only open question is whether the on-demand resolution of old OIDs introduces unacceptable latency for large batches, but this is now considered an acceptable trade-off.
+Taylor Blau posted v2 of an eight-patch series fixing tree/tag closure and `--write-midx=incremental` gaps when `repack.midxMustContainCruft=false`, using an oidset for extra roots and traversing kept packs during geometric repacks. Elijah Newren objected that the oidset conversion can regress pack quality, since oidset iteration order can visit a subtree first and cause blobs to be written in full instead of delta-compressed.
 
 ## In brief
-- **`git stash create` extension**: Kazumasa Shigeta's patch extending `git stash create` to support `--include-untracked` (`-u`) and `--all` (`-a`) options received maintainer feedback requesting a rewritten commit message that focuses on *why* the patch exists rather than *what* it does. The implementation itself is uncontroversial and addresses a long-standing inconsistency with `git stash push` and `git stash save`.
-- **MIDX reachability closure fixes**: Taylor Blau's eight-patch series fixing corner cases in Git's multi-pack-index (MIDX) and cruft-pack machinery received substantive feedback from Elijah Newren, who demonstrated that replacing an `oid_array` with an `oidset` would cause functional regressions in delta compression quality and attribute handling. The discussion now centers on whether the performance benefits of an `oidset` outweigh these functional regressions.
-- **`git config --list --show-origin` inconsistency**: Patrick Steinhardt suggested an intermediate solution for the inconsistency where `.git/config` is shown as a relative path while other configuration sources show full paths. He proposed making the path relative to the current working directory when the user is not in the repository root, while flagging potential script compatibility concerns.
-- **`git restore-mtimes` proposal**: Artem S. Tashkinov proposed a new command to preserve per-file historical modification timestamps derived from Git commit history. The proposal targets repositories with independently updated blobs where mtime loss is most acute, and asks whether this should be a standalone command, an option to existing commands, or integrated into `git archive`.
-- **Stash sharing through remotes**: Hanan Arshad proposed a porcelain workflow for `git stash` to publish, list, import, and remove stashes through remotes. The proposal builds on existing `git stash export`/`import` plumbing and seeks feedback on remote ref namespace, naming scheme, listing behavior, and command naming.
-- **Incremental rebase helpers**: The discussion about including an incremental rebase helper in Git's `contrib/` area converged on `git-bisect-rebase` as the leading candidate. Nico Williams clarified that the script's worst-case performance is O(N log N) when every upstream commit introduces conflicts, rather than the O(log N) one might expect from a pure bisection.
-- **Integration branch updates**: Junio C Hamano's "What's cooking" report revealed that the next release is named Git 2.98 (not 2.57) to prepare for Git 3.0 in spring 2027. Nine topics graduated to `master`, including reflog expiry, reference storage terminology, ODB alternates, and the new `receive-report` hook.
-- **`--no-overwrite-ignore` regression**: Coy Geek reported a regression in the `--no-overwrite-ignore` option where directory rename detection moves a tracked file into a path containing an ignored, untracked file, causing Git to silently overwrite the ignored file instead of aborting the merge. The behavior violates the documented contract of `--no-overwrite-ignore` and risks data loss.
+- Patrick Steinhardt posted v2 of the reftable reflog-timezone fix storing signed minute offsets per the spec; Junio C Hamano said it looks really ready and will mark it for `next`.
+- Grant Moyer reposted the filter-branch fix for commit-map init from the state branch; Junio C Hamano asked for a commit-log explanation of a test change.
+- **Toon Claes reviews packed-refs fwrite() patch**: He listed sanitizations lost by fwrite() and proposed a separate preformatted writer function rather than mixing both methods.
+
+- Patrick Steinhardt's series adds subcommand groups to `git refs`; Junio C Hamano called patch 3 "Nice".
+- Harald Nordgren posted v4 linking CI failure and leak annotations to the test script file and line.
+- Kazumasa Shigeta's v2 lets `git stash create` accept `-u`/`-a`; Junio C Hamano critiqued the commit message's user-visible framing.
+- Phillip Wood defended storing conflict labels in `.git/MERGE_LABELS` and fixed CRLF parsing with `strbuf_getline()`; Junio C Hamano agreed to document the common repository files separately.
