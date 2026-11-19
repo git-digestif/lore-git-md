@@ -1,84 +1,36 @@
 # Git mailing list daily digest for 2026/08/15
 
+## Long threads
+
+### `git repo info` path keys from the GSoC series
+
+*Long thread: 20 replies so far from 4 participants over 31 days; 1 message that day.*
+
+K Jayatheerth's GSoC series adds new keys to `git repo info` that output the paths of repository components: `path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.grafts`, and `path.git-prefix`, each supporting absolute and relative suffixes for formatting, with documentation and tests. Earlier revisions renamed `superproject-working-tree` to `superproject-root`, dropped `path.objects` until pluggable ODB backends arrive, removed unnecessary `strbuf_addstr(buf, "")` calls, and added relative-path test cases. Today Lucas Seiki Oshiro asked why the test for `path.toplevel` absolute and relative suffix formatting does not use the `test_repo_info_path` helper.
+
 ## The day in brief
 
-Junio C Hamano confirmed the `fetch_if_missing` libification series is ready for queuing, while a new bugfix patch for worktree repair surfaced, addressing dead code in `.git` file path resolution. The MinGW/Windows build series saw real-world validation from Johannes Sixt, and the stalled RFC on filesystem-level copy-on-write for `git worktree add` received a critical correctness warning about ReFS.
+Tian Yuchen posted v6 of the patch moving `fetch_if_missing` into `struct repository`, which Junio C Hamano reviewed favorably. Junio also caught an assertion-order bug in the new `git format-rev` date callback that could segfault before the assertion fires. On the GSoC `git repo info` path-keys series, Lucas Seiki Oshiro questioned the test structure for `path.toplevel`.
 
 ## Notable threads
 
-### `fetch_if_missing` libification ready for queuing
-**What changed?**
-Junio C Hamano [2026/08/15/15-58-49] confirmed Tian Yuchen’s v6 patch series moving the global `fetch_if_missing` variable into `struct repository` is mechanically complete and ready for queuing. The series eliminates all direct uses of `the_repository` for this flag, preserving existing behavior (default value remains `1`, enabled).
+### Moving `fetch_if_missing` into `struct repository`
 
-### Why it matters
+Tian Yuchen posted v6 of the libification patch that moves the global `fetch_if_missing` variable, which controls whether a missing-object check prompts a lazy fetch from a promisor remote, into `struct repository`, defaulting to 1 to preserve behavior. In v6, `option_parse_missing_action()` in `builtin/pack-objects.c` receives the `repo` pointer through the option's `value` field, so the earlier commit that gave `fetch_if_missing` call sites access to `repo` is dropped. Junio C Hamano reviewed the iteration, asked as a curiosity whether running `git index-pack` outside a repository is legitimate or a user error, and said that otherwise it looks good to him.
 
-This continues the project-wide effort to eliminate global state in favor of repository-specific configuration, a prerequisite for Git’s libification goals. The patch touches 15 files, including critical paths like `index-pack.c` and `revision.c`, and resolves a design inelegance in `option_parse_missing_action()` by using the `value` field in `OPT_CALLBACK_F()` to pass the repository address directly.
+### `format-rev` learns `--abbrev`, `--color`, and `--date`
 
-### Open question
+Kristoffer Haugsbakk's four-patch series adds `--abbrev`, `--color`, and `--date` options to `git format-rev`, with preparatory refactoring of option variables into a struct and documentation factoring. Today Junio C Hamano pointed out that in the `date_cb` callback of patch 4/4, the `BUG_ON_OPT_NEG(unset)` assertion is placed after `parse_date_format(arg, &data->date_mode)`, which dereferences `option->value`; if `unset` were 1, `option->value` would be NULL and the code would segfault before the assertion could trigger, so he suggested moving the assertion before the dereference.
 
-Junio questioned whether running `git index-pack` outside a repository is a legitimate use case or a user error, but explicitly stated the established behavior should not be altered in this patch. The broader architectural question of whether `fetch_if_missing` belongs in `struct repository` remains unresolved.
+### Upstreaming more Git for Windows mingw patches
 
----
-
-### Worktree repair bugfix: dead code in `.git` file path resolution
-**What changed?**
-Yoichi NAKAYAMA [2026/08/15/13-11-19] posted a bugfix patch correcting how Git detects and handles relative versus absolute paths in `.git` files during worktree repair. The patch modifies `read_gitfile_gently()` to optionally report whether the path in the `.git` file was originally absolute or relative, eliminating dead code that could never execute because the function always returned an absolute path.
-
-### Why it matters
-
-The worktree repair logic previously contained dead branches that could never trigger due to `read_gitfile_gently()`’s behavior. The patch introduces an `absolute` output parameter to preserve the original path style, enabling the repair logic to detect mismatches between configured and actual path styles. The test suite is expanded with four new cases verifying transitions between absolute and relative paths in both main and side worktrees.
-
-### Files touched
-
-`builtin/init-db.c`, `setup.c`, `setup.h`, `worktree.c`, and `t/t2406-worktree-repair.sh`.
-
----
-
-### MinGW/Windows build series gains real-world validation
-**What changed?**
-Johannes Sixt [2026/08/15/14-10-23] reported running a subset of Johannes Schindelin’s 12-patch MinGW/Windows build series (patches 2–6, 8, and either 9 or 12) in personal Windows builds since November 2025 without issues. The full series also passes GitHub CI on Windows.
-
-### Why it matters
-
-The series upstream Git for Windows-specific adjustments, including Python buildability, UCRT64 compatibility, and direct `git.exe` invocation. Sixt’s validation provides real-world confirmation that the core changes are stable, though two open suggestions remain: guarding against an empty `MSYSTEM` export in Patch 12 and reordering CMake/Meson hunks in Patch 8.
-
-### Key detail
-
-Patch 12 allows `git.exe` to be called directly instead of through the "Git wrapper," eliminating an extra process hop by initializing `MSYSTEM`, `PLINK_PROTOCOL`, and a carefully constructed `PATH`.
-
----
-
-### ReFS corruption risk blocks copy-on-write RFC
-**What changed?**
-Brian M. Carlson [2026/08/15/14-33-09] reported that ReFS’s block cloning implementation is unreliable when data has been written but not flushed to disk, risking corruption. He cited a recent Git LFS issue as evidence and argued Git should not add ReFS support until only fixed versions of Windows are publicly available.
-
-### Why it matters
-
-The RFC proposed filesystem-level copy-on-write (CoW) or block cloning optimizations for `git worktree add` to reduce storage overhead, with Windows (ReFS) as a key target platform. Carlson’s report introduces a concrete, platform-specific blocker that undermines the assumption that ReFS block cloning is safe to use. Peter Morris [2026/08/15/18-09-00] later clarified that the Windows `CopyFile` API’s locking behavior prevents the race condition described, but the underlying ReFS bug remains unresolved.
-
-### Architectural challenge
-
-The checkout machinery’s lack of visibility into sibling worktrees remains the primary blocker, requiring a complex refactoring of `checkout_entry()`.
-
----
-
-### Bash completion slowdown: `feature.manyFiles` ruled out
-**What changed?**
-Matthew Hughes [2026/08/15/19-52-46] ruled out `feature.manyFiles` (fsmonitor) as a mitigation for the bash completion slowdown in large repositories. The issue stems from `git ls-files --exclude-standard --others --directory` with wildcard patterns, which forces Git to scan every directory and generate hundreds of thousands of system calls.
-
-### Why it matters
-
-The slowdown (1–2 s hang) occurs in repositories with hundreds of thousands of tracked files, making completion unusable. Hughes tested `feature.manyFiles` in a fresh repository and observed no measurable improvement, confirming the optimization does not address the root cause. The workaround (`GIT_COMPLETION_NO_COMPLETE_INDEX`) sacrifices accuracy for speed, but no deeper fix has been proposed.
-
-### Key detail
-
-The completion script’s use of `git ls-files` bypasses fsmonitor and the untracked cache, leaving the wildcard-driven scans unoptimized.
-
----
+Johannes Schindelin's twelve-patch v2 series upstreams Git for Windows build fixes touching `config.mak.uname`, `meson.build`, and mingw compilation flags, including Python inclusion in the build, MSYS2 metadata handling, and `ETC_*` definitions. Today Johannes Sixt observed that in patch 08/12 `MINGW_PREFIX` is only used to set `prefix`, so the CMake and meson hunks introducing `ENSURE_MSYSTEM_IS_SET` and `MINGW_PREFIX` as compile definitions do not belong in that patch yet, since only patch 12/12 uses the variable to drive C code. Sixt also reported that he has been building his own Windows version with a subset of the series and that building with all twelve patches showed no negative effects after a quick check, with CI passing.
 
 ## In brief
-- **`git repo info` path keys**: Lucas Seiki Oshiro [2026/08/15/23-06-45] asked why the test for the first patch does not use the `test_repo_info_path` helper, a surface-level question about test hygiene.
-- **`git format-rev` options**: Junio C Hamano [2026/08/15/02-17-34] identified a defensive programming issue in the `date_cb()` callback, where the `BUG_ON_OPT_NEG(unset)` assertion was placed after dereferencing `option->value`.
-- **Submodule config bugfix**: tilak-raaz [2026/08/15/07-18-29] posted v4 of a patch fixing a crash when `submodule.active` is set without a value, replacing `repo_config_get_string_multi()` with `repo_config_get_value_multi()` to safely handle valueless entries.
-- **`chdir_notify` refactoring**: Jeff King [2026/08/15/05-12-13] confirmed the v2 commit message for removing the unused `name` parameter from the `chdir_notify` API now fully documents the historical context.
-- **What’s cooking**: Junio’s [2026/08/15/00-33-49] report listed `kh/format-rev-more-options`, `ps/odb-pluggable-pack-generation`, `ty/repository-fetch-if-missing`, and `hn/history-squash` as new topics under review.
+
+- Yoichi NAKAYAMA submitted a patch fixing `worktree repair` to handle relative paths in `.git` files correctly, adding a `bool *absolute` output parameter to `read_gitfile_gently()` and removing dead relative-to-absolute conversion code in `repair_gitfile()` and `repair_worktree_at_path()`, since `read_gitfile_gently()` always returns an absolute path.
+- tilak-raaz posted v4 of a patch making a valueless `submodule.active` config emit a warning via `config_error_nonbool()` instead of a hard error, swapping `repo_config_get_string_multi()` for `repo_config_get_value_multi()`; returning an error code was rejected because `-1` is truthy in C and callers evaluate `is_tree_submodule_active()` as a boolean predicate.
+- In the RFC on using filesystem cloning for `git worktree add`, brian m. carlson cautioned against ReFS support citing corruption of unflushed copies, while Peter Morris countered that Windows `CopyFile` and Linux `FICLONE` avoid the issue and said the approach is viable but beyond his own expertise to implement.
+- Yoichi Nakayama agreed that modifying `unique_tracking_name()` to optionally report which remotes have a branch with the given name is a good approach for the improved ambiguous-remote-branch message in `git worktree add`.
+- On slow bash completion in large repositories, D. Ben Knoble suggested enabling `feature.manyFiles`; Matthew Hughes noted `git-scalar(1)` sets it to false and that enabling it in a fresh repository showed no significant performance change.
+- Jeff King affirmed that Colin Hinton's patch dropping the unused `name` parameter from the `chdir-notify` register/unregister APIs and callback signature "summarizes the situation nicely."
