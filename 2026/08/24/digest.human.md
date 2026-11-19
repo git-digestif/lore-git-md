@@ -1,85 +1,44 @@
 # Git mailing list daily digest for 2026/08/24
 
+## Long threads
+
+### `git history squash` subcommand for folding a commit range
+
+*Long thread: 88 replies so far from 9 participants over 72 days; 2 messages that day.*
+
+The series adds `git history squash <revision-range>` in `builtin/history.c`, folding a range of commits into one while preserving the oldest commit's authorship and parents, replaying descendants, and refusing when a local branch points into the range. Earlier revisions split the implementation into five patches and reworked range validation and autosquash-marker resolution. Today Phillip Wood agreed that mixed-case OIDs have no compelling justification, accepting all-uppercase or all-lowercase forms, and asked whether uppercase OIDs were planned to be banned entirely; Junio C Hamano pointed to brian's `bc/restrict-hex-to-lowercase` topic and argued that, since Git never emitted uppercase hexadecimal itself, `starts_with()` would accept the OIDs users could have received after `fixup!` while still rejecting ref names.
+
+### worktree add message for ambiguous remote branch names
+
+*Long thread: 28 replies so far from 6 participants over 17 days; 1 message that day.*
+
+The series improves the error and advice shown by `git worktree add` and `git checkout` when a branch name matches multiple remote-tracking branches, listing the matched remotes in both commands. Earlier revisions split the work into three commits and reworded the advice to "Branch name '%s' appears in multiple remotes:". Today Yoichi Nakayama agreed with Junio C Hamano that treating multiple matches as an error is appropriate and said he will make another commit implementing that previously postponed fix.
+
+### packfile recovery when a multi-pack-index names a removed pack
+
+*Long thread: 16 replies so far from 5 participants over 7 days; 10 messages that day.*
+
+The two-patch series fixes objects being treated as missing when a geometric repack removes a pack that an old multi-pack-index still names, teaching `find_pack_entry()` in `odb/source-packed.c` to scan the MIDX's covered packs for a surviving copy, and fixing a `git replay` SIGSEGV on unreadable merge input. Today Jeff King argued that non-QUICK callers are unaffected because the second read reloads packfiles, and that repreparing packs on a QUICK miss would reintroduce the performance problems `OBJECT_INFO_QUICK` avoids; Patrick Steinhardt countered that the patch fixes a real bug because the non-MIDX lookup skips all MIDX-covered packs, hiding secondary copies regardless of QUICK. Derrick Stolee explained that `git multi-pack-index expire` exists for exactly this race and suggested retaining redundant packs for a time interval to reduce fallback triggers.
+
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. Key developments include a maintainer clarification reinforcing the motivation for a global config fix, a design debate over strict vs. permissive OID matching in `git history squash`, and forward-looking discussions about ODB deadlock prevention and AI-generated contributions. The `report` hook series nears graduation with a naming consensus, while a geometric repacking race condition fix faces architectural scrutiny. Junio’s "What’s cooking" report confirmed five ODB/performance topics ready for `next`.
+The `git history squash` series drew a fresh round of review on how `fixup!` subject matching should treat hexadecimal case. The worktree ambiguous-remote-branch series gained agreement that multiple matches should become an error. And the multi-pack-index removed-pack race sparked a detailed exchange about `OBJECT_INFO_QUICK` semantics and fallback lookups.
 
 ## Notable threads
 
-### Global config listing inconsistency fix
-**What changed?**
-Junio C Hamano clarified that the discrepancy addressed by Delilah Ashley Wu’s three-patch series (where `git config list --global` only read `$HOME/.gitconfig` despite Git reading both config files) was unintentional, reinforcing the series’ motivation.
+### report hook for git-receive-pack
+Karthik Nayak posted v3 of the series introducing a report hook for `git-receive-pack(1)`, where a non-zero hook exit now rejects each reference with "report hook failed" instead of dying. Junio C Hamano objected that "report" is far too generic a name for the hook; Patrick Steinhardt agreed and proposed "receive-report" or something similar.
 
-### Why it matters
+### reftable stack reload avoidance when locked
+Karthik Nayak posted v2 of the series avoiding stack reloads inside a locked reference transaction in the reftable library, adding a `locked` bit to `reftable_addition` so additions on the same stack do not release each other's lock, with benchmarks showing a consistent 15-20% improvement and constant `newfstatat()` counts. Jeff King reviewed patch 4/4, calling the corrected benchmarks "much nicer" and the idea sound.
 
-The series fixes a long-standing inconsistency in Git’s config handling, ensuring `--global` operations read both `$HOME/.gitconfig` and `$XDG_CONFIG_HOME/git/config` as documented. The maintainer’s confirmation removes any lingering doubt about the necessity of the fix.
-
-**Key files**: `config.c`, `builtin/config.c`
-
----
-
-### `git history squash` autosquash marker resolution
-**What changed?**
-The design debate over OID case-sensitivity in `fixup!`/`squash!`/`amend!` markers narrowed to two options: strict case-sensitive matching (rejecting all uppercase OIDs) or a permissive approach matching `git rebase --autosquash` (accepting all-uppercase/all-lowercase OIDs while rejecting mixed-case). Junio C Hamano argued for strict matching, citing Git’s historical convention of emitting only lowercase hexadecimal OIDs.
-
-### Why it matters
-
-This is the final technical hurdle for Harald Nordgren’s `git history squash` series, which aims to efficiently collapse commit ranges into their oldest commit. The resolution will determine whether the implementation aligns with Git’s existing conventions or prioritizes consistency with `git rebase`.
-
-**Key files**: `builtin/history.c`, `sequencer.c`
-
----
-
-### Sequencer ODB deadlock prevention
-**What changed?**
-Phillip Wood proposed two forward-looking approaches to prevent ODB deadlocks during interactive rebase: (1) passing `-c gc.auto=false` to `git commit` (since `run_auto_maintenance()` runs at rebase end anyway), and (2) automatically closing the ODB whenever any Git command is spawned. Junio C Hamano endorsed the latter as a "great approach to study" for long-term refactoring, noting the idea dates back to 2007 discussions.
-
-### Why it matters
-
-The discussion elevates the scope of Johannes Schindelin’s Windows-specific bugfix from a one-off tweak to a potential architectural improvement. The global ODB-release mechanism could eliminate the need for similar fixes across many code paths.
-
-**Key files**: `sequencer.c`
-
----
-
-### `report` hook naming consensus
-**What changed?**
-Junio C Hamano and Patrick Steinhardt objected to the hook name `report` as overly generic, suggesting `receive-report` as a more specific alternative. Karthik Nayak’s series is now effectively complete, with all prior feedback addressed and only the naming left to finalize.
-
-### Why it matters
-
-The `report` hook enables server-side status filtering for `git-receive-pack`, addressing GitLab’s need for MVCC (multi-version concurrency control). The naming consensus removes the last blocker before graduation to `next`.
-
-**Key files**: `builtin/receive-pack.c`, `Documentation/githooks.adoc`
-
----
-
-### Geometric repacking race condition fix
-**What changed?**
-Jeff King (Peff) and Patrick Steinhardt refined the design for Elijah Newren’s fix to a race condition where a stale multi-pack-index (MIDX) references a removed packfile. Peff argued the fallback logic should only trigger during `SECOND_READ` to optimize performance for `QUICK` callers, while Derrick Stolee suggested geometric repacking adopt a grace period for redundant packfiles (similar to `multi-pack-index expire`) to reduce the race condition’s frequency.
-
-### Why it matters
-
-The fix addresses crashes in `git replay` and missing-object errors in server-side operations. The architectural debate centers on balancing correctness, performance, and operational simplicity, with implications for future race-condition cleanups.
-
-**Key files**: `odb/source-packed.c`, `replay.c`
-
----
-
-### AI-generated contributions policy
-**What changed?**
-Oswald Buddenhagen rejected Junio C Hamano’s framing of "contributor trust" as a sufficient safeguard for AI-generated code, arguing that AI tools inherently undermine the ability to verify code provenance—even for trusted contributors. This narrows the policy discussion to a binary choice: maintain the strict prohibition or accept the legal risks of AI-generated contributions.
-
-### Why it matters
-
-The discussion affects Alexey Samsonov’s `utimensat()` series, which was generated by an AI tool (Gemini Flash) and manually verified. The Project Leadership Committee (PLC) or broader community must clarify whether the policy will be amended to reflect a more nuanced stance or upheld as-is.
-
-**Key files**: `SubmittingPatches` (policy document)
-
----
+### config --global reading both home and XDG files
+The series makes `git config --global` read both `$HOME/.gitconfig` and the XDG config file, matching what plain `git config` reads. Junio C Hamano explained that reading both per-user files was a deliberate migration aid, but acknowledged the `--global` read path was not designed as carefully and that discrepancies with the general sequence are very likely bugs.
 
 ## In brief
-- **`git symbolic-ref` exit codes**: Nikolaus Schuetz proposed documenting the current behavior (exit code 128 without `--quiet`, exit code 1 with `--quiet`) rather than aligning the exit codes, sidestepping the design debate.
-- **`git pull --hard`/`--reset`**: Junio C Hamano suggested the desired functionality (fetching upstream and resetting the working tree) belongs in a user-configured alias rather than a built-in command, dismissing both the original proposal and Artur Bieniek’s `reset --pull` alternative.
-- **`git organize` directory layout**: Oswald Buddenhagen advocated for nesting subsystems under `lib/` (e.g., `lib/odb/`) to align with Patrick Steinhardt’s `libgit.a` effort, while also criticizing the use of double quotes for cross-subsystem includes.
-- **`git format-patch --range-diff-notes`**: Junio C Hamano raised a usability concern about the option semantics, noting that `--no-notes --range-diff-notes` would suppress notes in both patches and range-diffs, contradicting intuitive expectations.
-- **ODB abstraction**: Junio’s "What’s cooking" report confirmed five topics ready for `next`: `ps/odb-geometric-repack-loose-threshold`, `ps/odb-pluggable-pack-generation`, `jt/receive-pack-pluggable-writes`, `ps/odb-eagerly-load-alternates`, and `vm/complete-history`. Patrick Steinhardt endorsed merging them.
+- Phillip Wood called the sequencer ODB-release patch a fine immediate fix but suggested `-c gc.auto=false` when forking `git commit`, and both he and Junio C Hamano endorsed studying automatic ODB closure when forking Git commands.
+- Patrick Steinhardt proposed a `push.negotiate=shallow` option, enabled by default for shallow clones, instead of new send-pack logic for withholding the shallow boundary tree.
+- Kristoffer Haugsbakk implemented `--[no-]range-diff-notes[=<ref>]` for `format-patch`; Junio C Hamano questioned whether `--no-notes --range-diff-notes` would still show notes in the range-diff.
+- Reviewers disagreed over pinning `git symbolic-ref` exit codes 1 vs 128; Nikolaus Schuetz favored not testing the exact code and offered to sync the adoc NOTES.
+- Phillip Wood proposed a per-branch stash pop option as an alternative to a configurable stash ref; Junio C Hamano cautioned against relying heavily on stash messages.
+- Artur Bieniek proposed the inverse `git reset --pull --hard` design; Junio C Hamano suggested an alias may be the right feature for this use case.
+- **Yuan on AI DCO; Buddenhagen on AI**: Weijie Yuan retracted earlier remarks and reframed the question around AI-assisted DCO risk; Oswald Buddenhagen argued due diligence cannot be assumed with AI tools.
