@@ -1,50 +1,57 @@
 # Git mailing list daily digest for 2026/10/15
 
+## Long threads
+
+### CI housekeeping and modernization series reaches v4
+
+*Long thread (root 2026/10/08/10-01-18): 38 replies so far from 6 participants over 8 days; 8 messages that day.*
+
+Patrick Steinhardt's eight-patch series "ci: some housekeeping and modernizations" fixes smaller issues in Git's CI configuration and moves jobs off end-of-life Docker images to supported ones. Today he posted v4, whose only change reworks the t5004 archive test to work under both SHA-1 and SHA-256 by forcing the test repository to SHA-1; patches 2-8 are unchanged from v3. Jeff King said the updated patch looks good and that v4 looks good to him, and Junio C Hamano marked the series for `next`. Earlier, the thread had settled the rename of the `linux-TEST-vars` job to `linux-feature-testbed`, reworked the reftable job to exercise reftables with SHA-256, and agreed to defer CI script cleanup to a follow-up.
+
+### credential-store lockTimeout config option
+
+*Long thread (root 2026/09/02/08-31-37): 37 replies so far from 5 participants over 44 days; 1 message that day.*
+
+Okhuomon Ajayi's Outreachy patch adds `credentialStore.lockTimeout` as the preferred setting for credential lock retries in `builtin/credential-store.c`, retaining `lockTimeoutMS` as a deprecated alias, with tests in `t/t0302-credential-store.sh`. Today Junio C Hamano reviewed it: he noted the modified section of `builtin/credential-store.c` already has overly long lines, suggested replacing the duplicated lockTimeout/lockTimeoutMS tests with a for loop over both variable names, clarified that the "wins when both are set" test verifies the error message reports "in 0 ms", and questioned whether the "allows a store" test adds anything since any timeout succeeds without a competing lock.
+
+### Incremental connectivity check for fetches
+
+*Long thread (root 2026/09/14/09-47-54): 26 replies so far from 3 participants over 32 days; 9 messages that day.*
+
+Kristofer Karlsson's four-patch series adds an incremental mode for the connectivity check in `connected.c`, gated behind `transfer.connectivityCheck=incremental`, so verification scales with the number of incoming changes rather than preexisting objects. Today Patrick Steinhardt reviewed the documentation, perf-test, and implementation patches, asking for Makefile/Meson build entries for the new `connectivity-check.adoc`, a PERL prerequisite and p5412-to-p5413 fixes in the benchmarks, `size_t`/`intmax_t` counters, `bool` for `need_subtree_bases`, comments on trust-boundary expansion, and a possible work queue instead of recursion. Kristofer Karlsson replied agreeing to most fixes, argued the larger-tree win is unbounded while the commit-count regression is bounded, and floated a `transfer.connectivityCheckIncrementalMaxCommits` config flag; Patrick Steinhardt suggested making the commit threshold configurable with roughly 1k commits as a cutoff.
+
+### Blame ignores .git-blame-ignore-revs by default
+
+*Long thread (root 2026/09/11/23-29-44): 24 replies so far from 4 participants over 35 days; 1 message that day.*
+
+Ravi Mistry's series teaches `git blame` and `git annotate` to use `.git-blame-ignore-revs` at the working-tree root (or `HEAD:.git-blame-ignore-revs` in bare repositories) by default, with a 100MB size cap. Earlier revisions switched from the HEAD blob to the working-tree file in non-bare repositories and cleaned up the `build_ignorelist()` handling. Today Phillip Wood said he was not sure the `lstat()` call before `open_nofollow()` was needed but that everything else looked good, and he would be happy to see that version merged.
+
 ## The day in brief
-The Git mailing list saw active discussion across multiple fronts today. A performance regression in `git log --follow` received a proposed fix and architectural review, while CI housekeeping updates were marked ready for integration. The `includeIf.hostname` feature gained maintainer approval, and several Outreachy contributions advanced test modernization efforts. Documentation improvements and bugfixes rounded out the day's activity.
+Junio C Hamano marked Patrick Steinhardt's v4 CI housekeeping series for `next`, and Phillip Wood signaled approval of Ravi Mistry's blame default-ignore-revs series. Kristofer Karlsson's incremental connectivity check drew detailed review with a proposed configurable commit threshold, while Karthik Nayak posted v3 of the fetch fix that commits references before backfilling tags.
 
 ## Notable threads
 
-### Performance regression in `git log --follow`
-Miklos Vajna posted a bugfix patch addressing a severe performance regression in `git log --stat --follow` introduced by commit 304813ed33. The patch optimizes `propagate_follow_pathspec_to_parent()` by only performing rename detection when the path is added relative to a parent, reducing runtime from 6m43s to 29s in the Linux kernel repository. Junio C Hamano proposed an alternative architectural approach, suggesting the optimization logic be moved into `log_tree_diff_flush()` to avoid redundant diff passes. The discussion remains open on the best path forward.
+### cache-tree no longer dies when the index is locked
+Szymon Wilczek submitted a patch changing `write_index_as_tree()` in `cache-tree.c` to take the index lock without `LOCK_DIE_ON_ERROR` and skip `write_locked_index()` when the lock is held, so `git write-tree` and `git am` proceed while another process holds `index.lock`. This fixes a rebase failure where a background `git status` holding the lock caused the sequencer to die before writing `rebase-merge/message`; a test in `t/t0090-cache-tree.sh` verifies `git write-tree` succeeds while the index is locked.
 
-**What changed:** The patch introduces two shortcuts in the follow-path logic, avoiding expensive rename detection when unnecessary.
-**Problem:** The regression made `git log --follow` unusably slow in repositories with complex merge structures.
-**Subsystem:** Revision walking and rename detection.
-**Impact:** Significant performance improvement for users tracing file history across merges.
+### Fetch commits references before backfilling tags
+Karthik Nayak posted v3 of "fetch: commit references fetched before backfilling tags", which commits the fetched refs before backfilling tags using a separate `commit_ref_ret` error variable, so a failed backfill transaction no longer skips FETCH_HEAD writing and upstream configuration. The patch addresses shallow fetches where newly fetched refs were unavailable as 'haves' during tag negotiation, and adds tests verifying backfill advertises fetched refs and that upstream is set even when the main ref update is rejected.
 
-### CI housekeeping updates ready for integration
-Junio C Hamano marked Patrick Steinhardt's eight-patch CI housekeeping series ready for inclusion in `next`. The series modernizes Git's CI configurations by removing outdated dependencies (Python 2, EOL Docker images), eliminating redundant jobs, and improving test coverage. Key changes include updating the 32-bit CI job to use `i386/debian:latest`, renaming the `linux-TEST-vars` job to `linux-feature-testbed`, and repurposing the `linux-reftable-leaks` job to test SHA-256 + reftable combinations. Jeff King's review confirmed all technical concerns were addressed.
+### Speeding up log --follow on non-linear history
+Miklos Vajna submitted a patch adding two shortcuts in `propagate_follow_pathspec_to_parents()`: only run expensive rename detection when the path is added relative to a parent, and follow the parent's history directly when the path is unchanged. On linux.git the `rsc_table.h` case drops from 6m43s to 29s while `t4219-log-follow-merge.sh` still passes. Junio C Hamano observed that `log_tree_commit()` calls the propagation only after `log_tree_diff()` has flushed its output, suggested inspecting the diff queue in `log_tree_diff_flush()` instead, and said it might be cleaner to rethink the approach from commit 304812ed33, though he was not sure.
 
-**What changed:** CI configurations were updated to use supported images and remove obsolete dependencies.
-**Problem:** Outdated CI configurations were causing maintenance burdens and potential reliability issues.
-**Subsystem:** CI infrastructure (GitHub Actions, GitLab CI).
-**Impact:** Reduced CI complexity while maintaining or improving test coverage.
+### Fixing --depth and --unshallow for multi-remote fetches
+A patch fixes `git fetch --all --depth=...` and `--unshallow` not actually deepening the fetch with multiple remotes, adding tests to the shallow-fetch test script. Today Junio C Hamano questioned whether the same lack of `--depth` propagation affects submodule fetches under `--recurse-submodules`, asked whether `depth` is NULL when only `--deepen-since` is given, proposed rewriting the patch as three separate conditionals for `depth`, `deepen_since`, and `deepen_not`, and warned that propagating `--shallow-exclude` to submodules is likely inappropriate.
 
-### `includeIf.hostname` feature gains maintainer approval
-Junio C Hamano reviewed and approved the first patch in Isabella Caselli's three-patch series implementing `includeIf.hostname:<pattern>` in Git's configuration system. The series enables users to conditionally include configuration files based on the machine's hostname, addressing the use case of dotfile sharing across multiple machines. Junio described the implementation as "nicely written" and "sensible," confirming it's ready for integration. The series builds on Ignacio Encinas' 2024 work with explicit permission.
-
-**What changed:** Added `git var GIT_HOSTNAME` and implemented `includeIf.hostname:<pattern>` condition.
-**Problem:** Users couldn't conditionally include configuration based on hostname.
-**Subsystem:** Configuration system.
-**Impact:** Improved workflow for users sharing dotfiles across multiple machines.
-
-### Incremental connectivity check series advances
-Patrick Steinhardt and Kristofer Karlsson continued their discussion on the incremental connectivity check feature for fetch/push. The series introduces an opt-in mode (`transfer.connectivityCheck=incremental`) that reduces the cost of verifying object connectivity during fetches and pushes. Today's discussion focused on Patrick's review feedback, including type usage improvements, parameter naming, and error handling. The authors agreed to implement a configurable commit-count threshold to dynamically switch between incremental and full checks for very long incoming histories.
-
-**What changed:** The series implements incremental connectivity checking for fetch/push operations.
-**Problem:** Full connectivity checks scale poorly with repository size.
-**Subsystem:** Object database and connectivity checking.
-**Impact:** Up to 190x speedup for small pushes to large repositories.
+### Ignoring refs of shallow and grafted alternates
+Igor Wiedler's two-patch series fixes the connectivity check with alternates in deepening fetches: it negates `--alternate-refs` alongside `--all`, and makes `odb_for_each_alternate_ref()` ignore refs of shallow and grafted alternates so neither the connectivity check nor fetch/receive-pack treat history the alternate lacks as present. Today Jeff King reviewed the series, calling the `--alternate-refs` placement exactly the expected fix, noting replace refs alongside grafts, and agreeing that punting on partial-clone corner cases by ignoring such alternates' refs is fine since alternate-ref use is an optimization.
 
 ## In brief
-- **`git repo structure` revision filtering:** Mark C. Chu-Carroll's v7 patch adding revision-based filtering to `git repo structure` was marked ready for merging after addressing all feedback.
-- **Detached HEAD documentation:** Julia Evans posted v3 of a documentation rewrite for detached HEAD state, with Junio suggesting further refinements to the explanation.
-- **Reflog usability improvements:** Harald Nordgren's series adding `--operations` and `--historical-branch` options to `git reflog` sparked discussion about scope and design trade-offs.
-- **Loose-ref iterator bugfix:** Venkat Ragavan posted a patch fixing a correctness bug in `cache_ref_iterator_seek()` where loose-ref iteration could misposition when directory names share prefixes with ref names.
-- **`git format-rev` deprecation:** Kristoffer Haugsbakk proposed deprecating the experimental `git format-rev` command, noting that `git diff-tree` provides similar functionality but lacks NUL termination support.
-- **`git help user-manual` bug:** John Wilson reported a bug where `git help user-manual` fails on Git for Windows due to incorrect filename lookup.
-- **Outreachy contributions:** Several Outreachy applicants posted test modernization patches, with Shashank S's patch addressing feedback and being marked ready for merging.
-- **Cache-tree crash fix:** Szymon Wilczek posted a bugfix preventing `git rebase` from crashing when another process holds the index lock during an in-process commit.
-- **Integer-overflow fixes:** Johannes Schindelin's Coverity-inspired integer-overflow fixes received review feedback from Phillip Wood, focusing on macro implementation details.
-- **`the_repository` removal:** Okhuomon Ajayi posted a refactoring patch advancing the ongoing `the_repository` removal effort by updating functions in `merge.c` to use explicit repository parameters.
+- Andy Koppe's patch keeps root refs like HEAD out of the shared loose ref cache in the files backend, fixing `git for-each-ref --include-root-refs --merged=main` omitting root refs; he defended not caching root refs as simpler since the flag is used only twice.
+- Venkat Ragavan fixed loose-ref seeking across directory boundaries in `cache_ref_iterator_seek()` by including the trailing slash when comparing directory components, with regression tests over loose, packed, and mixed storage.
+- Harald Nordgren posted a three-patch series adding `--operations` and `--historical-branch` to `git reflog` and `git log -g`, folding rebases into single entries and decorating entries with the branch HEAD was on.
+- Mark C. Chu-Carroll posted v7 of "repo: add revision filtering options to 'repo structure'", fixing a duplicated word in the commit message after Kristoffer Haugsbakk pointed it out.
+- Patrick Steinhardt posted v3 of "odb/files: cleanups and improvements for alternates" with a regression test from Tyrie Vella; Justin Tobler reviewed it and said it looks ready.
+- Isabella Caselli posted v2 adding a `hostname:` condition to includeIf and `GIT_HOSTNAME` to `git var`; Junio C Hamano said the implementation looks sensible.
+- Johannes Schindelin's Coverity series adds `signed_mult_overflows`/`mult_overflows` macros and fixes an approxidate overflow; Phillip Wood noted the macros are GCC-only and proposed `intmax_t` arithmetic instead.
+- A patch fixes the sequencer clobbering the HEAD ref name in worktree lookup by using `refs_resolve_refdup()`; Phillip Wood praised the explanation and the new test.
