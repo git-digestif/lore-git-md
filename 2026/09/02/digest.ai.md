@@ -1,136 +1,62 @@
 # Git mailing list daily digest for 2026/09/02
 
+## Long threads
+
+### Convert build-time USE_NSEC into runtime core.useNanosec
+
+*Long thread (root 2026/08/07/11-56-23): 41 replies so far from 6 participants over 27 days; 3 messages that day.*
+
+D. Ben Knoble's series converts the build-time `USE_NSEC` compile option into the runtime `core.useNanosec` configuration setting, replacing `#ifdef` checks with runtime checks in `read-cache.c` and `statinfo.c` and updating the racy-git documentation, so index-related commands are less likely to hit racy-git problems on supported filesystems. Jeff King clarified that under `NO_NSEC` the index stat nsec entries are faked as "0" via the `ST_CTIME_NSEC`/`ST_MTIME_NSEC` macros rather than `cfg->use_nanosec`, so on such builds `core.usenanosec` would be effectively a noop; he described a hypothetical rebuild sequence in which index values could appear up to one second older, but said his suggestion was only about simplifying the code and is not worth worrying about since `NO_NSEC` cannot be dropped entirely. Junio C Hamano asked whether a hopefully small and final reroll will follow that takes advantage of `ST_XTIME_NSEC(st)` hiding `NO_NSEC` build-time differences; he remains worried that code this deep in the callchain can `BUG()` on a repository that is not `the_repository` due to the use of `repo_config_values()`, and suggested adopting a safe default when `istate->repo` differs from `the_repository`, but otherwise considers the series in great shape.
+
+### Introduce the receive-report hook for git-receive-pack
+
+*Long thread (root 2026/08/18/07-55-55): 31 replies so far from 5 participants over 16 days; 3 messages that day.*
+
+Karthik Nayak's series adds a `receive-report` hook that runs after the reference transaction completes but before the report is sent to the client, receiving the pkt-line encoded report on stdin with its stdout replacing the report sent to the user; a non-zero exit marks all references rejected. Karthik Nayak agreed with Junio C Hamano that an `enum report_version` (v0/v2) better captures that the `report()`/`report_v2()` difference is a protocol-level change than a `bool detailed_report` parameter, and said he would add it if he re-rolls the message-generation refactor. He also defended the hook against the objection that a reference-transaction hook would be an equally viable alternative: in GitLab's setup a successful `ref_transaction_commit()` is not the final step of a push, the transaction hook cannot express a ref push failure or send sideband messages, and rejecting at commit phase would require a post-commit rollback no backend supports; he will reroll with the rationale rewritten along these lines. Junio C Hamano clarified his remaining concern: when the hook reports failure, the pusher's local remote-tracking branches reflect a failed push even though the server already committed the ref transaction, so only the user's subsequent fetch can reconcile local state with the server.
+
+### Refuse to amend or partially commit during conflict resolution
+
+*Long thread (root 2026/08/26/05-21-21): 26 replies so far from 3 participants over 8 days; 5 messages that day.*
+
+Elijah Newren's series makes both `git commit --amend` and partial commits (`git commit <paths>`) die during conflict-resolution stops of merge, cherry-pick, revert, am, and rebase, via a new `sequencer_ongoing_operation()` helper, while permitting a partial commit when a rebase pick becomes empty. Phillip Wood reviewed the v4 series: he said the renamed `FROM_REBASE_NOW_EMPTY`/`is_from_rebase_now_empty()` names are much clearer, agreed the reworded amend error for a now-empty rebase commit is clearer, and said the `--amend` refusal looks good now that it uses `rebase_path_*()` accessors rather than hard-coded paths. He expressed mixed feelings about allowing partial commits when a rebase pick becomes empty, noting that `CHERRY_PICK_HEAD` and `.git/MERGE_MSG` are written at such stops so the user can preserve the commit with `--allow-empty`, and that `git cherry-pick` still disallows partial commits for empty commits; he concluded he has no strong opinion either way but is happy with everything else.
+
+### Repartition checkout/switch/restore code
+
+*Long thread (root 2026/08/27/18-29-00): 26 replies so far from 5 participants over 7 days; 3 messages that day.*
+
+Junio C Hamano's eight-patch series reworks `cmd_checkout()`, `cmd_switch()`, and `cmd_restore()` so they dispatch directly to `checkout_branch()` or `checkout_paths()` instead of funneling through the monolithic `checkout_main()`, moving option validation into the helpers and making `post_checkout_hook()` take a `struct repository *`. Karthik Nayak agreed that patch 6/8 (removing `checkout_main()`) makes sense together with patch 1/8, and clarified that in patch 3/8 the guard on the `--ours`/`--theirs`/`--force`/`--merge` incompatibility check changed because `checkout_paths()` is now also entered for `--patch` without a pathspec; he concluded this is safe because in patch mode each conflicting combination is already rejected earlier in `checkout_paths()`, and suggested a commit-message sentence explaining why. Junio C Hamano confirmed the patch-mode combinations were already rejected before the moved check, responded "Perhaps." to the commit-message suggestion, and stated that as a unit of reusable code an entire command like `git restore` is still too coarse for callers wanting finer-grained control from C, so the patches are only a starting point that scratches the surface.
+
 ## The day in brief
-The Git mailing list saw active development across several fronts today. Key highlights include Junio C Hamano’s final sign-off on the `--missing-only` feature for `git rev-list`, a critical flaw identified in Elijah Newren’s shallow clone push optimization, and the rejection of a `hooks.allowNoVerify` configuration proposal. The day also featured substantive discussions on ODB refactoring, CI modernization, and argument parsing improvements.
+Christian Couder's early-scan parse-options series arrived with fixes for `git bisect`, `git rev-parse`, and `git fast-import` argument parsing, drawing a welcome but also a call for a properly refactored dry-run parser. Derrick Stolee's AI-agent review found a multi-ref push flaw in Elijah Newren's shallow-clone push optimization, sparking debate over `push.negotiate` as a backstop. Thomas Bachem's rerere-gc-versus-rebase fix evolved toward disabling auto gc during rebase, and Junio C Hamano signaled the `core.useNanosec` runtime conversion is in great shape pending a possible final reroll.
 
 ## Notable threads
 
-### GitLab’s `--missing-only` for `git rev-list` approved and ready for `next`
-**What changed**: Junio C Hamano provided final sign-off on Siddharth Asthana’s `--missing-only` option for `git rev-list`, which enables output of only missing object IDs without post-processing. The feature supports GitLab’s Gitaly workflow for single-pass transaction packing.
+### Avoid sending the whole tree when pushing from a shallow clone
+Elijah Newren's patch avoids sending the entire toplevel tree when pushing from a shallow clone by assuming the server has the shallow graft itself rather than only its parents. Derrick Stolee reported that an AI-agent review of the patch found a flaw: in a multi-ref push, a shallow update attempted alongside another non-shallow branch can cause novel failures, because `append_reachable_shallow_grafts` treats shallow grafts as reachable from the refs being pushed rather than verifying they are reachable from the remote's advertised refs; he supplied a new t5538 test that passes before the patch but fails after it. Stolee argued the patch's assumption that non-advertised objects may exist on the server is not a reasonable default. Newren countered that `push.negotiate=true` can fail when a concurrent server repack makes upload-pack's QUICK "have" check lose the race, so a backstop is still needed, and stated the multi-ref case is not a corruption risk because receive-pack checks connectivity regardless of protocol, merely failing more refs than necessary.
 
-**Why it matters**: This feature provides a script-friendly way to list only missing objects (without `?` prefix) while preserving existing `--missing=` formatting options. It integrates cleanly with rev-list’s output controls and is now approved for integration.
+### Standardize early option scanning in parse-options
+Christian Couder posted a six-patch series introducing an "early-scan" sub-API (`early_scan_options()`) into parse-options to fix argument-parsing bugs where hand-rolled early scans mistake an option's value for the `--` separator, converting `git bisect`, `git rev-parse`, and `git fast-import` -- including fixing `git fast-import --depth 5 --allow-unsafe-features` silently ignoring the option. Junio C Hamano welcomed the series but said he fails to see much practical value in the bisect and rev-parse fixes while the fast-import fix "may be a very good thing", and stated a long-term preference for a properly refactored parse-options prescan such as a "dry-run" mode, asking that the interim solution at least take the same options array.
 
-**Key technical details**:
-- Files: `builtin/rev-list.c`, `Documentation/rev-list-options.adoc`, `t/t6202-rev-list-missing.sh`
-- New flag: `--missing-only` (filters output to missing objects only)
-- Output format: one OID per line (no `?` prefix), or `path=`/`type=` fields if `--missing=print-info` is used
-- Incompatible options: `--count` and `--disk-usage` are explicitly rejected
+### Keep a background rerere gc from killing a rebase
+Thomas Bachem posted a patch so that `git rerere gc` warns and skips when `MERGE_RR.lock` is busy instead of dying, which since 2.54's geometric maintenance strategy can kill an in-progress rebase when the background `git maintenance run --auto` collides with the sequencer's `repo_rerere()`. Phillip Wood proposed instead disabling gc during rebase by passing `-c gc.auto=false -c maintenance.auto=false` in the sequencer's commit, merge, and exec paths, and making `setup_rerere()` return an error on a busy lock. Bachem agreed to a v2 of two patches -- rerere returning an error on a busy lock with gc still warning and skipping, plus the sequencer disabling auto gc -- which he would hold until Junio C Hamano and Patrick Steinhardt weigh in.
 
-**Today’s delta**: [2026/09/02/21-26-03] Junio encouraged an optional commit message tweak to better "sell" the patch, marking the feature as ready for `next`.
+### Reserve exit status 1 for conflicts in stash and checkout -m
+Harald Nordgren reposted v4 of the series refining the `checkout -m` autostash fallback: conflicts now exit with status 1 like merge-tree while other failures exit 128, and the autostash apply helpers use the `enum stash_apply_result` return value, claiming conflicts only when `git stash apply` actually reported them; a second commit separates the autostash conflict advice from the branch-switch message. Junio C Hamano suggested a small `do_stash_apply()` helper for v4 1/2 but otherwise marked it "Good", and said v4 2/2 "looks good to me".
 
----
-
-### Critical flaw identified in shallow clone push optimization
-**What changed**: Derrick Stolee identified a critical flaw in Elijah Newren’s patch series improving `git push` performance from shallow clones. The patch can over-exclude objects needed by other refs in a multi-ref push when one ref is rejected for shallow-update reasons, risking repository corruption.
-
-**Why it matters**: The flaw undermines the patch’s safety guarantees, making it unsuitable for merging in its current form. The discussion now centers on whether to adopt Stolee’s negotiation-based approach or refine Newren’s original patch.
-
-**Key technical details**:
-- Files: `send-pack.c`, `Documentation/config/push.txt`, `t/t5538-push-shallow.sh`
-- New config: `push.shallowExcludeBoundary` (boolean, default `true`)
-- Failure mode: Multi-ref pushes where one ref is rejected for shallow-update reasons but others depend on excluded objects
-
-**Today’s deltas**:
-- [2026/09/02/18-23-55] Stolee identified the over-exclusion flaw, providing a test case demonstrating the corruption risk.
-- [2026/09/02/19-05-50] Stolee reinforced the flaw as a critical correctness issue, questioning the default assumptions of Newren’s patch.
-- [2026/09/02/20-57-00] Newren refuted the corruption concern, clarifying that `receive-pack` enforces connectivity checks, making the over-exclusion issue a false-positive failure rather than corruption.
-
----
-
-### `hooks.allowNoVerify` configuration proposal rejected
-**What changed**: Junio C Hamano rejected Alessio Attilio’s proposal to introduce a `hooks.allowNoVerify` configuration option that would prevent accidental bypass of hooks via the `--no-verify` flag. The rejection was reinforced by brian m. carlson’s philosophical opposition.
-
-**Why it matters**: The rejection highlights Git’s design principles around user-controlled hooks and the project’s resistance to introducing configuration layers that restrict CLI overrides. The discussion effectively closes the door on the current design.
-
-**Key technical details**:
-- New config key: `hooks.allowNoVerify` (string, accepts `true`/`warn`/`false`; defaults to `true`)
-- Commands affected: `commit`, `push`, `merge`, `rebase`, `am`
-- Emergency overrides: `GIT_ALLOW_NO_VERIFY=1` environment variable and `-c hooks.allowNoVerify=true` CLI flag
-
-**Today’s deltas**:
-- [2026/09/02/19-21-01] Junio rejected the feature, citing concerns about configuration complexity creep and the narrow scope of the feature.
-- [2026/09/02/22-14-41] Carlsson opposed the feature on philosophical grounds, arguing that `--no-verify` is a deliberate user choice and that Git should not introduce configuration layers to restrict it.
-
----
-
-### ODB refactoring continues with v2 of 13-patch series
-**What changed**: Patrick Steinhardt posted v2 of his 13-patch series refactoring the object database (ODB) subsystem to remove ad-hoc source linking. The series continues the `the_repository` removal effort and addresses Junio’s feedback from v1.
-
-**Why it matters**: This refactoring simplifies the ODB subsystem by ensuring the sources list contains only alternates, paving the way for future performance improvements in alternate handling. The series is a key part of the ongoing ODB abstraction effort.
-
-**Key technical details**:
-- Files touched: `odb.c`/`odb.h`, `submodule-config.c`, `builtin/grep.c`, `tmp-objdir.c`/`tmp-objdir.h`, test helpers
-- Symbols removed: ODB source registration functions, `submodule_source_paths` string list
-- New behavior: None; the series is purely refactoring
-
-**Today’s deltas**:
-- [2026/09/02/13-34-49] Steinhardt posted v2 of the series, incorporating Junio’s feedback on patch 1/13.
-- [2026/09/02/10-23-26] Steinhardt accepted Junio’s suggestion to encapsulate the repository dependency within `cache-tree.c`.
-
----
-
-### CI modernization: Asciidoctor version bump and Rust support
-**What changed**: Jeff King posted a two-patch series to bump the Asciidoctor version tested in GitLab CI from 1.5.8 to a system-provided version, addressing an outdated version pin. Johannes Schindelin also posted a patch series enabling Rust compilation in Git’s GitHub Actions Windows CI jobs.
-
-**Why it matters**: These changes modernize Git’s CI infrastructure, aligning it with user environments and unblocking the broader Rustification effort. The Asciidoctor update eliminates an eight-year-old version pin, while the Rust support ensures Cargo produces a static library compatible with MinGW’s `ld.exe`.
-
-**Key technical details**:
-- Files touched: `.github/workflows/main.yml`, `ci/lib.sh`, `ci/install-dependencies.sh`, `config.mak.uname`, `Makefile`
-- New behavior: CI workflows use GitHub’s pre-installed Rust toolchain, configured to target the GCC ABI
-
-**Today’s deltas**:
-- [2026/09/02/07-11-13] Peff posted a two-patch series to bump the Asciidoctor version.
-- [2026/09/02/06-25-48] Junio flagged a discrepancy in the Rust target triple mapping for UCRT64.
-
----
-
-### New `parse-options` sub-API for early argument scanning
-**What changed**: Christian Couder posted a six-patch series introducing a new `parse-options` sub-API (`early_scan_options()`) to fix argument-parsing bugs where hand-rolled early scans fail to account for option values that appear as separate arguments.
-
-**Why it matters**: The new API addresses a recurring class of bugs in commands like `git bisect`, `git rev-parse`, and `git fast-import`, where early scans misinterpret option values as special flags like `--`. The series is well-motivated and thoroughly tested but faces design skepticism from Junio.
-
-**Key technical details**:
-- New functions: `early_scan_options()`, `early_scan_options_from_options()`
-- Files touched: `parse-options.h`, `parse-options.c`, `builtin/bisect.c`, `builtin/rev-parse.c`, `fast-import.c`, test files
-- Bugs fixed: Misparsing of `--` and special flags when option values appear as separate arguments
-
-**Today’s deltas**:
-- [2026/09/02/16-10-41] Couder posted the six-patch series.
-- [2026/09/02/18-52-23] Junio raised substantive design concerns, questioning the API’s long-term viability and the practical value of the `git bisect` and `git rev-parse` fixes.
-
----
-
-### Bugfixes and usability improvements
-**What changed**: Several bugfixes and usability improvements were posted today, including:
-- A memory leak fix in the submodule error path by Jeff King.
-- A NULL-pointer dereference fix in `git history split` by zkd18cjb@mail.ustc.edu.cn.
-- A buffer overflow fix in `match_pathspec_with_flags()` by Yannik Tausch.
-- An edge case fix in `common_prefix_len()` by Yannik Tausch.
-- An inconsistency in newline handling between `git commit` and `git merge` reported by Simon Cheng.
-
-**Why it matters**: These fixes address real-world issues, from crashes to subtle misbehavior, improving Git’s robustness and user experience. The memory leak fix is particularly notable for its thorough exploration of the `parsed_object_pool` API’s asymmetry.
-
-**Key technical details**:
-- Files touched: `builtin/history.c`, `dir.c`, `t/unit-tests/u-dir.c`, `t/t6132-pathspec-exclude.sh`
-- Subsystems: pathspec-matching, submodule handling, commit message processing
-
-**Today’s deltas**:
-- [2026/09/02/05-51-17] Peff posted a two-patch bugfix series for the submodule memory leak.
-- [2026/09/02/12-07-36] zkd18cjb@mail.ustc.edu.cn posted a bugfix for the `git history split` crash.
-- [2026/09/02/12-22-39] Yannik Tausch posted a bugfix for the pathspec buffer overflow.
-- [2026/09/02/13-04-09] Yannik Tausch posted a bugfix for the `common_prefix_len()` edge case.
-- [2026/09/02/14-04-37] Simon Cheng reported the newline handling inconsistency.
-
----
+### Fix out-of-bounds read with negative pathspecs in dir.c
+Yannik Tausch submitted a patch fixing an out-of-bounds read in `dir.c`: `match_pathspec_with_flags()` passed the common prefix derived solely from positive pathspecs when matching negative pathspecs, so a negative pathspec shorter than the prefix produced a negative matchlen and a heap-buffer-overflow; the fix passes 0 as the prefix when matching negative pathspecs and adds a regression test in `t/t6132-pathspec-exclude.sh`.
 
 ## In brief
-- **[2026/09/02/04-35-59]** Siddharth Shrimali posted a final GSoC 2026 submission report for the disk space recovery project, confirming the project is feature-complete.
-- **[2026/09/02/11-30-45]** Yuvraj Singh Chauhan posted a two-patch series moving the global `grafts_keep_true_parents` configuration variable into the repository-specific `repo_config_values` struct.
-- **[2026/09/02/13-20-42]** Kaartic Sivaraam volunteered to co-mentor a project and/or serve as an org admin for Git’s Outreachy December 2026 cohort.
-- **[2026/09/02/14-42-19]** Karthik Nayak strengthened the commit message’s rationale for the `receive-report` hook, addressing Junio’s consistency concern.
-- **[2026/09/02/15-07-23]** Thomas Bachem agreed to implement Phillip Wood’s preferred approach for fixing the `rerere` lock race condition: disabling background maintenance during rebase.
-- **[2026/09/02/17-04-31]** Kristoffer Haugsbakk and Julia Evans finalized two purely stylistic tweaks to the `gitdatamodel(7)` documentation.
-- **[2026/09/02/19-14-34]** Junio highlighted a fundamental consistency concern with the `receive-report` hook: its ability to report a state divergent from the actual repository state.
-- **[2026/09/02/19-52-30]** Junio accepted the iteration of Harald Nordgren’s `git checkout -m` autostash conflict handling series as "good to me."
-- **[2026/09/02/21-05-11]** Junio requested a final reroll of the `dk/use-nsec-runtime` series to consolidate `NO_NSEC` build-time differences.
-- **[2026/09/02/22-40-54]** Junio acknowledged Karthik Nayak’s feedback on the `git checkout` libification series, resolving a correctness issue in the third patch.
+- Alessio Attilio posted v4 of a `hooks.allowNoVerify` configuration to control `--no-verify`; Junio C Hamano rejected the proposal as a slippery slope, and brian m. carlson agreed, noting hooks can be bypassed via `core.hooksPath=/dev/null`.
+- **dir: common prefix among positive pathspecs**: Yannik Tausch proposed fixing `common_prefix_len()` returning zero when an exclude pathspec comes first; Junio C Hamano objected to the struct-by-value return and proposed an output parameter instead.
+
+- Jinbao Chen fixed a SIGSEGV in `git history split` when the parent commit's tree object is missing, erroring with "unable to parse tree <oid>".
+- Jeff King explained that porcelain commands allowing a branch named `@` is not a bug -- bare `@` is legal in a ref component for backwards compatibility -- and suggested treating it like `HEAD` in porcelain commands.
+- Jeff King posted patches to use the system asciidoctor package in CI instead of the pinned 1.5.8 gem; Patrick Steinhardt agreed old-version checking is unnecessary.
+- Patrick Steinhardt posted v2 of the series stopping in-memory ODB source registration, adapting `cache_tree_fully_valid()` to take a `struct index_state`.
+- Junio C Hamano flagged a target-name inconsistency between Johannes Schindelin's two patches for using Rust in Windows CI, where UCRT64 maps to different Cargo targets in the Makefile and the shell script.
+- Wolfgang Faust added `--draft` to `git imap-send` to set the IMAP `\Draft` flag; Junio C Hamano affirmed starting with a flag before adding configuration.
+- **Submodule leak fix**: Jeff King posted patches making repo_clear() idempotent and freeing URL when submodule setup fails, fixing a Coverity-noticed leak. Patrick Steinhardt endorsed a self-contained parsed object pool.
+
+- Patrick Steinhardt changed `cache_tree_fully_valid()` to accept a `struct index_state`, dropping its dependency on `the_repository`.
+- Yuvraj Singh Chauhan moved `grafts_keep_true_parents` into `repo_config_values` with a getter, and added `t/t5300-pack-object.sh` tests for `--keep-true-parents`.
