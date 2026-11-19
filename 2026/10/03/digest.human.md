@@ -1,55 +1,44 @@
 # Git mailing list daily digest for 2026/10/03
 
+## Long threads
+
+### New gitmergeconflicts documentation guide
+
+*Long thread: 32 replies so far from 6 participants over 10 days; 3 messages that day.*
+
+Julia Evans's series adds a new `gitmergeconflicts` manual page explaining merge conflicts with examples, linked from `git-merge`, `git-pull`, `git-rebase`, `git-revert`, and `git-cherry-pick` instead of repeating the process in each command's documentation. Earlier reviewers shaped a new "WHAT IS A MERGE CONFLICT?" section for v2. Today D. Ben Knoble said he quite likes that section and would not have read "unstaged" as meaning removed from the index, and gave his position that `git <thing> --continue` is the right recommendation for most users even though for merge it may coincide with `git commit`. Junio C Hamano agreed Ben's reading of "unstaged" is possible but explained that "to unstage" is ambiguous and reiterated his suggestion to avoid the verb.
+
+### Repack corner cases for cruft-less MIDXs
+
+*Long thread: 27 replies so far from 5 participants over 4 days; 6 messages that day.*
+
+Taylor Blau's v2 series fixes corner cases where `repack.midxMustContainCruft=false` can produce a multi-pack-index whose objects are not closed under reachability, which can make bitmap generation fail. Earlier review covered the oidset conversion, kept-pack traversal, and the `--write-midx=incremental` gap. Today Taylor Blau agreed with Jeff King that the double-negative condition in patch 5/8 is awkward, tracing it to `midx_must_contain_cruft` arguably deserving the name `midx_may_exclude_cruft`; defended calling `prepare_revision_walk()` twice on the same `rev_info` by citing existing callers; explained that the `item->util` preferred-pack marking would not survive sorting because the last marked entry wins; and confirmed that `midx_included_packs()` performs the pack selection in patch 8/8. Jeff King accepted both the double-`prepare_revision_walk()` evidence and the sorting explanation.
+
+### RFC for git-brebase
+
+*Long thread: 12 replies so far from 2 participants over 1 day; 13 messages that day.*
+
+Alejandro Colomar posted an RFC for `git-brebase`, a 164-line shell script that rebases onto the first conflicting commit of a target branch using `git bisect` internally, supporting `--first-parent`, `--pre-exec`, and `--post-exec`. Nico Williams said he still preferred a `--first-conflict` option on `git rebase` itself, proposed that `git rebase` bisect to the first conflicting upstream commit by default, and suggested script improvements including a `trap` and avoiding a temp callback file. Colomar argued `--abort` should return only to the start of the current iteration so trees of branches can be rebased, patched the script to work with detached HEAD, and said he now defaults to brebase for every rebase while still using plain `git rebase` for precise operations.
+
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. The most consequential developments include a critical usability regression identified in GitHub Actions CI failure reporting, a Rust-based SHA-1 backend series facing policy-level objections over Rust version requirements, and ongoing design debates about incremental rebase workflows. Documentation improvements and build system optimizations also advanced, with some threads nearing completion.
+The merge-conflicts documentation guide and the cruft-less MIDX repack series both absorbed detailed review feedback, while a new RFC proposed a `git-brebase` tool that rebases onto the first conflicting commit. Separately, discussion of a "limbo" object-format state for empty repositories produced a concrete protocol proposal, and a filter-branch state-branch bugfix reached v3.
 
 ## Notable threads
 
-### GitHub Actions CI failure reporting regression
-Harald Nordgren’s two-patch series improving GitHub Actions failure reporting is now blocked by a critical usability regression. Phillip Wood identified that the new annotation links on the GitHub Actions summary page **only work if the test file was modified in the same pull request**; otherwise, they point to a broken or irrelevant location. This directly contradicts the patch’s core goal of providing actionable failure links.
+### "Limbo" object-format state for empty repositories
+Jeff King proposed letting an empty server-side repository advertise a "limbo" object format so first pushes from either sha1 or sha256 clients succeed. Today brian m. carlsson argued `object-format=limbo` would break every existing object-format-aware client and raised policy questions; Jeff King proposed a new ignorable capability ("magic-limbo") paired with a valid `object-format=` value; Junio C Hamano lamented that multiple `object-format` capability lines would have been the right design; and carlsson countered that an `alt-object-format` directive would also be needed and corrected an earlier bug recollection to an infinite loop fixed in 2.41.
 
-The series had previously addressed all substantive review feedback, including removing percent-sign escaping and improving commit messages. The regression surfaces when a test fails in a file that wasn’t changed by the patch under test—clicking the annotation now takes users to the file diff view rather than the test output. This is a functional regression that must be resolved before the series can proceed.
+### Optional sha1dc Rust backend for SHA-1
+Johannes Schindelin's series adds an option to use the fast SIMD-based sha1dc Rust crate, with a runtime escape hatch to the C backend. Today Schindelin conceded "compile-time" is misleading since `sha1dc_choose()` selects the backend at runtime, and reported that the Rust and C implementations cover the same collision-detection space. brian m. carlsson objected that the crate requires Rust 1.87 while Git supports older versions, proposing that any minimum-version bump be handled in a separate series with a policy document.
 
-**What’s at stake**: The patches aim to make test failures easier to debug by linking directly to the exact line in the test script where the failure occurred. The regression undermines this usability improvement and risks making the feature worse than the current behavior.
-
-### Rust-based SHA-1 backend and Rust version policy
-Johannes Schindelin’s RFC series introducing a Rust-based SHA-1 backend received a policy-level objection from brian m. carlson. The series requires Rust 1.87, but Git’s `Cargo.toml` currently targets Rust 1.49.0, and the project’s informal policy aligns with Debian stable (Rust 1.85.1). Carlson argues this version bump should be handled in a separate policy discussion, not as part of this feature series.
-
-Schindelin clarified that the Rust and C backends differ in their collision-detection implementation (SIMD-optimized UBC filter in Rust vs. original DV checks in C) but cover the same affine solution space over GF(2). The series is positioned as a performance optimization with an escape hatch (`core.sha1dcBackend=c`), but the Rust version requirement remains a point of friction.
-
-**What’s at stake**: The series promises a 3× performance improvement for `git index-pack` on Windows and large repositories, but the version requirement could block integration unless the project revisits its Rust version policy.
-
-### Incremental rebase workflows: `git brebase` vs. `git rebase` integration
-The RFC thread proposing `git brebase` as a simpler alternative to `git imerge` for complex rebases saw active design discussion today. Alejandro Colomar refined the 164-line shell script to address feedback, including adding `trap` for temporary file cleanup, filtering the callback script filename from `git bisect run` output, and fixing a detached HEAD support bug.
-
-Nico Williams countered with a proposal to integrate bisect-driven conflict resolution into `git rebase` as the default behavior when conflicts arise. The debate centers on whether the functionality should be a new command (`git brebase`), a flag for `git rebase` (e.g., `--first-conflict`), or the default behavior. Colomar argues for a standalone command to preserve `git rebase`’s plumbing role, while Williams frames the incremental workflow as the *intended* design of `git rebase`.
-
-**What’s at stake**: The discussion touches on Git’s design philosophy—whether `git rebase` should remain a simple plumbing command or evolve to handle more complex workflows natively. The outcome could shape how users interact with Git’s rebase functionality for years to come.
-
-### MIDX reachability closure corner cases
-Taylor Blau’s eight-patch v2 series fixing MIDX reachability closure corner cases saw substantive follow-ups today. The series addresses scenarios where MIDXs can end up containing objects not closed under reachability, violating the MIDX’s invariant and causing bitmap generation failures.
-
-Key developments:
-- Jeff King endorsed patch 4/8 (a mechanical refactoring replacing a linear search with a binary search) as correct and sensible.
-- Patch 6/8, which introduces a `preferred_pack` field to explicitly track the preferred pack, was confirmed as necessary after Blau clarified that the existing code marks *multiple* preferred packs and selects the *last* marked entry, making the choice order-dependent.
-- The data structure choice for `extra_roots` in patch 2/8 remains contested. Elijah Newren’s test cases demonstrated that an `oid_array` preserves critical path and namehash ordering required for delta compression quality, while an `oidset` would introduce functional regressions.
-
-**What’s at stake**: The series fixes subtle but important bugs in Git’s multi-pack-index machinery, which is critical for performance in large repositories. The unresolved `oidset` vs. `oid_array` debate could impact delta compression quality and memory usage.
-
-### Documentation improvements
-Several documentation threads advanced today:
-- Julia Evans’ `gitmergeconflicts(7)` series saw progress on the "WHAT IS A MERGE CONFLICT?" section, with D. Ben Knoble endorsing the clarity and Junio C Hamano resolving the last open stylistic question about the term "unstaged."
-- Kristoffer Haugsbakk’s `gitbreaking-changes(7)` RFC series saw pushback on Junio’s proposed hybrid URL+message-ID format for message-ID references, with Haugsbakk citing usability concerns in HTML output.
-- Haugsbakk also updated the `git-interpret-trailers` man page to improve the phrasing of `trailer.<key-alias>.cmd` examples.
-
-**What’s at stake**: These threads aim to improve Git’s documentation by centralizing merge conflict guidance, making breaking changes more discoverable, and clarifying trailer configuration examples. The outcomes will affect how users learn and interact with Git’s features.
+### filter-branch state-branch map fix
+Grant Moyer posted [PATCH v3] fixing `git filter-branch --state-branch` map initialization, which since f6d855091e interpreted object pairs in reverse, causing the state branch to be effectively ignored; the patch restores `$from_commit:$to_commit` order and adds a test that incremental rewrites use rewritten parents.
 
 ## In brief
-- **`git history` signing series**: Souma’s v5 follow-up patches address the last technical hurdle (completion test regression) by adding `--gpg-sign`/`--no-gpg-sign` to `t9902-completion.sh`. The series is now unblocked and ready to graduate to `next`.
-- **`git filter-branch` bugfix**: Grant Moyer’s v3 patch fixes the `--state-branch` commit mapping inversion regression introduced in Git 2.50.0. The patch is self-contained, well-motivated, and has no remaining loose ends.
-- **Precompiled headers**: SZEDER Gábor reported a side effect of precompiled headers: the `__FILE__` macro in `git-compat-util.h` expands to `"./git-compat-util.h"` instead of `"git-compat-util.h"`, affecting error messages in assertions and compiler diagnostics.
-- **`fetch.followRemoteHEAD` refactoring**: Colin Hinton’s v4 patch defers validation of the config setting until it is actually used in `do_fetch()`, eliminating spurious warnings for fetches that never consult the setting.
-- **`post-worktree` hooks**: Maciej Ciemborowicz provided a real-world use case for Domen Kožar’s proposed `post-worktree` hooks, demonstrating that IDEs (e.g., VS Code with Codex) create worktrees directly, bypassing wrappers and making hooks necessary for observability.
-- **Bisect plumbing**: Alejandro Colomar and D. Ben Knoble explored plumbing commands to robustly check whether `git bisect` has isolated a single commit. The discussion highlighted the limitations of existing approaches and suggested `git rev-list --bisect` as a potential solution.
-- **Zsh completion**: Fionn contributed a patch to `git-completion.zsh` to exclude already-specified file arguments from further completion candidates, aligning Git’s bundled Zsh completion with Zsh’s native `_git` completion.
-- **`BISECT_HEAD` feature request**: Alejandro Colomar requested that `BISECT_HEAD` be set unconditionally, even when `--no-checkout` is not used, to allow referencing the bisect commit after switching branches.
+- **history: sign rewritten commits v5**: Souma posted v5, adding Git completion coverage for the existing `-S`/`--gpg-sign` and `--no-gpg-sign` options on history subcommands.
+
+- Colin Hinton posted v4 deferring `fetch.followRemoteHEAD` validation to the point of use in `do_fetch()`, leaving `remote.<name>.followRemoteHEAD` marked NEEDSWORK.
+- Julia Evans published v2 removing required SYNOPSIS sections from section 7 man pages, with Tuomas Ahola's declarative lint-script rewrite.
+- Fionn Fitzmaurice patched the Zsh completion to exclude files already present in the argument list.
+- Kristoffer Haugsbakk posted v2 rephrasing the `trailer.<key-alias>.cmd` examples in the interpret-trailers documentation.
+- SZEDER Gábor noted the precompiled `git-compat-util.h` changes `__FILE__` expansion in error messages, which he judged acceptable.
