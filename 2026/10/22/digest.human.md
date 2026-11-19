@@ -1,36 +1,55 @@
 # Git mailing list daily digest for 2026/10/22
 
+## Long threads
+
+### branch: let --delete-merged find squash merged branches
+
+*Long thread: 46 replies so far from 6 participants over 24 days; 11 messages that day.*
+
+This series makes `git branch --delete-merged` treat branches merged via GitHub "Squash and merge" or "Rebase and merge" as merged, naming the upstream commit that landed them. Today Junio C Hamano objected to loosening the default, attaching a test showing a private branch whose contents were independently added upstream under a different author would be wrongly deleted, and asked for an explicit opt-in. Harald Nordgren accepted and proposed a separate `--delete-irrelevant` option; D. Ben Knoble countered the "extremely rare" claim with two identical "npm update" PRs. Junio then proposed a subset-superset ladder (`=merged`, `=rebased`, `=squashed`) and candidate names including "integrated"; Nordgren endorsed `--delete-merged[=<level>]` and "integrated", while Jasper Mayone noted the value slot is taken by the upstream `<pattern>` and proposed a separate `git branch --delete-integrated <pattern>`, a shape Junio said he likes.
+
+### connected: add incremental connectivity check via rev-list
+
+*Long thread: 33 replies so far from 3 participants over 39 days; 4 messages that day.*
+
+This series adds an incremental connectivity check behind `transfer.connectivityCheck=incremental` or `"auto"` so the check does not slow as reachable boundary objects grow. Today Kristofer Karlsson agreed with Junio C Hamano that gating `fetch_if_missing = 0` on "not full" would trap future modes, then reported he could use `odb_read_object_info_extended()` with `OBJECT_INFO_SKIP_FETCH_OBJECT` and stop touching `repo->fetch_if_missing` in the series entirely; he verified manually in a partial clone that `rev-list --connectivity-check=incremental` reports promised blobs and trees as missing without fetching them, and plans to squash this into v5. Junio agreed the broader refactor stays outside the series.
+
+### advice: introduce advice scoping mechanism
+
+*Long thread: 26 replies so far from 4 participants over 44 days; 1 message that day.*
+
+The `defaultBranchName` advice tells users to run `git config set advice.defaultBranchName false`, which writes locally where the advice already appeared; the series adds a scope hint so the advice suggests the global scope. Today Junio C Hamano asked whether to mark `jc/advice-config-set-global` for `next` and whether Vsevolod Myalitsin could clean up the `vadvise()` API to take the whole `advice_setting` as an independent effort.
+
+### doc: move BreakingChanges to a manpage
+
+*Long thread: 23 replies so far from 5 participants over 25 days; 3 messages that day.*
+
+This series moves `Documentation/BreakingChanges.adoc` to a `gitbreaking-changes(7)` manpage for visibility. Today Kristoffer Haugsbakk proposed promptly deleting old-version discussions, or keeping only the previous one; Patrick Steinhardt argued the document should stay at least a couple of years because upgrades often jump versions; Junio C Hamano decided to proceed with the manpage.
+
 ## The day in brief
-The Git mailing list saw intense discussion around governance processes, with a voting system proposal gaining momentum but facing ideological pushback. Technical work advanced on several fronts, including a major performance fix for `git log --follow`, SSH signing verification fixes, and worktree improvements. The maintainer's "What's cooking" report highlighted a growing backlog of patches, raising concerns about project capacity.
+
+Git for Windows 2.56.0(3) shipped as a security fix release. The `--delete-merged` thread weighed several opt-in shapes for squash- and rebase-merged branches without converging on a final design, while the incremental connectivity check was reworked to avoid touching `fetch_if_missing` entirely.
 
 ## Notable threads
 
-### Governance and voting process
-The proposal to formalize a voting process for contentious decisions sparked heated debate. **Emily Shaffer** posted a patch defining the voting process, which would be used to resolve the AI contribution policy stalemate. **Kristoffer Haugsbakk** criticized the idea, arguing it would favor corporate interests, particularly on AI adoption. **Patrick Steinhardt** proposed secret ballots to mitigate corporate influence, while **brian m. carlson** defended contributors' independence from employer pressure. **Junio C Hamano** endorsed the need for secret ballots, shifting the discussion from "whether" to "how" to implement voting fairly.
+### Git for Windows 2.56.0(3) security release
 
-The eligibility criteria for voters also drew scrutiny. **Phillip Wood** suggested counting patch series rather than individual patches and requiring substantive reviews, while **Justin Tobler** warned that stricter criteria could disproportionately favor corporate-affiliated contributors. The thread revealed deep divisions about Git's governance model and the role of corporate contributors in shaping project direction.
+Johannes Schindelin announced Git for Windows 2.56.0(3), addressing the eMudhra Intermediate CA Compromise and Git LFS CVE-2026-105803 by upgrading to Git LFS v3.8.1, and bundling OpenSSH v10.6.P1 and cURL v8.23.0.
 
-### `git log --follow` performance regression fix
-**Miklos Vajna** posted a four-patch series fixing a severe performance regression in `git log --follow` when tracking renames across merges. The regression, introduced in June 2026, made `--follow` unusably slow (6m43s vs. 28s on the Linux kernel repository). The fix splits diffing into two passes: a fast pass without rename detection to identify unchanged parents, and a fallback to expensive rename detection only when necessary. The series includes comprehensive test coverage and benchmarks showing a speedup to 36s.
+### worktree: add --reflink for copy-on-write worktree creation
 
-### SSH signing verification fixes
-**Christian Noé Ramos López** posted a v2 security bugfix for Git's SSH signing verification, addressing two critical flaws: (1) a misleading hint message that included full ref names instead of short names, and (2) a revocation file that failed open when missing or unreadable. The patch ensures signature information is displayed consistently and makes revocation file errors fatal by default, with an escape hatch via Git's `:(optional)` pathname syntax. **Junio C Hamano** requested a procedural correction for future rerolls, and **Patrick Steinhardt** helped shape the documentation wording.
+brian m. carlson confirmed v3 handles macOS `cp -c` (clonefile(2)) so the REFLINK test runs there, and declined to review further AI-generated content from Jason Newton, citing the project's AI policy.
 
-### Worktree improvements and branch deletion
-**Harald Nordgren**'s work on `git branch --delete-merged` to detect squash-merged and rebase-merged branches continued to evolve. The discussion converged on a clean separation between `--delete-merged <pattern>` (strict tip-reachability) and `--delete-integrated <pattern>` (change-based detection for rebased and squashed branches). **Jasper Mayone** proposed an author-based mitigation for false positives, requiring that the landing commit's author also authored at least one commit on the branch being deleted. The thread also addressed a separate RFC by **DonQuinleone** to handle branches with gone upstreams, with interface design remaining the primary point of contention.
+### Documentation: propose community voting process
 
-### Index lock contention and `git status` improvements
-**Mihai Cosma** proposed an alternative approach to reduce lock contention in `git status` by deferring lock acquisition until write time. The patch series also fixes a silent data-loss bug in the `index.skipHash` code path, where concurrent index modifications could be silently overwritten. Benchmarks show a 6× speedup in `git add` latency in large repositories, demonstrating the effectiveness of the approach. The series is compatible with **Jun Wu**'s concurrent "Wait for the index lock" series and could be merged in either order.
+On Emily Shaffer's proposed `CommunityVoting` process, Kristoffer Haugsbakk argued an AI-contributions vote would drift toward tech-employer positions; Patrick Steinhardt and brian m. carlson endorsed secret ballots so voters can differ from their employers; Justin Tobler argued the eligibility bar (a commit in `next` or two reviews) is too low.
 
 ## In brief
-- **`git worktree --reflink`**: **brian m. carlson** objected to Jason Newton's use of AI-generated text in review responses, escalating the interpersonal conflict in the thread. The reflink implementation remains contested, with **Eric Sunshine** and **Phillip Wood** maintaining substantive objections to both the opt-in design and ephemeral branch reaping.
-- **Incremental connectivity check**: **Kristofer Karlsson** agreed to eliminate reliance on `repo->fetch_if_missing` in the incremental connectivity check, addressing **Junio C Hamano**'s forward-compatibility concern.
-- **`gitbreaking-changes(7)` manpage**: **Junio C Hamano** signaled tentative approval for the series, contingent on the post-transition awkwardness being manageable. The discussion resolved the document's lifecycle after Git 3.0, with options to treat it as a living draft or retain only the most recent breaking-change discussion.
-- **`git stash` performance**: **Phillip Wood** and **Junio C Hamano** finalized stylistic details for the `pw/stash-optimize-check_changes-calls` series, which is now queued for `next`.
-- **Community Summit notes**: The discussion around the voting process was directly tied to the unresolved AI contribution policy debate, with **Emily Shaffer** volunteering to coordinate voting logistics.
-- **`git remote set-password`**: **brian m. carlson** rejected the proposal outright, citing project policy against encouraging URL-embedded credentials and advocating for credential helpers or SSH with public keys.
-- **`git init` absolute paths**: **Matt Hunter** posted a v2 patch restoring the absolute path output in the "Initialized empty Git repository" message, incorporating all feedback and adding a regression test.
-- **Terminology cleanup**: **Andy Koppe** posted a five-patch series aligning Git's documentation, code comments, and tests with the 2024 terminology change that narrowed "pseudoref" to FETCH_HEAD and MERGE_HEAD only, while introducing "root ref" for refs outside the "refs/" hierarchy. **Junio C Hamano** reviewed the first patch, objecting to the omission of "different semantics" in the "pseudoref" definition.
-- **ODB transaction race condition**: **Patrick Steinhardt** approved **Justin Tobler**'s v4 bugfix series targeting a race condition in Git's ODB transaction machinery, clearing the series for integration.
-- **`git log --follow` test coverage**: **Miklos Vajna** posted the first patch in a series adding test coverage for `--follow` behavior across merge commits, preparing for a later optimization.
-- **Maintainer capacity**: **Junio C Hamano**'s "What's cooking" report highlighted a backlog of ~100 topics, with only ~30 in or near `next`, raising concerns about the maintainer's capacity to handle the volume of incoming contributions. The report also noted several graduated topics, including Unicode 18 width tables, `uploadpack.lazyFetchTrusted` config, and incremental `fetch.writeCommitGraph`.
+
+- Mihai Cosma posted a series making `git status` take `index.lock` only to write, plus a fix for a `skipHash` race that could silently revert a `git add`; benchmarks showed `git add` failures dropping from 104/200 to 0/200.
+- brian m. carlson said Git will not add a command to update passwords in remote URLs, pointing to credential helpers, SSH keys, and deploy keys.
+- Taylor Blau posted v2 parsing parents before queueing in `negotiator/skipping.c`; Junio C Hamano objected to marking commits SEEN before parsing, which Taylor declined as consistent with the default negotiator.
+- Karthik Nayak posted v4 advertising already-fetched refs as "haves" when backfilling tags, fixing shallow and `--atomic` fetches.
+- Miklos Vajna posted v3 speeding up `log --follow` across renames in non-linear history.
+- Junio C Hamano posted v4 of `MyFirstContribution` reordering "respond to reviews" before "send v2" and strengthening the wording.
+- Jun Wu's series adds `core.indexLockTimeout` so index-writing commands wait briefly for the lock; Mihai Cosma noted it conflicts with his status series only on one lock call.
