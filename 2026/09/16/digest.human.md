@@ -1,38 +1,38 @@
 # Git mailing list daily digest for 2026/09/16
 
+## Long threads
+
+### http: add http.sslVerifyStatus to check stapled OCSP responses
+
+*Long thread: 22 replies so far from 4 participants over 37 days; 1 message that day.*
+
+This thread concerns `http.c` and the libcurl TLS options Git sets: Git never sets `CURLOPT_SSL_VERIFYSTATUS`, so libcurl never requests the OCSP "Certificate Status Request" extension and any stapled response a server sends is ignored, including one stating the certificate has been revoked. The series adds an `http.sslVerifyStatus` boolean that maps to that option, defaulting to false because enabling it would block connections to legitimate servers that do not staple OCSP responses. Earlier iterations reworked the commit message and documentation and combined the two test approaches: cases needing no OCSP setup stay in `t5551`, while everything requiring a responder lives in the new `t5585-http-ssl-ocsp.sh` with `LIB_HTTPD_OCSP` support in lib-httpd. Today Junio C Hamano said the updated tests look good and that he will replace the existing tests with them.
+
 ## The day in brief
-The Git project queued a regression fix for `git rebase` with commit graphs and submodules, finalized the `http.sslVerifyStatus` feature for OCSP staple validation, and advanced discussions on several bugfixes, including a `--force-if-includes` logic flaw and a stash/merge autostash race. Git v2.56.0-rc1 was announced, marking the start of the stabilization period for the upcoming release.
+
+Junio C Hamano said he will queue Orestis Floros's fix for parsing commits in the caller's repository during superproject/submodule merges, marked the pathspec-prefix v4 series ready for `next`, and approved the OCSP test updates; Git v2.56.0-rc1 was also announced for testing.
 
 ## Notable threads
 
-### Regression fix: `git rebase` with commit graphs and submodules
-A regression in `git rebase` (and related operations like merge and fetch) that caused fatal errors when commit graphs were enabled and submodule pointer changes were involved is now resolved. The fix, authored by Orestis Floros, modifies `commit-reach.c` to propagate the `struct repository *` parameter through reachability functions, ensuring commits are parsed in the correct repository. This prevents cross-repository commit-graph lookups that previously triggered the "invalid commit position" error.
+### commit-reach: parse commits in the given repository
 
-Today, Kristofer Karlsson confirmed the fix resolves the regression and noted it reduces `commit-reach.c`'s reliance on `the_repository` from 17 to 11 instances, aligning with the broader libification effort. Junio C Hamano called the patch "reasonable" and will queue it for integration. The fix includes a new test case in `t/t6437-submodule-merge.sh` to verify the regression is resolved.
+`can_all_from_reach()` and `can_all_from_reach_with_flag()` in `commit-reach.c` parsed the commits they walk in `the_repository` even when the caller worked in a different repository, which made merging a superproject whose submodule pointer advanced on both sides die with "fatal: invalid commit position" when commit-graphs existed in both repositories. Orestis Floros posted a patch passing a `struct repository *` into both functions so commits are parsed in the caller's repository, with a regression test in `t/t6437-submodule-merge.sh`. Kristofer Karlsson confirmed the new tests reproduce the bug with and without the code change and noted it reduces `the_repository` references in `commit-reach.c` from 17 to 11. Junio C Hamano called the change reasonable and a welcome step for libification, and said he will queue it.
 
-### `http.sslVerifyStatus` feature graduates to `master`
-The `http.sslVerifyStatus` feature, which enables OCSP staple validation for HTTPS connections, has graduated to `master`. The feature adds a boolean configuration option (default `false`) that causes Git to fail connections if the server does not provide a valid OCSP staple. This addresses a security gap for government and government-adjacent customers (e.g., US Department of Defense PKI) who mandate OCSP stapling.
+### dir: fix pathspec prefixes with exclusions
 
-Junio C Hamano confirmed the updated test structure—keeping non-OCSP cases in `t5551-http-fetch-smart.sh` and moving OCSP-specific tests to `t5585-http-ssl-ocsp.sh`—and will replace the previous version in `next` with the final combined patch. The feature is now technically complete, with all review feedback addressed and test coverage confirmed.
+This v4 series fixes the pathspec prefix optimization in `dir.c`: the prefix is derived from non-exclude items, so applying it while matching an exclude item can compare the wrong portions of paths, and an exclude item first in the pathspec prevents finding a common prefix among the rest. The first patch matches exclude items against the full pathname; the second starts the common-prefix search at the first non-exclude item. Today Junio C Hamano said this round looks ready for `next`.
 
-### `--force-if-includes` logic flaw and fast-forward exemption
-A bugfix series for `--force-if-includes` in `git push` continues to advance, with the author, Tyler Cipriani, addressing feedback on the fast-forward exemption logic. The series fixes two critical flaws: (1) the feature incorrectly checked the reflog of the *local* branch matching the *remote* destination branch, and (2) it unnecessarily rejected fast-forward pushes of non-branch refs (tags, detached HEADs).
+### upload-pack: swap wanted-ref/shallow-info responses
 
-Today, D. Ben Knoble suggested the `deferred_reject_reason` variable name in `set_ref_status_for_push` could be clearer for future maintainability. Tyler acknowledged the name is "a little broad" and invited further feedback on a rename or comment. The series is technically complete, with 108 lines of new test coverage in `t/t5533-push-cas.sh`, and is poised for a v6 reroll or final approval.
-
-### Stash/merge autostash race during fast-forward merges
-A bug in Git 2.55.0 (and current master) causes `git merge --ff-only --autostash` to leave behind a redundant stash entry and fail to clean up the `MERGE_AUTOSTASH` ref when `stash.index=true` is set and a staged change exists at merge time. The operation succeeds but emits an error message, and the stash list contains an extra entry.
-
-Today, Phillip Wood proposed two fixes: (1) a surgical fix replacing `reset_head()` with `reset_tree(&c_tree, 0, 1)` to avoid branch-state cleanup, and (2) a more ambitious refactoring using `merge_incore_nonrecursive()` for a three-way index merge. D. Ben Knoble committed to testing both approaches and may contribute implementation work. Eli Barzilay, the original reporter, offered to test patches as a non-developer observer, signaling end-user demand for a fix.
-
-### Git v2.56.0-rc1 announced
-Junio C Hamano announced the first release candidate of Git v2.56.0, marking the start of the stabilization period for the upcoming release. The release candidate includes 721 non-merge commits since v2.55.0, contributed by 90 people, 37 of whom are first-time contributors.
-
-Key changes span UI/workflows (e.g., new `git refs` subcommands, `git history drop`), performance optimizations (e.g., ODB abstraction, reftable backend improvements), and development support (e.g., build system updates, CI infrastructure). The release also includes memory safety fixes, platform-specific fixes, and test suite improvements. The final release is expected soon, pending community testing.
+When a server enables `uploadpack.allowRefInWant`, `upload_pack_v2()` in `upload-pack.c` sent wanted-ref info before shallow-info, but the fetch-pack client expects shallow-info first, so protocol v2 shallow fetches against such servers exited with "fatal: expected 'packfile', received 'shallow-info'". Royce Remer posted v2 swapping the send order so shallow-info goes first, a server-side-only change compatible with existing clients, adding shallow clone and incremental shallow fetch tests to `t/t5703-upload-pack-ref-in-want.sh`. Junio C Hamano agreed the explanation of the packet sequence and client breakage was good commit-log material.
 
 ## In brief
-- **Repack race fix**: Qin ShiCheng agreed to withdraw patch 1/6 of the repack data-loss race series in favor of Justin Tobler’s ODB-focused series, which will handle `.keep` file ownership more cleanly. Patches 2/6–6/6 remain relevant and will proceed independently.
-- **Git protocol v2 shallow fetch regression**: Royce Remer posted v2 of a bugfix for a client-side crash during shallow fetches when `uploadpack.allowRefInWanted=true` is enabled. The patch swaps the order of `send_shallow_info()` and `send_wanted_ref_info()` in `upload_pack_v2()` to match client expectations.
-- **`GIT_WORK_TREE` export for worktree hooks**: Junio C Hamano proposed a patch to export `GIT_WORK_TREE` alongside `GIT_DIR` when a worktree is detected during repository setup. The fix addresses a bug where `git rev-parse --show-toplevel` returns the current working directory instead of the worktree root in `post-checkout` hooks.
-- **Windows ANSI emulation bugfix**: Yongqiang Tian posted a patch fixing a formatting bug in `compat/winansi.c:die_lasterr()` that caused Windows API failure messages to display a `va_list` address instead of the intended integer handle. Johannes Sixt and René Scharfe proposed alternative approaches, sparking a discussion about diagnostic precision vs. code simplicity.
-- **"What's cooking" report**: Junio C Hamano summarized the state of integration branches, noting 87 commits in `next` and 166 in `seen`. Graduated topics include Rust cross-compilation fixes, ODB pluggable fsck, and a new `receive-report` hook. Stalled topics include a Rust crate subdirectory move and a `diff.<driver>.process` feature.
+
+- Qin ShiCheng clarified that the repack ".keep" production failure involved pushes seconds apart rather than concurrent, said the patch only removes a ".keep" the process created itself, and announced he will drop 1/6 from v2 so the series covers only the repack side.
+- Junio C Hamano announced Git v2.56.0-rc1, comprising 721 non-merge commits since v2.55.0 from 90 people, 37 of them new.
+- D. Ben Knoble and Tyler Cipriani reviewed the v5 `--force-if-includes` fast-forward patch; Cipriani is open to renaming a variable and wants more feedback before rerolling.
+- Phillip Wood proposed two fix directions for the `stash.index=true` autostash bug that leaves a redundant stash entry after a fast-forward merge; Ben Knoble said he would try patches.
+- Yongqiang Tian posted a fix for `die_lasterr()` in `compat/winansi.c`, which passed its `va_list` to `die_errno()` as an ordinary argument; Johannes Sixt and René Scharfe debated simpler designs.
+- Brigham Campbell posted v2 of `git-contacts` reading patch contents from stdin when argv is empty and stdin is not a terminal; Junio C Hamano floated a "-" filename alternative.
+- Junio C Hamano proposed a `setup.c` patch exporting `GIT_WORK_TREE` for hooks in worktrees where `GIT_DIR` is also set, flagging a NEEDSWORK comment in the hunk.
+- Christian Couder endorsed proposing the "Implement promisor remote fetch ordering" project for Outreachy's December 2026 cohort.
