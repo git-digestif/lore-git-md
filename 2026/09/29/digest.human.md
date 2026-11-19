@@ -1,103 +1,59 @@
 # Git mailing list daily digest for 2026/09/29
 
+## Long threads
+
+### stash: merge the index in-core for "stash apply --index"
+
+*Long thread: 49 replies so far from 5 participants over 11 days; 8 messages that day.*
+
+D. Ben Knoble posted v4 of "stash: clean up index-mode test merge", fixing the interaction between autostashing, staged index entries, and `stash.index=true` in `builtin/stash.c`. The last patch replaces the `diff-tree`/`apply --cached`/`reset` subprocesses with an in-core `merge_incore_nonrecursive()` call, fixing a non-re-entrant `save_autostash()` lock on a deleted MERGE_AUTOSTASH ref; v4 also copies the merge tree OID only on success and pins `gc.reflogExpire` to `never` in t5520 so auto-maintenance cannot expire the reflog entry the "--rebase -f" test needs. Phillip Wood called the range-diff ready apart from patch 4's commit message. Junio C Hamano flagged that on a hard error `result.clean` is -1, so the `if (!result.clean)` branch would dereference a NULL `result.tree`.
+
+### upload-pack: server-side lazy-fetch control via uploadpack.lazyFetchTrusted
+
+*Long thread: 31 replies so far from 3 participants over 82 days; 2 messages that day.*
+
+Christian Couder's series adds the protected config variable `uploadpack.lazyFetchTrusted`, letting server operators mark repos whose git dir is trusted for lazy fetching when serving clones, motivated by large-object promisor setups where a server cannot serve filtered clones for blobs it moved to a promisor remote. It touches `builtin/upload-pack.c`, `upload-pack.c`, `promisor-remote.c`, and `setup.c`, and adds a `GIT_INTERNAL_LAZY_FETCH_DEPTH` recursion limit. Today Junio C Hamano suggested doc wording fixes, called the control logic in `builtin/upload-pack.c` trivially clear, and floated an optional `:(optional)` prefix for `safe.directory` paths.
+
+### push: fix --force-if-includes when the remote-tracking ref has no reflog
+
+*Long thread: 23 replies so far from 6 participants over 27 days; 4 messages that day.*
+
+Aleksei Sviridkin posted v4 of a fix in `is_reachable_in_reflog()`: when the remote-tracking ref has no reflog (the files-backend default after clone), the timestamp cutting off the local reflog walk stays uninitialized, which on some machines rejects valid pushes with "remote ref updated since checkout". The patch initializes it to 0 and adds a t5533 test that fails without the fix only reliably under `-ftrivial-auto-var-init=pattern`. Junio C Hamano said the v4 changes look sensible, will replace the patch and mark it for `next`, and noted trivial t5533 conflicts with another topic.
+
+### fetch: avoid fetching every branch of a new remote in a shallow repo
+
+*Long thread: 20 replies so far from 4 participants over 11 days; 4 messages that day.*
+
+Harald Nordgren posted v4 of a four-patch series for shallow repositories, where a wildcard refspec makes fetching a new remote unusably slow. It adds `remote.<name>.refmap` (reusing `--refmap`), infers branches to fetch from local upstreams, and adds `git remote add --limited-fetch`, defaulting to it when shallow; v4 drops the automatic default-branch fetch and fixes the "new ref HEAD" report. Junio C Hamano said he will replace the series and asked that t/t5585-fetch-refmap.sh be renumbered, as that number is taken by another topic.
+
+### branch: let --delete-merged find squash-merged branches
+
+*Long thread: 10 replies so far from 3 participants over 1 day; 11 messages that day.*
+
+Harald Nordgren posted a patch making `git branch --delete-merged` treat a branch as merged when some upstream commit since the fork point contains all its changes, covering squash- and rebase-merged branches on forges; the output names where the work landed, and partly-landed branches are kept. D. Ben Knoble reviewed the approach, noting the check can be expensive, and floated a `--delete-merged=squashed,rebased` option value; Nordgren said performance would be the only reason to hide the behavior.
+
 ## The day in brief
-The Git mailing list saw active development across several key areas today. A critical bugfix for `git stash` autostash handling was finalized and merged, addressing a long-standing issue with staged index entries. The `uploadpack.lazyFetchTrusted` series received maintainer feedback on a latent design issue, while a new RFC proposed optional per-repository consent for running local hooks. Performance improvements took center stage with a new `sha1dc-accel` subsystem promising 2.85× faster SHA-1 collision detection. Several documentation improvements were also proposed and reviewed.
+D. Ben Knoble's v4 stash series moved the "stash apply --index" index merge in-core, with one NULL-dereference bug still flagged. Aleksei Sviridkin's v4 `--force-if-includes` fix was marked for `next`, and Harald Nordgren's v4 shallow-repo fetch series was accepted for replacement. Patrick Steinhardt fixed the reftable reflog timezone format, and Grant Moyer's filter-branch commit-map fix gained a second confirmation.
 
 ## Notable threads
 
-### `git stash` autostash with staged index entries
-**What changed**: D. Ben Knoble's five-patch series fixing autostash handling of staged index entries when `stash.index=true` is set was finalized and merged to `master`. The series replaces subprocess-based logic with in-core merging via `merge-ort.c`.
+### refs/reftable: store reflog timezones as signed minute offsets
+Patrick Steinhardt posted a three-patch series fixing `refs/reftable-backend.c`, which stored reflog timezones in "[+-]HHMM" format instead of the spec's signed minute offset. It adds `tz_to_minutes()`/`minutes_to_tz()` helpers in `date.c`, fixes a `dump-reftable -t` segfault, and adds a t0610 test; fallout is limited since timezones are display-only.
 
-**Problem/goal**: The bug caused incorrect index state preservation during merge operations that triggered autostash, potentially leading to SIGSEGV when the merge process was interrupted.
+### filter-branch: commit map init fix tested
 
-### Technical details
+Michele Locati confirmed the state-branch commit map bug, traced it to f6d855091e in 2.50.0, and tested Grant Moyer's August fix on git 2.56.0 with --state-branch, --prune-empty and --subdirectory-filter: without it, new commits attach to original parents; with it, parents and state save correctly. He added a Tested-by tag.
 
-- Files touched: `builtin/stash.c`, `t/t3903-stash.sh`, `t/t5520-pull.sh`, `t/t7600-merge.sh`
-- Key functions: `do_apply_stash()` refactored to use `merge_incore_nonrecursive()`
-- New test: `stash apply --index merges the correct trees` validates staged changes preservation
+### docs: remove gittutorial-2
 
-**Impact**: The fix resolves a long-standing bug affecting users who rely on `stash.index=true` during merge operations. The series includes comprehensive test coverage and addresses all prior review feedback, including a latent error-handling bug identified by Junio C Hamano.
-
-**Status**: Merged to `master` with all patches integrated.
-
----
-
-### `uploadpack.lazyFetchTrusted` server-side configuration
-**What changed**: Junio C Hamano reviewed the second patch in Christian Couder's five-part v4 series introducing `uploadpack.lazyFetchTrusted`, identifying a latent design issue in the existing `safe.directory` logic that this patch inherits.
-
-**Problem/goal**: The series provides a server-side mechanism for operators to explicitly declare which repositories are safe to lazy-fetch from, addressing security concerns about untrusted repositories triggering arbitrary code execution.
-
-### Technical details
-
-- Files touched: `promisor-remote.c`, `setup.c`, `upload-pack.c`, documentation
-- New symbols: `lazy_fetch_objects()`, `try_promisor_remotes()`, `path_allowlist_apply()`
-- Design issue: Silent ignoring of non-existent paths in `safe.directory` logic
-
-**Impact**: The review highlights a usability concern where misspelled or misconfigured paths go unnoticed, potentially leading to unintended trust decisions. Christian acknowledged the concern and proposed addressing it in a follow-up patch.
-
-**Status**: Under review; Junio's final review of 5/5 was entirely positive with only surface-level documentation wording tweaks suggested.
-
----
-
-### Optional per-repository consent for local hooks
-**What changed**: Dmytro Lymarenko proposed an RFC for an opt-in safety mechanism requiring explicit user consent before running local hooks in untrusted repositories.
-
-**Problem/goal**: Protect users from malicious or unexpected hooks installed by tools or project setups.
-
-### Technical details
-
-- Proposed prompt: Shows hook path with options to run once, trust all hooks in repository, or decline
-- Trust state: Would be stored per-repository
-- Re-prompt: For modified in-worktree hooks
-
-**Impact**: Junio C Hamano and Brian M. Carlson raised fundamental security concerns about the trust mechanism being vulnerable to manipulation by the same process that installs hooks. Carlson also noted the interactive prompt would break non-interactive environments like CI systems.
-
-**Status**: Early RFC; no implementation posted. The discussion highlights significant design challenges that would need to be addressed before proceeding.
-
----
-
-### `sha1dc-accel`: Faster SHA-1 collision detection
-**What changed**: Scott Chacon posted a four-patch series introducing `sha1dc-accel`, a new subsystem that uses vectorized (SSE2, AVX2, NEON) and hardware-accelerated (x86-64 SHA-NI, ARMv8 SHA-1) versions of the UBC check and SHA-1 compression steps.
-
-**Problem/goal**: Reduce the collision-detection overhead from 1.5-2.5× down to 0.2× relative to OpenSSL SHA-1, yielding a 2.7-2.85× speedup in SHA-1 throughput.
-
-### Technical details
-
-- Files touched: `Makefile`, `meson.build`, `CMakeLists.txt`, new `sha1dc-accel/` directory
-- Performance gains: 2.85× speedup on Apple M5 Max, 50% reduction in `index-pack` runtime
-- Test coverage: Unit tests, collision test vectors, performance benchmarks
-
-**Impact**: Significant performance improvement for operations like `index-pack`, particularly beneficial for server environments. The series is well-tested and includes platform-specific optimizations with fallback paths.
-
-**Status**: Under review; no maintainer decision yet.
-
----
-
-### `git branch --delete-merged` squash-merge detection
-**What changed**: Harald Nordgren posted a patch extending `git branch --delete-merged` to recognize branches whose changes have been squash-merged or rebase-merged into an upstream branch.
-
-**Problem/goal**: Address a common pain point for users who prefer GitHub-style squash merges, where branches were previously not deleted by `--delete-merged` because their tips don't appear in the upstream history.
-
-### Technical details
-
-- Files touched: `builtin/branch.c`, documentation, tests
-- New behavior: Detects when an upstream commit contains all changes from a branch
-- Output format: `Deleted branch topic (was 1a2b3c4, landed as 9f8e7d6)`
-
-**Impact**: Improves workflow for users who rely on squash merges, particularly in GitHub-style workflows. The patch includes comprehensive test coverage for edge cases.
-
-**Status**: Under review; Phillip Wood identified two backward-compatibility issues (exit status change and option parsing regression) that would need to be addressed.
+Julia Evans replied that she is not replacing `gittutorial-2` since `gitdatamodel` and `gitcore-tutorial` cover its material. Junio C Hamano asked that `po/` translations be left intact, and later reported doc-lint fails with "no link: gittutorial-2" once merged.
 
 ## In brief
-
-- **`git filter-branch` bugfix**: Michele Locati provided a Tested-by trailer confirming the fix for commit mapping inversion with `--state-branch`.
-- **`git reflog expire` regression**: Patrick Steinhardt suggested tightening test timing thresholds for better precision in verifying the 90-day expiry policy.
-- **`git remote` documentation**: Junio C Hamano approved v2 of Matthias Goergens' patch clarifying that `git remote` commands affect only the local view.
-- **`git stash create` options**: Phillip Wood identified backward-compatibility regressions in Kazumasa Shigeta's patch extending `git stash create` to support `--include-untracked` and `--all`.
-- **`git config --list --show-origin`**: Christophe Lohr reported that the command displays `.git/config` as a relative path, creating confusion about the `.git` directory's location.
-- **`git submodule` root-relative URLs**: Stanislav Aleksandrov posted an RFC patch introducing `^/` syntax for submodule URLs, allowing them to be resolved relative to the superproject's remote server root.
-- **Reftable timezone encoding**: Patrick Steinhardt posted a three-patch series fixing the reflog timezone encoding discrepancy in the reftable backend.
-- **`includeIf "hostname:..."`**: Junio C Hamano expressed mild regret that Ignacio Encinas' 2024 hostname-normalization series stalled, reinforcing that the design work was on the right track.
-- **`git(1)` man page rewrite**: Julia Evans proposed a tiered approach to documenting help system access, addressing feedback about balancing simplicity and functionality.
-
-The day's activity reflects a strong focus on performance improvements, bug fixes, and usability enhancements across Git's core functionality.
+- Jeff King's "use size_t for xdiff mmfile_t" series consolidates `mmbuffer_t` into `mmfile_t`; follow-ups make `ll_ext_merge()` return `LL_MERGE_ERROR` when reading an external merge result fails, fixing a rerere path that could record a bogus empty resolution. *Long thread: 8 replies so far from 3 participants over 1 day; 9 messages that day.*
+- Jeff King's v3 "merge-ll: use tempfile API for external driver files" cleans up `.merge_file_*` temporaries on Ctrl+C; Junio C Hamano said he would mark it for `next`.
+- Patrick Steinhardt agreed to proceed with Jeff King's http fix stripping credentials from the requested URL before comparing with `CURLINFO_EFFECTIVE_URL`, needed for curl 8.23.0.
+- Pushkar Singh's v3 swaps back the default reflog expiry periods in `reflog.h` (reachable 90 days, unreachable 30); Patrick Steinhardt suggested testing at 88 days, which Junio C Hamano accepted.
+- Scott Chacon posted a four-patch series porting the sha1dc Rust crate's approach to C, claiming ~2.7x faster SHA-1 collision detection on x86 and ARMv8.
+- Kaartic Sivaraam posted RFC v2 making the "not a git repository" error state its reason for explicit `--git-dir`, via `is_git_directory_verbose()` in `setup.c`.
+- Kazumasa Shigeta's patch exposes `-u`/`-a` in `git stash create`; Phillip Wood objected to the changed no-changes exit status and recommended `PARSE_OPT_STOP_AT_NON_OPTION`.
+- Thomas Bachem's v2 t5520 patch pins `gc.reflogExpire` to `never`; Junio C Hamano combined it with the stash series on a synthetic base in `seen` for D. Ben Knoble to reuse.
