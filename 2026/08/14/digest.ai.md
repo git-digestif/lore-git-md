@@ -1,133 +1,59 @@
 # Git mailing list daily digest for 2026/08/14
 
-## The day in brief
-The Git mailing list saw **substantive design discussions** on ODB abstraction, source tree reorganization, and filesystem-level optimizations, alongside **performance regression fixes**, **new features**, and **documentation updates**. Key developments include a **data-driven counterproposal** for Git’s source tree reorganization, **ODB transaction refinements**, and **proposals for filesystem-level copy-on-write** in `git worktree add`. Several patches advanced toward integration, including a **MIDX incremental-write fix**, a **packfile performance regression fix**, and **bash completion improvements**.
+## Long threads
 
----
+### Moving libgit.a sources into a "lib/" directory
+
+*Long thread (root 2026/04/16/13-24-29): 37 replies so far from 12 participants over 121 days; 1 message that day.*
+
+Patrick Steinhardt's RFC series proposes moving all libgit.a sources into a separate `lib/` directory to shrink the top-level directory from over 550 files to about 80, making entry points like `README.md` and the build files more discoverable for newcomers. Earlier discussion weighed the one-time rename cost against the ongoing maintenance burden, with Junio C Hamano preferring piecemeal subsystem moves and Michael Montalbo previously proposing granular conceptual groupings scored by shared internal headers. Today Michael Montalbo proposed a script-based method to group the 231 libgit.a source files into directories, combining weighted commit-history area labels mapped through a 14-line CHARTER table with an independent cscope call-graph check; the script placed 163 files into 14 directories and left 68 ungrouped, and the call graph identified 6 boundary groups spanning multiple directories.
+
+### repack --drop-filtered to reclaim space in partial clones
+
+*Long thread (root 2026/07/16/13-28-41): 35 replies so far from 4 participants over 30 days; 3 messages that day.*
+
+Siddharth Shrimali's GSoC series adds `git repack --drop-filtered` to reclaim space in partial clones by enumerating promisor blobs over a size threshold, dropping them locally, and relying on the existing lazy-fetch machinery to restore them on demand. Earlier rounds fixed an object-size type mismatch, made the filter options parameter const, and clarified that remote verification, recency-based selection, and a drop log are follow-ups after this series. Today Christian Couder reviewed v5 and stated "This version looks good to me"; Junio C Hamano asked whether he should mark the topic for `next`, and Siddharth Shrimali confirmed the series is ready from his side.
+
+### Pluggable packfile writes for receive-pack
+
+*Long thread (root 2026/08/06/21-38-53): 28 replies so far from 3 participants over 9 days; 3 messages that day.*
+
+Justin Tobler's series makes `builtin/receive-pack` packfile writes pluggable via a generic `odb_transaction_write_pack()` interface, moving the `git-index-pack`/`git-unpack-objects` child-process logic into the "files" backend implementation, and fixes `.keep` files not being removed after ODB transactions reordered the source list. Today Patrick Steinhardt noted that since `write_pack()` is intended for more use cases than only `git-receive-pack`, the callback needs a way to be told which scenario it is running in; Justin Tobler replied that transaction flags such as `ODB_TRANSACTION_RECEIVE` already exist to differentiate callers, that he plans to add `ODB_TRANSACTION_FETCH` in a follow-up expanding the interface to `git-fetch-pack`, and that he will start using the flags in the next version.
+
+### Packfile loading performance regression with many packs
+
+*Long thread (root 2026/08/12/19-11-09): 20 replies so far from 5 participants over 3 days; 4 messages that day.*
+
+Johannes Schindelin's patch fixes the O(N^2) regression introduced by 589127caa730, where `packfile_store_add_pack()` linearly scanned the pack list before every insertion, by adding a `skip_dup_check` parameter so known-new packs skip the scan; a reported case with 37,815 packs slowed `git rev-parse --short HEAD` from 0.4s to 4.5s. Today Patrick Steinhardt agreed a hashmap already exists via `packfile_store_add_pack()`/`packfile_store_load_pack()` and said he was happy with the v2 patch; Junio C Hamano marked it for `next`; Jeff King countered that the existing map avoids all of `add_packed_git()` -- allocation and `stat()` calls -- not just list insertion, so it could not simply become a check inside `packfile_list_append()`.
+
+## The day in brief
+The `repack --drop-filtered` series for partial clones earned a positive review and a readiness confirmation, with the maintainer asking about marking it for `next`. Johannes Schindelin's fix for the many-packfiles loading regression was marked for `next` after Jeff King refined the discussion about the existing hashmap. Dimitri John Ledkov submitted a new patch letting `rev-parse --output-object-format` compute object names in another hash algorithm on demand.
 
 ## Notable threads
 
-### Source tree reorganization: data-driven counterproposal
-**What changed?**
-Michael Montalbo introduced a **dual-signal analysis** combining commit history patterns (weighted by commit size) and call-graph relationships (derived from `cscope`) to identify cohesive subsystems for incremental reorganization. The script groups 163 of Git’s 231 `libgit.a` source files into 14 directories (e.g., `transport/`, `index/`, `revision/`) with cohesion scores higher than existing directories like `refs/`. Boundary cases (e.g., `shallow.c` grouped with `transport/` despite its `revision:` commit label) are flagged as review targets.
+### rev-parse computing object names in another hash algorithm
+Dimitri John Ledkov submitted a patch enabling `git rev-parse --output-object-format=<algo>` to compute object names in another hash algorithm on demand: when `extensions.compatObjectFormat` has no recorded mapping for an existing object, `repo_oid_to_algop()` now reads the object, converts its contents, and hashes the result, caching computed names for the process lifetime. The patch refuses commits and trees containing submodules, accepts any hash algorithm git knows, and turns an unproducible name into an error instead of silently printing the storage name; on git.git's tree the computation takes 0.26s against 0.25s for reading and hashing by hand.
 
-**Why it matters**
-This proposal advances the **deadlocked debate** over Patrick Steinhardt’s RFC patch series to reorganize Git’s source tree by moving all `libgit.a` components into a new `lib/` directory. The current `lib/` approach is criticized as an arbitrary intermediate layer that fails to improve discoverability. Montalbo’s **mechanical, reproducible methodology** avoids this arbitrariness while enabling incremental progress. The proposal sidesteps the **newcomer discoverability** framing, instead appealing to **project consistency**: the same signals that flagged `odb/` before it was carved out now identify other cohesive units.
+### Eagerly loading ODB alternates
+Patrick Steinhardt's series makes the object database eagerly load alternates at initialization instead of deferring, removing `odb_prepare_alternates()` calls scattered across the codebase. Today Jeff King questioned whether `core.ignorecase` is strictly correct for alternate source path deduplication, since alternates may reside on different filesystems than the containing repository, and proposed always-case-sensitive comparisons or `stat()`-based confirmation; Junio C Hamano warned that a duplicated alternate entry could be dangerous for a future tool enumerating objects across alternates and endorsed the simpler approach; Jeff King confirmed macOS as the filesystem behind the unicode normalization concern.
 
-**Technical details**
-- **Methodology**: Dual-signal analysis combining (1) **commit history** (weighted modal "area:" labels, e.g., `diff:` or `refs:`) and (2) **call-graph relationships** (using `cscope` to identify function calls between files).
-- **Proposed directories**: 14 subsystems (`odb/`, `refs/`, `pack/`, `diff/`, `merge/`, `revision/`, `index/`, `setup/`, `convert/`, `transport/`, `notes/`, `submodule/`, `archive/`, `sequencer/`).
-- **Ungrouped files**: 68 files (e.g., `strbuf.c`, `hashmap.c`, `alloc.c`) lack strong historical or call-graph signals, suggesting they may belong in a shared utility layer.
-- **Script**: A 200-line Python script processes Git’s history, `Makefile`, and `cscope` output. The `CHARTER` block (14 lines) maps area names to directories and is the only manual input.
+### Converting build-time USE_NSEC to runtime core.useNanosec
+D. Ben Knoble's series converts the build-time `USE_NSEC` into a runtime `core.useNanosec` config (default false) so distributed Git builds can avoid racy-git problems on supported filesystems. Today he posted v2, which reads the config through `struct repo` via `repo_config_values()`; Patrick Steinhardt cautioned against converting everything to `repo_config_values()` until there is a plan for repositories other than `the_repository`; Junio C Hamano flagged the `statinfo.c` change as iffy for a networked shared `$HOME/.gitconfig` across platforms, and Ben Knoble agreed that force-disabling `use_nanosec` in `NO_NSEC` builds makes sense.
 
-**Open questions**
-- Whether the community will engage with the methodology’s **technical rigor** and **actionable output** (e.g., boundary cases).
-- How this proposal interacts with Junio C Hamano’s **subsystem-by-subsystem alternative** and Patrick Steinhardt’s **`lib/` directory approach**.
+### uploadpack.lazyFetchTrusted for server-side lazy fetch control
+Christian Couder's series introduces `uploadpack.lazyFetchTrusted`, letting server operators mark repositories as trusted for lazy fetching when serving clones -- relevant when large-object promisors have moved blobs off the server. Today he apologized for a misthreaded v2 caused by passing `--in-reply-to` to `git format-patch`; Junio C Hamano reviewed the patches, proposing a callback-based `path_allowlist_apply()` API instead of a boolean `allow_dot` argument, and asking the docs to state upfront that the variable is multi-valued.
 
----
-
-### ODB abstraction: transaction refinements and design gaps
-**What changed?**
-The ODB abstraction effort saw **substantive design discussions** and **interface refinements** in two threads:
-1. **`odb_transaction_write_pack()`**: Patrick Steinhardt identified a **design gap** in the new interface: the `get_unpack_limit()` helper assumes a `git receive-pack` context but the interface is intended to be generic. Justin Tobler proposed using the existing `ODB_TRANSACTION_RECEIVE` flag (and future `ODB_TRANSACTION_FETCH`) to enable context-specific configuration resolution (e.g., `fetch.unpackLimit` for `git fetch-pack`).
-2. **Packfile performance regression**: Jeff King (Peff) clarified that Git already maintains a hashmap for tracking packfiles (introduced in `ec48540fe8`), which prevents duplicates during "reprepare" operations. This reframes the fast-path optimization in Johannes Schindelin’s patch as a targeted optimization to avoid the O(N) scan *even when uniqueness is already guaranteed*. Peff also **cast doubt** on Patrick Steinhardt’s proposed hashmap refactoring, noting the hashmap’s dual role in duplicate detection and avoiding `add_packed_git()` overhead makes it non-trivial to relocate.
-
-**Why it matters**
-These discussions address **forward-compatibility** and **architectural trade-offs** in the ODB abstraction effort. The `odb_transaction_write_pack()` interface is a key enabler for pluggable backends, and the design gap could block future adoption if not resolved. Peff’s clarification about the existing hashmap highlights the **complexity of refactoring** low-level ODB internals, where performance optimizations are deeply entangled with correctness guarantees.
-
-**Technical details**
-- **`odb_transaction_write_pack()`**: The interface is intended to replace hardcoded `unpack()` logic in `git receive-pack` with a backend-agnostic callback. The `get_unpack_limit()` helper currently reads `transfer.unpackLimit` and `receive.unpackLimit`, but this is insufficient for other use cases (e.g., `git fetch-pack`).
-- **Hashmap refactoring**: The existing hashmap in `packfile_store` avoids `add_packed_git()` overhead (allocations, `stat()` calls), making it non-trivial to relocate to `packfile_list` without redesigning packfile loading.
-
-**Open questions**
-- Whether the `ODB_TRANSACTION_RECEIVE`/`ODB_TRANSACTION_FETCH` flag approach will be accepted for the `odb_transaction_write_pack()` interface.
-- Whether the hashmap refactoring is worth pursuing given its **single-caller context** and the complexity of separating duplicate detection from packfile initialization.
-
----
-
-### Filesystem-level copy-on-write for `git worktree add`
-**What changed?**
-Peter Morris proposed leveraging **filesystem-level copy-on-write (CoW)** or block cloning (e.g., ReFS on Windows, Btrfs on Linux, APFS on macOS) for `git worktree add` to avoid physically duplicating data until modification. Junio C Hamano outlined the **core architectural challenge**: the checkout machinery (`checkout_entry()`) lacks visibility into sibling worktrees and operates in isolation. He proposed intercepting `checkout_entry()` to perform CoW based on a mapping of blob objects to cleanly checked-out files across all worktrees, while flagging **TOCTOU races** and side effects on other commands.
-
-**Why it matters**
-This proposal targets a **niche but growing use case**: concurrent AI coding agents or CI/CD pipelines that create many worktrees for the same repository. The optimization could reduce SSD wear, save disk space, and speed up worktree creation for large repositories. However, Junio’s feedback highlights the **complexity of refactoring** the checkout machinery, which is a critical path for many Git operations.
-
-**Technical details**
-- **Proposed behavior**: Filesystem-level CoW or block cloning during `git worktree add` to defer physical duplication until modification.
-- **Architectural challenge**: The checkout machinery (`checkout_entry()`) has no awareness of sibling worktrees, requiring a mapping of blob objects to cleanly checked-out files across all worktrees.
-- **TOCTOU races**: The source file might be modified between the mapping step and the CoW operation, requiring verification (e.g., hashing the copied file against the index).
-- **Platform-specific APIs**: Windows (`CopyFile`), Linux (`ioctl_ficlone`), macOS (APFS).
-
-**Open questions**
-- Whether the **performance and storage benefits** justify the complexity of refactoring the checkout machinery.
-- How to handle **TOCTOU races** and side effects on other commands (e.g., `git checkout`, `git reset`).
-- Whether this aligns with Git’s **future roadmap** and priorities.
-
----
-
-### MIDX incremental-write fix
-**What changed?**
-Patrick Steinhardt reiterated a preference for **direct verification** that the MIDX contains objects from *all* layers (not just the newest one) when using `--base=none`, calling the current bitmap-based test "a bit roundabout." The exchange leaves the **test-coverage question unresolved**, though the core fix remains uncontested.
-
-**Why it matters**
-The MIDX incremental-write series (v1) fixes a bug in the MIDX write path when using custom base layers (`--base=none` or `--base=<hash>`). The fix is **technically complete** and ready for integration, but the test-coverage debate highlights a **philosophical difference** in how thoroughly edge cases should be verified. Patrick’s preference for direct verification suggests lingering unease about the test’s thoroughness, though he acknowledges the point is minor.
-
-**Technical details**
-- **Bug**: The MIDX write path was not properly handling custom base layers during incremental writes, leading to incorrect reachability closure for bitmaps.
-- **Fix**: Threads the `incremental_base` parameter through the write path and corrects pack inclusion logic for custom bases.
-- **Test coverage**: The current tests verify bitmap generation, but Patrick prefers direct verification that the MIDX contains objects from *all* layers.
-
-**Open questions**
-- Whether the test-coverage question will delay integration or be addressed in a follow-up.
-
----
-
-### Packfile performance regression fix
-**What changed?**
-Junio C Hamano **queued Johannes Schindelin’s patch** for the `next` branch, fixing a **quadratic-time performance regression** in `git rev-parse --short HEAD` (used in shell prompts). The regression was introduced in Git v2.53 (commit `589127caa730`) and manifests in Microsoft Git Scalar environments with shared cache repositories, where scheduled fetches deposit packfiles faster than maintenance can repack them. The fix adds a **fast-path optimization** to skip duplicate checks when the packfile is known to be new, eliminating the O(N²) scan.
-
-**Why it matters**
-The regression caused real-world slowdowns from 0.4s to 4.5s in Scalar environments, and the fix is **production-critical** for large repositories with many packfiles. Junio’s **substantive maintainability concerns** about the fast-path’s reliance on caller discipline remain unresolved but are deferred for post-merge follow-up.
-
-**Technical details**
-- **Root cause**: `packfile_store_add_pack()`’s linear scan of the packfile list before each insertion.
-- **Fix**: Skip duplicate checks when the packfile is known to be new, using a `skip_dup_check` parameter in `packfile_list_append()`.
-- **Performance**: The fast-path is explicitly faster than an O(1) hashmap lookup, as it avoids the lookup entirely.
-- **Test coverage**: New perf test `t/perf/p5303-many-packs.sh` measures `git rev-parse --short HEAD` performance with 10,000 packs.
-
-**Open questions**
-- Whether the `skip_dup_check` parameter’s reliance on caller discipline will cause issues in practice (e.g., duplicates degrading non-existence checks).
-- Whether the hashmap refactoring proposed by Patrick Steinhardt is worth pursuing given its **single-caller context** and the complexity of separating duplicate detection from packfile initialization.
-
----
-
-### Bash completion improvements
-**What changed?**
-Two threads addressed **bash completion improvements**:
-1. **`git history` completion**: Elijah Newren confirmed the v3 series looks good, addressing all feedback. The series adds completion for `git history` subcommands (`drop`, `fixup`, `reword`, `split`, and soon `squash`), their options, and positional arguments (revisions and pathspecs).
-2. **Large repository performance**: Matthew Hughes reported a **performance regression** in bash completion for `git add` in repositories with hundreds of thousands of tracked files. The root cause is `git ls-files --others --modified --directory` with a wildcard pattern (e.g., `di*`), forcing Git to scan every directory. Hughes proposed a workaround: an environment variable `GIT_COMPLETION_NO_COMPLETE_INDEX` to disable index-based completion.
-
-**Why it matters**
-Bash completion is a **critical usability feature** for Git, and these threads address **real-world pain points**:
-- The `git history` completion series fills a gap in the command’s usability, aligning it with other Git commands.
-- The performance regression affects users with large repositories, where completion can hang for 1–2 seconds.
-
-**Technical details**
-- **`git history` completion**: Uses `__git_complete_index_file` for pathspec completion, with subcommand-aware value completion for `--empty` and `--update-refs`.
-- **Performance regression**: `git ls-files --others --modified --directory` with a wildcard pattern generates hundreds of thousands of system calls (`getdents64`, `openat`, `fstat`).
-- **Workaround**: `GIT_COMPLETION_NO_COMPLETE_INDEX` disables index-based completion, falling back to default bash file completion.
-
-**Open questions**
-- Whether the performance regression workaround is acceptable as a default or if a deeper fix (e.g., optimizing `git ls-files`) should be pursued.
-- Whether the completion script should cache directory listings or use smarter heuristics to limit filesystem scans.
-
----
+### Filesystem cloning for git worktree
+Peter Morris proposed that `git worktree add` use filesystem copy-on-write or block cloning (e.g., ReFS block cloning on Windows Dev Drives) where supported, to cut SSD writes, physical disk usage, and creation time for large repositories used by concurrent AI agents. Today Kristoffer Haugsbakk pointed to an existing pull request covering Linux and macOS; Peter Morris argued Windows would get the benefit "for free" via the CopyFile API on the same ReFS volume; Junio C Hamano sketched an approach of intercepting `checkout_entry()` to CoW clean blob checkouts across linked worktrees with a post-copy hash against TOCTOU races, but said he is not interested in making such a change himself, mostly because of the TOCTOU issue.
 
 ## In brief
-- **`uploadpack.lazyFetchTrusted`**: Junio C Hamano provided **substantive reviews** of the series, raising design questions about the `path_allowlist_apply()` API and scalability concerns about holding the list of missing object names in memory. Christian Couder acknowledged the misthreaded v2 patches and agreed to resend with correct threading.
-- **`repack --drop-filtered`**: The series was **proposed for `next`** after Christian Couder confirmed all prior feedback was addressed. The feature safely reclaims disk space in partial clones by removing locally cached promisor blobs exceeding a user-specified size threshold.
-- **`git format-rev` formatting options**: Kristoffer Haugsbakk’s series to add `--abbrev`, `--color`, and `--date` options to `git format-rev` received **minor feedback** on commit message tense and designated initializers. The series is uncontroversial and on track for v2.
-- **`git rev-parse` object name conversion**: Dimitri John Ledkov introduced `repo_oid_to_algop()` to compute object names in another hash algorithm on demand, enabling interoperability between repositories using different object formats (e.g., SHA-1 and SHA-256).
-- **`submodule.active` warning**: Tilak Raaz’s GSoC microproject patch to warn on valueless `submodule.active` configuration entries received **feedback on error-handling logic** (fail vs. continue) and test formatting. Junio C Hamano questioned whether the command should fail after emitting the warning.
-- **Documentation typo fixes**: Swapnil Saste fixed a typo in `Documentation/SubmittingPatches` ("an incremental updates" → "incremental updates"), and Elijah Newren updated the short help message for `git diff -l` to clarify its effect on rename/copy detection.
-- **`chdir_notify` API cleanup**: Colin Hinton’s patch to remove the unused `name` parameter from the `chdir_notify` API was **merged to `next`** after addressing feedback on commit message clarity. The patch is a pure refactoring with no behavioral changes.
+- Tian Yuchen posted v5 moving the global `fetch_if_missing` into `struct repository`; Junio C Hamano judged it "Much better" and suggested `OPT_CALLBACK` could carry the repo pointer.
+- Tilak Raaz posted v2 of a GSoC patch warning on valueless `submodule.active` via `config_error_nonbool()`; Junio C Hamano questioned whether `continue` should instead fail the command.
+- Matthew Hughes reported bash completion hanging in large repos (367,628 files across 58,404 directories) because `git ls-files` iterates the filesystem, and proposed a `GIT_COMPLETION_NO_COMPLETE_INDEX` workaround in `contrib/completion/git-completion.bash`.
+- Patrick Steinhardt called Taylor Blau's bitmap-generation justification for the MIDX `--base` test "a bit roundabout", preferring direct verification that objects appear in the new layer.
+- Patrick Steinhardt agreed to use `revs->repo` instead of `the_repository` in bundle packfile generation.
+- **chdir-notify: drop unused `name` param (v2)**: Colin Hinton posted v2 removing the unused `name` parameter from chdir-notify APIs with an expanded commit message; Jeff King and Junio C Hamano called the patch good but asked for the history in the commit message.
+
+- Kristoffer Haugsbakk confirmed the `[synopsis]` doc change was untested with AsciiDoc after a CI failure.
+- Elijah Newren posted v2 clarifying the `-l` diff option help text; Junio C Hamano will mark it for `next`.
+- Swapnil Saste fixed a typo in `Documentation/SubmittingPatches`; Junio C Hamano will apply it.
