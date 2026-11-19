@@ -1,127 +1,54 @@
 # Git mailing list daily digest for 2026/09/28
 
+## Long threads
+
+### stash: clean up index-mode test merge
+
+*Long thread: 42 replies so far from 4 participants over 10 days; 14 messages that day.*
+
+D. Ben Knoble's series fixes a bug where autostashing with staged index entries and `stash.index=true` hit a non-re-entrant `save_autostash()` lock, replacing the shell-out sequence in `builtin/stash.c` with an in-core `merge_incore_nonrecursive` call. Today Junio C Hamano flagged a NULL-dereference risk in patch 5/5 if the merge fails without populating `result.tree`, which Knoble acknowledged; Hamano later confirmed all existing callers check `result.clean < 0` first. Phillip Wood investigated the t5520.69 failure in `seen` (reported by Hamano on 9/27), showing the rebase upstream changed; Knoble bisected it to commit 2d1fa0323f (auto maintenance after rebase), and Thomas Bachem confirmed the root cause: the series removes eight HEAD reflog entries because `stash apply --index` no longer spawns `git reset --quiet --refresh`, shifting auto reflog expiry past the entry the test needs. Phillip Wood also suggested squashing the new t3903 test into the final patch, since it fails without it.
+
+### sequencer: leave auto maintenance to the end of a sequence
+
+*Long thread: 33 replies so far from 5 participants over 25 days; 1 message that day.*
+
+Thomas Bachem's v5 series makes merge-backend rebase sequences run auto maintenance once at completion, like the apply backend, by calling `run_auto_maintenance()` from `builtin/rebase.c` and `builtin/revert.c` and passing `maintenance.auto=false` via `GIT_CONFIG_PARAMETERS` to spawned commit, merge and exec commands. Today Patrick Steinhardt noted the series is already cooking in `next` and agreed it looks ready.
+
+### Introduce 'uploadpack.lazyFetchTrusted'
+
+*Long thread: 29 replies so far from 3 participants over 81 days; 5 messages that day.*
+
+Christian Couder posted v4 of the series adding a protected config variable that lets server operators mark repositories whose git dir is trusted for lazy fetching during `upload-pack`, preventing clone failures when the server has moved large blobs to a promisor remote. The most significant change in patch 5/5 is that `builtin/upload-pack.c` now checks `GIT_NO_LAZY_FETCH` only after entering the repo and disables lazy fetching only if the repo is not in the allowlist; the other patches refactor `lazy_fetch_objects()` out of `promisor-remote.c`, extract `path_allowlist_apply()` helpers in `setup.c`, and add a `GIT_INTERNAL_LAZY_FETCH_DEPTH` limit of 5 against infinite recursion.
+
+### refs: report old values to transaction hooks
+
+*Long thread: 27 replies so far from 5 participants over 10 days; 2 messages that day.*
+
+Maciej Ciemborowicz's v6 replaces the earlier caller-specific approach with a single transaction-layer change so the reference-transaction hook always receives real old object IDs, resolved before the "preparing" hook and refreshed after the backend locks the refs. Today Patrick Steinhardt clarified that the proper fix is for reference transactions to always resolve the status quo and supply old OIDs to the reftx hook regardless of caller input, avoiding interface changes at any callers.
+
+### rerere: wait for MERGE_RR.lock, and go on at a conflict
+
+*Long thread: 20 replies so far from 4 participants over 27 days; 3 messages that day.*
+
+Thomas Bachem posted v5 of the three-patch series: every rerere writer waits `rerere.lockTimeout` (default 1000 ms) for `MERGE_RR.lock` before failing; a new `git rerere gc --auto`, passed by `git maintenance run --auto` and `git gc --auto`, quietly skips a held lock while a manual `git rerere gc` waits and fails; and commands that stop at a conflict warn and go on without rerere, with the hint routed through `advise_if_enabled()`.
+
 ## The day in brief
-The Git project saw a flurry of activity today, with key developments including the **release of Git v2.56.0**, a **new Rust-based SHA-1 backend** offering 3× performance improvements, and **critical bugfixes** for the `git stash` autostash feature and reftable reflog timezone encoding. The day also brought **architectural discussions** about Git's future, including proposals for a **hostname-based `includeIf` condition** and **shared stash functionality**, alongside **documentation improvements** and **CI optimizations**.
+Christian Couder posted v4 of `uploadpack.lazyFetchTrusted`, Thomas Bachem posted v5 of the rerere lock series, and Patrick Steinhardt confirmed the sequencer auto-maintenance series is cooking in `next`. A t5520 failure traced to the stash topic was bisected to the auto-maintenance commit, and Patrick Steinhardt called the reftable reflog timezone storage "plain wrong" and argued Git should be fixed to match the specification.
 
 ## Notable threads
 
-### Git v2.56.0 released
-**What changed?**
-Junio C Hamano announced the release of Git v2.56.0, featuring **748 non-merge commits** from 104 contributors. Key highlights include:
-- **Performance optimizations**: Ref handling, pack-objects, and index scanning improvements.
-- **New commands**: `git history drop` (experimental), `git refs` toolbox, and `git replay --linearize`.
-- **Architectural shifts**: ODB abstraction, `the_repository` removal, and Rust support enabled by default.
-- **Security hardening**: Fixes for corrupt trees, NULL-dereferences, and Windows symlink auto-detection.
-- **UX improvements**: Better error messages, advice for diverged branches, and `git add --resolved`.
+### Reftable reflog timezone encoding differs from specification
+Josh McKinney reported that Git 2.55.0 stores reftable reflog timezone offsets as signed HHMM integers (530 for +05:30) rather than the signed minutes (330) the reftable specification requires, reproduced on macOS arm64. Patrick Steinhardt confirmed the issue, called the current storage "plain wrong", and argued the specification's minutes representation should be used and Git fixed, since JGit reads the value as minutes; Junio C Hamano agreed Git should be fixed, noting reflogs are not shared across repositories.
 
-### Why it matters
+### http: handle curl stripping creds from effective url
+Jeff King posted a patch because upcoming curl 8.23.0 strips credentials from `CURLINFO_EFFECTIVE_URL`, which would make Git's direct string comparison falsely detect a redirect and flush `http_auth` credentials, causing re-prompting. Patrick Steinhardt suggested `CURLINFO_REDIRECT_COUNT` as a more direct check, but Jeff King reported it does not work because curl counts the automatic auth retry as a redirect; Junio C Hamano called the `curl_url()`-based `match_effective_url()` approach "very nice".
 
-This release marks significant progress in Git's evolution, particularly with **ODB pluggability** and **Rust integration**, setting the stage for Git 3.0. The performance gains in `git index-pack` and ref handling address real-world scalability challenges, while new commands like `git history` and `git refs` streamline workflows.
-
----
-
-### Rust-based SHA-1 backend (3× performance gain)
-**What changed?**
-Johannes Schindelin introduced a **four-patch series** adding an optional Rust-based SHA-1 backend (`sha1dc` crate) that delivers **~3× speedups** for `git index-pack` on Windows, WSL, and macOS. The series includes:
-1. **FFI integration** of the Rust crate.
-2. A **runtime escape hatch** (`core.sha1dcBackend=c`) to fall back to the C implementation.
-3. **Thread-safety shims** for Windows and non-PTHREADS builds.
-4. **Thread-safe initialization** of the backend.
-
-### Why it matters
-
-This is a **landmark step** in Git's Rustification effort, demonstrating Rust's potential for **performance-critical paths** while maintaining backward compatibility. The optional nature of the feature and runtime escape hatch address concerns about build complexity and platform support (e.g., NonStop). However, the **Rust version requirement (1.87)** and **110MB SDK size increase** for Git for Windows may spark debate.
-
-### Key technical details
-
-- **Files touched**: `hash.h`, `sha1dc_git.c`, `Makefile`, `Cargo.toml`, `compat/win32/pthread.*`.
-- **Performance claim**: 3× speedup for `git index-pack` (benchmarks provided for Windows, WSL, macOS).
-- **Build system**: `DC_SHA1_RS` flag enables the Rust backend (optional, not default).
-
----
-
-### `git stash` autostash bugfix (NULL-dereference risk)
-**What changed?**
-D. Ben Knoble's **five-patch series** fixing a race condition in `git stash` autostash with staged index entries was **ejected from `seen`** due to two critical issues:
-1. A **NULL-dereference risk** in the in-core merge logic (identified by Junio C Hamano).
-2. A **bisectability regression** in the test suite (identified by Phillip Wood).
-
-The series replaces subprocess-based merging with `merge-ort.c` to preserve staged entries, but the **NULL-dereference risk** (uninitialized `result.tree` on catastrophic merge failure) could cause SIGSEGV. The author has confirmed the issue and will address it by checking `result.clean` before dereferencing `result.tree`.
-
-### Why it matters
-
-The bug affects users of `stash.index=true` during merge operations, causing incorrect index state preservation. The fix is **high-priority** for stability, but the **NULL-dereference risk** must be resolved before integration. The series also surfaced an **unrelated test breakage** in `t5520-pull.sh` caused by auto-maintenance triggering `git reflog expire`, which was diagnosed and fixed by Thomas Bachem.
-
-### Key technical details
-
-- **Files touched**: `builtin/stash.c`, `merge-ort.c`, `t/t3903-stash.sh`.
-- **Root cause**: Non-reentrant filesystem operations in `save_autostash()` corrupting index state.
-- **Fix**: In-core merging via `merge-ort.c` with proper error handling.
-
----
-
-### Reftable reflog timezone encoding fix
-**What changed?**
-Josh McKinney reported a **discrepancy** in Git's reftable backend: reflog timezone offsets are written as **signed HHMM integers** (e.g., `+05:30` → `0530`), but the **reftable specification requires signed minutes** (e.g., `+05:30` → `330`). The mismatch breaks interoperability with JGit and violates the documented format.
-
-### Why it matters
-
-This is a **critical interoperability issue** for the reftable backend, which is central to Git's future scalability. The fix aligns Git with the specification, ensuring compatibility with other reftable implementations (e.g., JGit). The discussion confirmed that **no migration strategy** is needed, as reflogs are short-lived (typically garbage-collected within 30 days).
-
-### Key technical details
-
-- **Subsystem**: Reftable backend (`refs/reftable/`).
-- **On-disk format**: Timezone offset encoding (HHMM → minutes).
-- **Impact**: Interoperability with JGit and other reftable consumers.
-
----
-
-### `gitbreaking-changes(7)` manpage
-**What changed?**
-Julia Evans proposed a **four-patch RFC series** to convert Git's `BreakingChanges` document into a manpage (`gitbreaking-changes(7)`), improving discoverability via `git help` and `man`. The series includes:
-1. Conversion of `BreakingChanges` to a manpage template.
-2. Replacement of message-ID references with clickable URLs.
-3. A note clarifying the document is a **living draft**.
-4. Updates to `git(1)`'s "SEE ALSO" section.
-
-### Why it matters
-
-The current `BreakingChanges` document is **invisible to most users**, buried in the source tree. A manpage makes upcoming breaking changes **discoverable** and integrates them into Git's documentation ecosystem. The RFC seeks feedback on the approach, particularly the **anchor style trade-off** (manual vs. auto-generated anchors).
-
-### Key technical details
-
-- **Files touched**: `Documentation/BreakingChanges`, `Documentation/gitbreaking-changes.adoc`, `Documentation/git.adoc`, `command-list.txt`.
-- **New manpage**: `gitbreaking-changes(7)`.
-
----
-
-### CI optimizations (leak sanitizer and job parallelism)
-**What changed?**
-Two CI-related series addressed resource exhaustion in GitHub Actions:
-1. **Harald Nordgren's v2 series** improves leak sanitizer failure reporting by:
-   - Stopping at the first leak (`--immediate`).
-   - Annotating leaks with the test script name and full sanitizer output.
-   - Pointing test failures to their exact file and line.
-2. **Tamir Duberstein's v2 series** caps job parallelism to CPU count and replaces `test_cmp` with `test_cmp_bin` in `t4205` to avoid OOM kills.
-
-### Why it matters
-
-These changes **reduce CI noise** and **improve debuggability**, making it easier to identify and fix issues. The leak sanitizer improvements are particularly valuable for catching memory leaks early, while the parallelism cap prevents resource exhaustion on GitHub's 2-core Linux runners.
-
-### Key technical details
-
-- **Files touched**: `ci/lib.sh`, `t/test-lib-github-workflow-markup.sh`, `t/test-lib.sh`, `t/t4205-log-pretty-formats.sh`.
-- **New symbols**: `github_annotation_`, `finalize_test_leak_output`, `find_test_case_line_`.
-
----
+### connected: add incremental connectivity check via rev-list
+Kristofer Karlsson posted v2 of the opt-in `transfer.connectivityCheck=incremental` mode, which runs the verifier inside the rev-list subprocess in topological order against trusted parent trees. The cover letter reports up to 190x speedup and 14 MB RSS versus 3.4 GB for single-commit pushes to a 3.4 GB boundary-closure repo, with deepening fetches falling back to the full check.
 
 ## In brief
-- **`git replay` commit signing**: Patrick Monette's series adding `-S` support to `git replay` was **blocked** by Tian Yuchen's `git history` signing series due to merge conflicts. The author confirmed the DCO requirement and addressed a **latent error-handling flaw** in `pick_regular_commit()`.
-- **`git reflog expire` regression**: Patrick Steinhardt withdrew a fast-track request for a fix after confirming the regression's **low real-world impact**. The patch restores the correct default expiry periods (reachable=90d, unreachable=30d).
-- **`git remote` documentation**: Junio C Hamano suggested a **broader approach** to clarify that all `git remote` commands operate locally, rather than per-command clarifications.
-- **`git stash` shared stashes**: Hanan Arshad proposed a **new porcelain workflow** for sharing stashes through remotes, leveraging `git stash export` and `git stash import`. The RFC seeks feedback on the **remote ref namespace** (`refs/stashes/`) and **shared stash identifiers**.
-- **`includeIf "hostname:..."`**: Isabella Caselli proposed adding a **hostname-based `includeIf` condition** for Git configuration, enabling multi-machine dotfile sharing. The RFC seeks feedback on **hostname normalization** and **discoverability trade-offs**.
-- **`git(1)` man page rewrite**: Julia Evans rewrote the `git(1)` intro to orient users toward the help system, replacing outdated tutorial references. Ben Knoble praised the conciseness but questioned the omission of `git help cmd`.
-- **`gittutorial-2` removal**: Julia Evans proposed a **three-patch series** to remove the obsolete `gittutorial-2` document, simplifying the documentation landscape for future improvements.
-- **Git for Windows 2.56.0**: Johannes Schindelin announced the release, dropping Windows 8.1 support and fixing platform-specific bugs (e.g., large-object commits, parallel checkout crashes).
-- **`git -C` alias bug**: A user reported that `git -C other_repo` via alias in a worktree **mis-sets `GIT_DIR` and `GIT_COMMON_DIR`**, causing commands to operate on the wrong repository. The bug does not manifest when run directly or from the original clone.
+- Johannes Schindelin proposed a compile-time option to use the new Rust `sha1dc` crate, reporting roughly three times faster `git index-pack` on Windows, with a `core.sha1dcBackend=c` escape hatch.
+- Patrick Steinhardt said the `history: sign rewritten commits` series is fine as-is; Junio C Hamano asked whether "Souma" is a real name, and Souma confirmed it is their legal first name.
+- Patrick Steinhardt suggested the CI script should fail outright when perforce, git-lfs or JGit fail to install rather than warn; Harald Nordgren agreed.
+- Maya Barriault reported that `git -C other_repo` run via an alias from a worktree sets `GIT_DIR` and `GIT_COMMON_DIR` to the worktree's values instead of the target repository's.
+- Junio C Hamano's "What's cooking" notes Git 2.56 has been tagged and the next version will be Git 2.98, followed by 2.99 in preparation for Git 3.0.
