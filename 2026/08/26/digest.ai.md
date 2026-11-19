@@ -1,71 +1,63 @@
 # Git mailing list daily digest for 2026/08/26
 
+## Long threads
+
+### Ambiguous remote branch name messages in checkout and worktree add
+
+*Long thread (root 2026/08/08/08-21-41): 31 replies so far from 6 participants over 19 days; 3 messages that day.*
+
+Yoichi Nakayama's series improves the error and advice shown when a branch name matches multiple remote-tracking branches, a case where `git worktree add ../foo-dir bar-topic` previously failed without a meaningful message while `git checkout bar-topic` already explained the ambiguity. The series extracts a shared `advice_disambiguating_remotes()` function in `builtin/checkout.c`, extends `unique_tracking_name()` to collect the matching remote names, makes `git worktree add` die with a descriptive error listing those remotes instead of an "invalid reference" error, and changes `git worktree add --guess-remote` to abort when the path basename matches multiple remotes rather than falling back to HEAD. Today Yoichi Nakayama posted [PATCH v9 0/4], whose only change from v8 is moving `advise_disambiguating_remotes()` earlier in the third commit. Junio C Hamano suggested adding a commit message body to the first patch explaining the motivation, noted that since the second patch renames the function the better name should be used from the beginning, and questioned the double indirection (`struct string_list **`) for the remote-names list, suggesting a direct `struct string_list *` would suffice because the callback only appends to the supplied list.
+
+### New path keys for git repo info
+
+*Long thread (root 2026/07/16/01-21-31): 28 replies so far from 5 participants over 42 days; 2 messages that day.*
+
+K Jayatheerth's GSoC series adds path keys to `git repo info`: `path.toplevel` for the repository working tree root, `path.superproject-root` for the superproject tree from submodules, `path.hooks`, `path.index`, `path.grafts`, `path.git-prefix` for the offset from the working tree root to the current directory, and `path.cdup` for the relative path back to the top level, with absolute and relative suffixes where applicable. Today SZEDER Gábor reported that the series depends on `repo->prefix` but is queued on top of a batch where that field does not exist, producing non-buildable commits, and noted the field was introduced in a later merge. Junio C Hamano acknowledged the build issue and said he will queue the series on top of more recent master.
+
+### receive-report hook for git-receive-pack
+
+*Long thread (root 2026/08/18/07-55-55): 21 replies so far from 5 participants over 9 days; 3 messages that day.*
+
+Karthik Nayak's series introduces a `receive-report` hook for `git-receive-pack(1)` that runs after the reference transaction completes but before the report is sent to the client; the hook receives the pkt-line encoded report on stdin, its stdout replaces the report sent to the user, and a non-zero exit marks all references as rejected. Today Karthik Nayak reviewed the merge of the series with Justin Tobler's pluggable writes series near the tip of `seen` and reported that it looks good, and posted [PATCH v4 0/3], renaming the hook from "report" to "receive-report" to avoid ambiguity.
+
+### Reworded you_still_use_that() instructions
+
+*Long thread (root 2026/08/26/14-33-31): 8 replies so far from 2 participants over 1 day; 10 messages that day.*
+
+Junio C Hamano's patch rewords the instructions printed by `you_still_use_that()` in `usage.c` when a command nominated for removal is used. The message previously opened with "If you still use this command, here's what you can do:" and listed the BreakingChanges docs, the mailing list, and an email address; it now says "If you need a replacement:" with reworded bullets, and [PATCH v2] strengthens the opening line from "nominated for removal" to "will be removed soon". Today Michael Montalbo said the change makes sense but suggested the final bullet reinforce that the command is not coming back, asked whether the new double newlines are intentional (Junio C Hamano confirmed they are), and accepted the reasoning for not repeating "replacement" in the final bullet while reiterating his main feedback.
+
 ## The day in brief
-The Git mailing list saw 68 emails today, with key developments including Junio C Hamano rejecting a patch for `git apply` due to intentional design, Taylor Blau proposing a commit-message tweak for MIDX incremental writes, and Junio marking several topics for integration. Outreachy participation for December 2026 gained momentum with new volunteers, while discussions on stash isolation and deprecation warnings continued to refine user-facing behavior.
+
+Yoichi Nakayama posted v9 of the series improving ambiguous-remote-branch messages for `git worktree add` and `git checkout`, and Karthik Nayak posted v4 of the `receive-report` hook after confirming its merge with the pluggable writes series looks good. SZEDER Gábor flagged that K Jayatheerth's `git repo info` path-key series does not build on the base it was queued on, and Elijah Newren extended the refusal of `git commit --amend` during conflict resolution to `am`, `revert`, and `rebase`.
 
 ## Notable threads
 
-### Global config file handling inconsistency
-[2025/10/10/01-14-05]
-Delilah Ashley Wu’s three-patch v2 series fixes Git’s global config file handling inconsistency where `git config list --global` only showed `$HOME/.gitconfig` while Git actually reads both that and `$XDG_CONFIG_HOME/git/config`. Today, Junio C Hamano questioned whether the Windows path normalization in patch 1 is truly required for the core fix, calling it potentially extraneous. The series remains technically complete with all other feedback addressed, including structural refinements to patch 3 suggested by Junio.
+### config: read both home and XDG files for --global
 
-The series modifies `config_sequence()` in `config.c` to handle global scope by reading both config files through `do_git_config_sequence()`, adding flags to restrict config reading to global scope. The implementation reuses existing infrastructure and maintains backward compatibility. The Windows path normalization (patch 1) remains the only unresolved discussion point, with Junio suggesting it may be unnecessary for the series’ core goal.
+This series fixes the inconsistency where `git config list --global` and `git config get --global` read only `$HOME/.gitconfig` while plain `git config` reads both that file and `$XDG_CONFIG_HOME/git/config`. Today Junio C Hamano questioned whether forcing forward slashes in `xdg_config_home_for()` on Windows must be part of this fix, asking where the backslashes come from and noting the log message does not explain why; he corrected the claim that command output is irrelevant when no global config exists, suggested renaming `attempt_git_config_from_file_with_options()` to something shorter like `try_config()`, expressed doubt that `success_count` is needed until later steps are seen, and argued for teaching `git_config_system()` to take `config_options` or adding a dedicated branch for the global case in `config_with_options()`.
 
-### MIDX incremental writes with custom base layers
-[2026/06/12/20-07-05]
-Taylor Blau’s three-patch series addressing MIDX incremental writes with custom base layers saw progress today. Taylor proposed a replacement comment for the outdated block in `midx-write.c`, explicitly stating the relaxed invariant that `ctx->base_midx` and `ctx->to_include` can both be non-NULL. This addresses Junio C Hamano’s earlier request for clearer documentation of the relaxed invariant when using `--stdin-packs --incremental --base=<foo>`.
+### commit: refuse to amend during conflict resolution
 
-The series fixes a bug where the MIDX write path was not properly handling custom base layers during incremental writes, leading to incorrect reachability closure for bitmaps. The fix is specific to the `--stdin-packs` path and does not affect normal MIDX writes. All test cases now pass, including previously failing scenarios for `--base=none` and `--base=<hash>`. The series is ready for integration pending this final documentation update.
+Elijah Newren's patch extends the long-standing refusal of `git commit --amend` during conflict resolution, previously limited to merge and cherry-pick, to `am`, `revert`, and `rebase`; for the rebase merge backend it dies only when `stopped-sha` exists without the `amend` marker, so clean `edit`/`reword`/`break` stops and the sequencer's internal amends remain allowed. Today Phillip Wood judged the logic sound, noting a conflicted fixup should still permit amending, and suggested moving the checks into `sequencer_determine_whence()`; Junio C Hamano called the stopped-sha/amend reasoning sound, raised the separate question of also rejecting `git commit <paths>` during conflict resolution, and suggested using `s->repo` instead of `the_repository`.
 
-### `git apply` memory leak and state corruption
-[2026/07/02/04-17-59]
-Junio C Hamano rejected a patch that attempted to fix a memory leak and state corruption in `git apply`'s `find_header()` function. The maintainer stated that the current behavior—where abandoned Git-style headers corrupt the real patch—is intentional, serving as a "sanity check" to force users to inspect and fix malformed patches. The rejection is conceptual, with no alternative solutions proposed.
+### apply: abandoned git-header state
 
-The patch had introduced a temporary `struct patch` to isolate Git-header parsing, only committing state if the header was accepted. Junio’s rejection does not engage with the technical implementation or test coverage, focusing instead on the higher-level design intent. The thread is now effectively closed unless the author provides a rebuttal or revised approach that preserves the intended design.
+This patch addressed `find_header()` in the apply machinery leaving partially parsed git-header state behind when a "diff --git" line is abandoned for a later traditional header, which could combine incompatible metadata. Today Junio C Hamano decided not to apply the patch, explaining that the cross checks are primarily sanity checks and that having the parser notice a discrepancy and abort is a good thing so the user can inspect and fix a malformed patch.
 
-### `git add -e` refactoring
-[2026/07/09/19-26-19]
-Junio C Hamano marked Gatla Vishwahwar Reddy’s refactoring patch for `git add -e` for inclusion in the `next` branch. The patch replaces the subprocess call to `git apply` with a direct invocation of Git’s internal `apply_all_patches()` API, eliminating fork overhead and improving code clarity. Junio framed the merge as a low-risk experiment, noting the lack of feedback from users of the `git add -e` feature.
+### zsh completion after git -C
 
-The patch is small and correct, with all prior feedback addressed, including a subdirectory correctness fix by passing `NULL` as the prefix argument to `init_apply_state()`. A new test in `t/t3702-add-edit.sh` verifies subdirectory operation. The change touches `builtin/add.c` and removes dependencies on `run-command.h` and `strvec.h` while adding `apply.h`. The implementation reuses existing `apply_all_patches()` and `apply_state` structs without introducing new symbols.
+Lutz Lengemann's patch teaches the zsh completion wrapper to handle the global `-C` option, which previously left `git -C <path> <command> <TAB>` with nothing to complete, by adding `-C` to the specification, locating the command by skipping global options and their arguments, and collecting `-C` paths so helpers resolve the right repository. Today Junio C Hamano marked the topic for `next`.
 
-### `git worktree add` ambiguous remote branch names
-[2026/08/08/08-21-41]
-Yoichi NAKAYAMA’s four-patch v9 series improving error messages for ambiguous remote branch names in `git worktree add`, `git checkout`, and `git switch` saw final refinements today. The series is now functionally complete, with all prior feedback addressed, including the `--guess-remote` edge case and organizational improvements. Junio C Hamano provided surface-level review feedback on the first two patches, suggesting minor adjustments to commit message clarity and code structure.
+### git add -e without a subprocess
 
-The series replaces the terse "matched multiple remote tracking branches" warning with a detailed, actionable advice message that lists conflicting remotes and suggests workarounds like `--track` or setting `checkout.defaultRemote`. The advice is controlled by the new `advice.checkoutAmbiguousRemoteBranchName` config key (enabled by default). The implementation extends `unique_tracking_name()` to collect remote names and introduces a shared `advise_disambiguating_remotes()` helper to avoid code duplication. The series is merged to `next` and ready for `master`.
-
-### Outreachy December 2026 participation
-[2026/08/26/10-55-19]
-Christian Couder invited volunteers, project ideas, and feedback on Git’s participation in Outreachy’s December 2026 cohort. The deadline for mentoring organizations to sign up is September 11, 2026. Usman Akinyemi, a former Outreachy intern for Git, volunteered to co-mentor again this year, citing the program’s positive impact. Last year, Git mentored one intern funded directly by the project after GitHub and GitLab declined sponsorship.
-
-The thread is administrative, seeking community input on participation, mentors, and project ideas. No technical changes are proposed, but the discussion highlights the program’s value in onboarding new contributors and fostering long-term engagement. Usman’s involvement as a co-mentor strengthens the case for Git’s continued participation.
-
-### Stash isolation for worktrees
-[2026/08/18/07-55-55]
-Phillip Wood proposed a concrete technical solution to make Git’s stash stack branch-aware or worktree-aware, addressing the detached HEAD gap identified in the previous discussion. The solution uses the reflog of HEAD and the first parent of stash commits to associate stashes with the specific commit (not branch) they were created on, enabling per-worktree isolation without synthetic branch names or configuration knobs.
-
-The proposal focuses on extending `git stash pop` with options to pop the most recent stash from the current branch *or* the current worktree, preserving the global stash stack for users who rely on its current behavior. This hybrid design unifies the branch-aware and worktree-aware approaches under a single mechanism, allowing users to choose the scope of stash isolation at operation time. The solution leverages existing Git machinery (reflogs and commit parent pointers) and avoids new ref namespaces or configuration.
-
-### Deprecation warning rewording
-[2026/08/26/14-33-31]
-Junio C Hamano posted v2 of a documentation patch rewording the deprecation warning in `usage.c` to eliminate misleading language that could imply the Git project might reverse a deprecation decision. The new message is shorter (6 lines, down from 8), more direct, and guides users to the breaking changes documentation, mailing list archives, and the mailing list for help. Michael Montalbo provided surface-level review feedback, suggesting minor phrasing tweaks, but Junio rejected them, explaining the omission of "replacement" is intentional to cover cases where a deprecated command may not have a direct replacement.
-
-The patch changes the opening line from "this command is nominated for removal" to "this command will be removed" to reinforce the finality of deprecation. The change is purely textual, touching only the error message string in `you_still_use_that()` in `usage.c`. The thread has resolved all formatting questions, and the patch is ready for integration.
+Gatla Vishweshwar Reddy's v4 patch replaces the `run_command()` call that spawns `git apply --recount --cached` in `builtin/add.c` with a direct `apply_all_patches()` call using an initialized apply state, avoiding the fork and keeping the operation in-process. Today Junio C Hamano marked the patch for `next`, judging it safe and correct, and invited `add -e` users to interject with concerns.
 
 ## In brief
 
-- **[2026/05/18/11-22-24]** Junio C Hamano solicited final review for Erik Cervin-Edin’s v2 patch completing `--fixup` message specification support, noting it has sat unreviewed.
-- **[2026/06/17/15-30-55]** Junio C Hamano marked Lutz Lengemann’s zsh completion bugfix patch for inclusion in the `next` branch, signaling readiness for integration testing.
-- **[2026/07/08/02-59-40]** Junio C Hamano noted the HTTP daemon test helper race condition series has seen no review from contributors with HTTP test expertise, despite being technically sound.
-- **[2026/07/12/00-38-26]** Junio C Hamano followed up on Farid Zakaria’s `sequencer: respect --empty for autosquash-induced empty commits` patch, asking for status updates.
-- **[2026/07/16/01-21-31]** Junio C Hamano queued K Jayatheerth’s `git repo info` path-keys series on top of a newer base to resolve a build-breakage due to the missing `repo->prefix` dependency.
-- **[2026/07/25/15-34-27]** Junio C Hamano reached out to Phillip Wood for review on Harald Nordgren’s `git checkout -m` autostash conflict handling series, citing Phillip’s earlier "leftoverbits" comment.
-- **[2026/08/05/11-53-38]** Junio C Hamano pinged the `environment.c` repository configuration refactoring thread, noting it has gone quiet after an exploratory discussion about decoupling configuration from `the_repository`.
-- **[2026/08/11/17-02-00]** Junio C Hamano’s final call for review on the `http.sslVerifyStatus` feature patch confirmed it is technically complete and ready for `next`.
-- **[2026/08/13/21-12-33]** Nikolaus Schuetz posted v3 of a test patch for `git symbolic-ref`, deferring the contested documentation update and focusing on test coverage.
-- **[2026/08/19/13-19-36]** Karthik Nayak posted v4 of the `receive-report` hook series, renaming the hook from `report` to `receive-report` to address Junio and Patrick Steinhardt’s naming objection.
-- **[2026/08/23/09-25-42]** Weijie Yuan retracted their earlier policy challenge to the `gitk` AI contribution documentation patch, and brian m. carlson endorsed the patch.
-- **[2026/08/25/18-03-46]** Junio C Hamano reaffirmed his backward-compatibility concern about Harald Nordgren’s branch deletion protection series, shifting the burden to the author to propose a version that addresses it.
-- **[2026/08/26/05-21-21]** Phillip Wood suggested moving conflict-resolution checks from `builtin/commit.c` to `sequencer_determine_whence()` in Elijah Newren’s `git commit --amend` protection patch.
-- **[2026/08/26/23-31-50]** Junio C Hamano posted a two-patch refactoring series introducing `die_for_incompatible_opts()`, a varargs helper replacing the fixed-arity `die_for_incompatible_optN()` family.
+- Junio C Hamano posted a two-patch series introducing `die_for_incompatible_opts()`, which accepts an unbounded number of mutually incompatible options via `(const char *name, int set)` pairs terminated by NULL; the first patch swaps the argument order of the existing `die_for_incompatible_optN()` functions, and the new function deliberately reports only the first four conflicts to avoid allocation costs.
+- Harald Nordgren's patch groups pull-request CI workflow runs by PR number and cancels superseded runs while keeping push events grouped by commit hash; Junio C Hamano analyzed the concurrency change, flagged an unverified concern that simultaneous workflows sharing a group might leave some runs unable to start, and noted non-PR events are unaffected.
+- Taylor Blau replied to Junio C Hamano's question about the `midx-write` custom-base filtering comment, saying nothing had happened since his earlier comment; instead of sending a prepared reroll he shared a proposed replacement comment in `midx-write.c` and asked whether it was clear.
+- Phillip Wood responded to the RFC on a configurable stash ref, proposing options on `git stash pop` to pop the most recent stash created on the current branch or in the current worktree, and suggesting `git stash list` filtering by branch or worktree as a separate addition.
+- Karthik Nayak agreed with Patrick Steinhardt that tracking lock state via a bitfield in `struct reftable_addition` is fragile, but explained moving it to `reftable_stack` would be more fragile, concluding the current approach is acceptable.
+- Junio C Hamano noted the `commit --fixup` with `-c`/`-C` topic had hung without reviews and asked for takers, and pointed out the `die_for_incompatible_opt3` check blocking `-C`, `-c`, and `-F` together is redundant because the later `die_for_incompatible_opt4` already covers those combinations.
+- Harald Nordgren confirmed a passage from Junio C Hamano asking whether `git branch -d` needed the same protection as delete-merged was what he remembered; Junio C Hamano said he had more likely misstated and appreciated the new machinery for an improved protection feature.
