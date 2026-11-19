@@ -1,52 +1,30 @@
 # Git mailing list daily digest for 2026/08/16
 
+## Long threads
+
+### Path keys for `git repo info`
+
+*Long thread (root 2026/07/16/01-21-31): 21 replies so far from 4 participants over 32 days; 1 message that day.*
+
+K Jayatheerth's GSoC series extends `git repo info` with `path.*` keys that output the paths of repository components: `path.toplevel` for the repository tree, `path.superproject-root` for the superproject tree from within a submodule, `path.hooks` for the hooks directory, `path.index` for the index file, `path.grafts` for the grafts file, and `path.git-prefix` for the prefix offset from the working tree root to the current directory, each with absolute and relative format suffixes, alongside documentation and tests; the series also removes a now-unused `setup.h` include from `builtin/repo.c`. Earlier, review shaped the series: Justin Tobler judged the `path.toplevel` keys suitable, agreed the empty-string result in a bare repository matches `git rev-parse`, and noted the strbuf is already NULL-terminated so explicit empty-string adds are unnecessary; the `superproject-working-tree` key was renamed to `superproject-root`; `path.objects` was dropped from the fourth revision until pluggable ODB backends are introduced; relative-path test cases were added; and a MINGW-guarded `/dev/null` test case for `core.hooksPath` was included. Lucas Seiki Oshiro had also asked why the `path.toplevel` absolute and relative suffix test does not use the `test_repo_info_path` helper. Today, Lucas Seiki Oshiro objected that the `path.git-prefix` key seems out of place in `git repo info`, arguing it is "current directory information" rather than "repository information", while acknowledging that the information is relevant.
+
 ## The day in brief
-Tian Yuchen clarified the legitimacy of repository-less `git index-pack` invocations, reinforcing the design of a ready-to-queue patch series moving `fetch_if_missing` into `struct repository`. Lucas Seiki Oshiro raised a substantive design objection to the `path.git-prefix` key in the `git repo info` series, questioning its conceptual fit. A new RFC proposed a `git squash` command, sparking discussion about redundancy with existing tools like `git rebase --autosquash` and a long-running `git history squash` patch series.
+
+Today's most consequential exchanges were Lucas Seiki Oshiro's objection that `path.git-prefix` is current-directory rather than repository information in the `git repo info` series, and authorship discussion around the `git worktree add` out-of-bounds read fix, where René Scharfe declined authorship and Junio C Hamano said a sign-off from Matthias Aßhauer would work. Documentation for the experimental `bitmapPseudoMerge.*` options also appeared, alongside continued discussion of a `git squash` command and a response on running `git index-pack` outside a repository.
 
 ## Notable threads
 
-### Move `fetch_if_missing` into `struct repository` (v6)
-**What changed?** The v6 patch series moves the global `fetch_if_missing` variable into `struct repository`, making it a per-repository flag that controls whether missing objects trigger lazy fetches from promisor remotes. This continues Git’s libification effort to eliminate global state.
+### Out-of-bounds read fix in `git worktree add`
+Matthias Aßhauer's patch fixes an out-of-bounds read in `worktree_basename` in `builtin/worktree.c`: when the passed path is empty or consists only of directory separators, the function read from memory before the string, returning nonsense data that could let `git worktree add ""` recursively delete the current working directory including `.git`. The fix stops the out-of-bounds read, so the command consistently exits with a BUG message instead of causing data loss. René Scharfe had proposed an alternative loop in the same function implementing the fix. Today, René Scharfe objected to taking authorship of the fix himself, saying it feels unfair because Matthias Aßhauer did most of the work by identifying the bug and the loop change does not seem very original to him; his main concern is getting the surprisingly impactful bug fixed in a reasonable amount of time. Junio C Hamano said that if Matthias signs the patch off, that would work for him too.
 
-**Today’s development:** Tian Yuchen [2026/08/16/06-20-50] cited the `git-index-pack` man page to confirm that repository-less invocations of `git index-pack` are a documented and intended use case. The man page states that the packed archive and its index "can then be placed in the objects/pack/ directory of a Git repository," implying the command is designed to operate on standalone `.pack` files regardless of immediate repository placement. This reinforces the series’ approach of preserving existing behavior while moving the flag into `struct repository`.
+### Moving `fetch_if_missing` into `struct repository`
+The patch moves the global `fetch_if_missing` variable, which controls whether a missing object check prompts a lazy fetch from a promisor remote, into `struct repository` initialized to 1 by default to keep the previous behavior, as part of the libification effort. Commands entered via RUN_SETUP in `git.c` -- `builtin/fetch-pack.c`, `builtin/fsck.c`, and `builtin/rev-list.c` -- can drop their UNUSED markers and assign to `repo` directly, since their `repo` parameter is only NULL when `-h` is given outside a repository; `builtin/index-pack.c`, entered via RUN_SETUP_GENTLY, keeps a NULL check and falls back to `the_repository`; and `builtin/pack-objects.c` needs adjustments so `repo` reaches every `fetch_if_missing` call site. Today, Tian Yuchen responded to the question of whether running `git index-pack` outside a repository is legitimate by citing the git-index-pack documentation to clarify that the design intent is to operate a standalone .pack file, with whether to place it into a repository being a separate step.
 
-**Why it matters:** The exchange resolves a lingering design question about whether `fetch_if_missing` belongs in `struct repository` at all. Junio C Hamano previously questioned whether running `git index-pack` outside a repository is a legitimate use case or a user error, but the man page confirms it is intentional. The series is now technically complete and ready for queuing, with no further changes expected from the author.
+### Proposal for a `git squash` command
+A developer proposed a `git squash 3` command that would do the same as `git reset --soft HEAD~3` followed by `git commit`, saving time for developers who often squash commits, with a possible `-s` flag to add a sign-off for projects requiring a DCO. Today, Matej Dujava suggested that when later commits address feedback, one can use `fixup!` or `squash!` commits and then run `git rebase --autosquash HEAD~3` to clean up before merge, and noted that a v13 patchset is discussing a similar workflow in which the suggested command `git history squash HEAD~3` keeps the message of the first commit.
 
----
+### Documentation for `bitmapPseudoMerge.*` options
+Today, kapicharly@icloud.com posted documentation for the experimental `bitmapPseudoMerge.*` configuration options, which control pseudo-merge bitmap generation and may be subject to change or removal. The documentation describes how `pattern` matches reference names with an extended regular expression and groups commits into pseudo-merge groups, with capture groups forming sub-groups, and details the `decay`, `sampleRate`, `threshold`, `maxMerges`, `stableThreshold`, and `stableSize` parameters along with their default values, such as `maxMerges` defaulting to 64, `stableThreshold` to `1.month.ago`, and `stableSize` to `512`.
 
-### Add path-related keys to `git repo info` (v4)
-**What changed?** The v4 series adds six new path-related keys (`path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.grafts`, and `path.git-prefix`) to the `git repo info` command, exposing filesystem locations of repository components in a scriptable format.
-
-**Today’s development:** Lucas Seiki Oshiro [2026/08/16/00-53-49] raised a substantive design objection to the `path.git-prefix` key, arguing it represents "current directory information" rather than "repository information" and thus does not belong in `git repo info`. The key exposes the relative path from the repository’s working tree root to the current directory, matching `git rev-parse --show-prefix`. This is the first pushback on the series’ design beyond mechanical or naming concerns, and it directly challenges the patch’s inclusion.
-
-**Why it matters:** The objection shifts the discussion from implementation details to the command’s conceptual scope. If accepted, it could block the `path.git-prefix` patch or require a broader rethink of what `git repo info` should expose. The series is otherwise mechanically clean and ready for technical review, but this design question may delay its progress.
-
----
-
-### Proposal: new `git squash` command
-**What changed?** A new RFC proposed a built-in `git squash <n>` command to combine the last `<n>` commits into a single new commit, equivalent to `git reset --soft HEAD~<n> && git commit`. An optional `-s` flag would add a Signed-off-by trailer.
-
-**Today’s developments:**
-- The Super Techie [2026/08/16/18-49-50] proposed the command, motivated by convenience and DCO compliance. The email does not address edge cases (e.g., merge commits, conflicts, or partial staging) or how the command would interact with existing Git workflows.
-- Matej Dujava [2026/08/16/21-52-00] noted that `git rebase --autosquash` with `fixup!`/`squash!` commits already provides a more flexible squashing workflow. Matej also linked to a long-running `git history squash` patch series (v13), which preserves the message of the first commit in the squashed range, suggesting the idea has been discussed before.
-
-**Why it matters:** The thread now encompasses two distinct approaches: the original simple `git squash <n>` and the more nuanced `git history squash` from the linked series. The discussion highlights a tension between convenience and redundancy, as existing tools (`rebase --autosquash`) already address the use case. No maintainer has weighed in yet, leaving the proposal’s fate uncertain.
-
----
-
-### Documentation for `bitmapPseudoMerge.<name>.*` configuration
-**What changed?** A new patch introduced documentation for experimental `bitmapPseudoMerge.<name>.*` configuration options, which control how Git groups commits into pseudo-merge bitmaps for reachability query optimization in large repositories.
-
-**Today’s development:** kapicharly@icloud.com [2026/08/16/09-11-53] added detailed man-page entries explaining the purpose and behavior of each option. The documentation covers:
-- `bitmapPseudoMerge.<name>.pattern`: regex patterns for grouping references (e.g., tags, remote branches).
-- `bitmapPseudoMerge.<name>.decay`: decay rates for adjusting group sizes over time.
-- `bitmapPseudoMerge.<name>.threshold` and `bitmapPseudoMerge.<name>.stableThreshold`: age-based thresholds for commit eligibility.
-- The distinction between "unstable" and "stable" pseudo-merge bitmaps, with the latter targeting older commits and imposing a one-time generation cost.
-
-**Why it matters:** The documentation provides clear guidance for users experimenting with these settings, though its relevance depends on the status of the pseudo-merge bitmap feature itself. If the feature is still in flux, the documentation may require future revisions. The patch is purely additive and does not introduce code changes.
-
----
-
-## In brief
-- **Fix out-of-bounds read in `git worktree add`**: René Scharfe [2026/08/16/17-51-32] finalized the fix for the memory-safety flaw in `worktree_basename()`, replacing a pointer-decrement loop with an integer-index loop to eliminate underflow risk. The patch is ready for `next` and addresses a critical bug that could lead to data loss. Junio C Hamano [2026/08/16/19-30-55] discussed authorship logistics, suggesting René take sole authorship for DCO compliance, but René deferred to Matthias Aßhauer’s original work.
-- **Enthusiastic support for `git squash`**: Bradley Morgan [2026/08/16/23-38-05] endorsed the proposed `git squash` command, expressing frustration with the current `git rebase` workflow. The reply does not add technical detail but signals user interest in a convenience feature.
+### Support for a `git squash` command
+In reply to the proposal for a `git squash` function, one message answered "absolutely yes", asking anyone developing it to please do, citing annoyance with rebase headaches. Today, Bradley Morgan expressed support for adding a git squash function, stating it would be useful and that he gets annoyed with rebase headaches.
