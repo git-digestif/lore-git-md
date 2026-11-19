@@ -1,60 +1,37 @@
 # Git mailing list daily digest for 2026/09/06
 
 ## The day in brief
-The Git mailing list saw significant activity around performance optimizations for `git push` from shallow clones, with Elijah Newren posting a six-patch v3 series that changes the default behavior of `push.shallowExcludeBoundary` to `true`. Kristoffer Haugsbakk shared new information about Linux kernel policy for AI-assisted contributions, influencing Git's approach to attribution. Design discussions continued on version numbering for the next major release, with Brian M. Carlson advocating for a cautious delay before 3.0. Several bugfixes and refactoring efforts also progressed, including Patrick Steinhardt's ODB alternates handling series and Aleksei Sviridkin's fix for `--force-if-includes`.
+
+Elijah Newren posted v3 of a six-patch series teaching `send-pack` to avoid sending the whole tree when pushing from a shallow clone, now including a tri-state `push.shallowExcludeBoundary` option whose default changes to true. brian m. carlson laid out the remaining considerations for naming the release after Git 2.56, with his gut reaction favoring Git 2.97 or 2.98. Thomas Bachem refined his position on keeping a background `rerere gc` from killing a rebase, arguing for a warning at conflict stops but continued failure after resolution.
 
 ## Notable threads
 
-### `git ls-files` performance optimization and AI attribution
-The thread on `git ls-files` performance optimization saw new discussion about AI attribution practices. Kristoffer Haugsbakk shared that the Linux kernel's July 2026 policy change (linux/816d9992) now mandates `Assisted-by: LLM` instead of model-specific attribution like `Assisted-by: Codex gpt-5.5`. This provides a project-relevant precedent for Git's handling of AI-assisted contributions, simplifying attribution while avoiding vendor-specific references.
+### send-pack: avoid sending the whole tree when pushing from a shallow clone
 
-The technical aspects of the `ls-files` optimization remain settled: the patch dramatically improves performance for selective pathspecs (60.7s→1.06s) while maintaining negligible overhead (~5ms) in worst-case scenarios. The attribution discussion is now focused on aligning with emerging best practices across open-source projects.
+Elijah Newren posted v3 of the six-patch series, rebased on master following the merge of `ps/odb-pluggable-pack-generation`, with a rewritten cover letter and fixed error messages. The series addresses the problem that when pushing from a shallow clone, `send-pack` may know none of the commits advertised by the receiver and ends up sending the whole tree. Patch 4/6 introduces `push.shallowExcludeBoundary` as a tri-state option (true/false/abort) to optionally omit shallow boundary objects from generated packs, and patch 5/6 changes the default to true to avoid transferring and recompressing potentially gigabytes of tree data. Patch 6/6 adds `advice.pushShallowBoundary`, suggesting pushing refs one at a time when a multi-ref shallow push fails after a boundary was excluded from the shared pack. Patches 1-3 fix error messages in `unpack-objects` and `receive-pack` and make `shallow.c` treat an absent boundary commit as the end of a traversal path rather than dying.
 
-### `git push` performance from shallow clones
-Elijah Newren posted a significant v3 series (six patches) optimizing `git push` performance from shallow clones. The series introduces a tri-state config option `push.shallowExcludeBoundary` (values: `true`/`false`/`abort`) that controls whether shallow boundary objects are omitted from the pack when pushing.
+### What will come after Git 2.56?
 
-Key developments in v3:
-- Patch 1/6 improves error reporting in `unpack-objects.c` by distinguishing missing objects from type mismatches
-- Patch 2/6 silences redundant per-ref connectivity error messages in `receive-pack.c`
-- Patch 3/6 treats missing boundary commits as traversal endpoints rather than fatal errors
-- Patch 4/6 implements the core optimization with the tri-state config option
-- **Patch 5/6 changes the default from `false` to `true`**, enabling the optimization by default
-- Patch 6/6 adds advice for users to split multi-ref pushes when shallow boundary exclusions cause failures
+brian m. carlsson listed the remaining considerations for the post-2.56 version decision: forge support for SHA-256 on the remaining major forges, updates on libgit2's SHA-256 and reftable support, and a re-roll of the lowercase-only object IDs series, which he planned to send out. He argued that software not already far along on SHA-256 is likely not worth considering, noting JGit and Gitoxide were informed at least a year ago that SHA-256 was coming in Git 3.0, and that he was not aware of serious efforts to add Rust support for new platforms. His gut reaction was that option (3), Git 2.98 or 2.97, might be the best choice, with 2.97 being nice, or alternatively being more careful with 2.95 and then skipping ahead to 3.0 when ready.
 
-The series addresses the core inefficiency where `git push` from shallow clones resends entire toplevel trees (gigabytes in large repos) even for tiny changes. The new default (`true`) assumes the server already has the shallow grafts, which is almost always true and avoids wasted work. The `abort` option lets users opt out entirely if they prefer not to choose between performance and correctness.
+### rerere: keep a background gc from killing a rebase
 
-The false-positive failure mode (where a multi-ref push is rejected because one ref's excluded boundary omits objects needed by another) is now addressed with improved error messages and recovery advice. This directly responds to Derrick Stolee's earlier concerns about usability.
+Thomas Bachem refined his position on the v3 patch that makes `rerere` wait for `MERGE_RR.lock` instead of dying when a background gc holds it. He confirmed that when `git rerere` fails at a conflict stop the user can still recover everything by hand, but stressed the warning must tell the user to run `git rerere` before resolving, since resolving first removes the conflict markers and records nothing. He corrected the assumption that a rebase interrupted mid-way is easily recoverable, noting that the "you have staged changes" refusal's suggested fixes each lose something, and that this is existing 2.55 behavior. His stated position: keep v3's behavior at a conflict, but keep failing after the wait for recordings after resolution, for explicit `git rerere`, `forget` and `clear`, and for the gc, which gives up at once.
 
-### ODB alternates handling refactoring
-Patrick Steinhardt's eight-patch series refactoring ODB alternates handling during repository creation saw continued review. Justin Tobler raised two substantive questions:
+### push: fix --force-if-includes when remote-tracking ref has no reflog
 
-1. About the growing complexity of `init_db()`'s "skip" flags, suggesting explicit setup of the refdb and ODB might be cleaner than accumulating skip flags
-2. Whether `git clone --shared` and similar options should be restricted to the "files" backend or if their behavior should be left to the backend's discretion
+The patch fixes `is_reachable_in_reflog()` reading an uninitialized timestamp when the remote-tracking ref has no reflog, which can reject a push with "remote ref updated since checkout" although nothing on the remote has changed. Junio C Hamano questioned whether 0 is a reasonable fallback for the timestamp, arguing that `gc.reflogExpire` or 90 days ago would be a more reasonable cutoff than year 1970. Aleksei Sviridkin countered that reflog entries older than 90 days do survive since expiry happens only when gc or `git reflog expire` runs, reported an A/B test in which a now-minus-90-days fallback rejects the push while zero allows the forced update, and noted that v3 argues for zero over "now" or a fixed age.
 
-The series removes the ability to write ODB alternates after repository creation, simplifying the ODB interface. It introduces a new option in `odb_source_create_on_disk()` to handle alternates at creation time, eliminating the need for a separate `write_alternates()` callback. This change prepares for alternates to become an implementation detail of the ODB backend.
+### format-patch: learn --[no-]range-diff-notes
 
-The patch that removes the last call to `odb_add_submodule_source_by_path()` in `submodule-config.c` received confirmation from Justin Tobler, who verified the safe removal of a 2019 workaround that became unnecessary after earlier patches removed implicit dependencies on `the_repository`.
-
-### Version numbering for next major release
-Junio C Hamano initiated a meta-discussion about version numbering for the next major Git release after 2.56. He presented four options: 3.0, 2.99 (transitional), 2.98/2.97 (delayed), or 2.57 (business as usual).
-
-Brian M. Carlson advocated for a cautious delay (option 3: 2.97 or 2.95) to allow time for key work to stabilize, particularly:
-- The lowercase-only object IDs series
-- SHA-256 support on major forges (upcoming update at Git Merge)
-- libgit2's SHA-256 and reftable support
-
-Carlson explicitly excluded Rust platform support as a blocker and dismissed other SHA-256/reftable work as unlikely to be ready in time. His position reflects a preference for a deliberate, staged transition rather than an abrupt version bump.
-
-### `--force-if-includes` bugfix and design discussion
-The thread on fixing an uninitialized variable in `--force-if-includes` saw continued design discussion about the fallback timestamp value. Aleksei Sviridkin provided a scenario demonstrating why `timestamp_t date = 0` (epoch start) is the only safe choice, as older reflog entries can persist until explicitly expired and must be checked to prevent unsafe pushes.
-
-Junio C Hamano had suggested alternatives like `gc.reflogExpire` or 90 days as more reasonable, but Aleksei's scenario shows these could allow unsafe pushes in edge cases. The discussion now centers on the trade-off between safety (full reflog scan) and performance (avoiding redundant work).
-
-The patch itself (a one-line initialization in `remote.c`) remains technically ready for integration, with the design discussion likely to inform future refinements to the safety mechanism.
+Kristoffer Haugsbakk provided a draft rewrite of the `--range-diff-notes` documentation to clarify that the default shows the same notes in the range diff as on the patches, and clarified that "notes override behavior" means turning off all `--[no-]range-diff-notes` options, with a concrete example where patches carry four notes while the range diff carries one. D. Ben Knoble reviewed the draft, judged it a bit long but easy to follow, and admitted he had misunderstood the override example. Junio C Hamano questioned the `--no-range-diff-notes --range-diff-notes` workaround as a strange interpretation, proposing instead that `--no-range-diff-notes` should mean no notes are used for range-diff comparison, mirroring `--no-notes`. Knoble concurred that `format-patch` should use `format.notes` over `notes.displayRef` for default notes, which Haugsbakk had flagged as a suspected bug.
 
 ## In brief
-- **[format-patch range-diff notes]** Kristoffer Haugsbakk provided documentation clarifications for the abandoned `--[no-]range-diff-notes` feature, confirming the implementation already followed the independent-control design Junio sketched. Junio proposed an alternative rule to simplify the toggle mechanism.
-- **[rerere race condition]** Thomas Bachem proposed retaining v3's behavior for conflict stops (warning + proceeding) while keeping lock-timeout failures for other operations, preserving rebase continuity while preventing silent corruption.
-- **[push force-if-includes fix]** Tyler Cipriani confirmed the detached HEAD rejection policy remains unchanged in v2 of his series fixing `--force-if-includes` to check the correct reflog.
-- **[CI update]** Jeff King noted that the `linux32` job still uses Ubuntu 20.04 (out of LTS) due to i386 support limitations, and the `linux-TEST-vars` job may serve dual purposes.
-- **[git clean persistent excludes]** Nicolas Jeanmonod proposed a new `clean.exclude` config key to persistently protect untracked paths from `git clean`, even with `-x`.
+
+- D. Ben Knoble stated he is not planning a reroll of the `dk/use-nsec-runtime` series unless there is strong demand, and that absent guidance for creating positive evidence of safety he is not sure what more to do.
+- Justin Tobler reviewed the series writing alternates at object-database creation time, asking whether clone options like `--shared` should be restricted to the "files" backend, and said patch 7/8 looks good with alternates wired through `create_object_database()`.
+- Nicolas Jeanmonod proposed an RFC adding a multi-valued `clean.exclude` configuration to `git clean` for persistent exclusion patterns honored even with `-x`, and asked whether it would be considered useful and consistent with `git clean`'s semantics.
+- Justin Tobler confirmed that registering submodule sources was a workaround for `config_with_options()` only reading objects from `the_repository`, and approved removing the call now that objects can be read from their respective repository sources.
+- Tyler Cipriani agreed to update the log message for the `--force-if-includes` patch and confirmed that HEAD's reflog is too broad for the check, with the acknowledged downside that `--force-if-includes` is not useful for detached HEAD.
+- Jeff King noted the linux32 CI build uses ubuntu 20.04, out of LTS for a year, but bumping is not an option since Ubuntu and Debian dropped i386 support; he is inclined to leave it until it creates headaches.
+- Kristoffer Haugsbakk noted the Linux Kernel has simplified mandatory LLM attribution to just "Assisted-by: LLM" without naming the model, since identifying specific models adds little useful information.
