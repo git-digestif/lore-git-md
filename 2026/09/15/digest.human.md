@@ -1,43 +1,44 @@
 # Git mailing list daily digest for 2026/09/15
 
+## Long threads
+
+### receive-report hook for git-receive-pack
+
+*Long thread: 58 replies so far from 7 participants over 29 days; 1 message that day.*
+
+Karthik Nayak's series introduces a new `receive-report` hook in `builtin/receive-pack.c` that runs after the reference transaction completes but before the status report is sent to the client: the hook receives the pkt-line encoded report on stdin, its stdout replaces the report sent to the user, and a non-zero exit marks all references as rejected. Earlier, v10 fixed a leak when reassigning command strings in `override_cmds_error()`, and Junio C Hamano queued a "receive-pack: coccinelle fix" patch on top of the series that drops the nullness check before `FREE_AND_NULL`. Today Karthik Nayak said that coccinelle fix "looks good".
+
+### unifying ref storage format terminology
+
+*Long thread: 29 replies so far from 4 participants over 12 days; 2 messages that day.*
+
+Patrick Steinhardt's 13-patch series renames the inconsistent ref storage format knobs -- `--ref-format=`, `GIT_REFERENCE_BACKEND`, `GIT_DEFAULT_REF_FORMAT`, `init.defaultRefFormat` -- to `ref-storage-format` equivalents across `git init`, `git clone`, `git refs`, submodule, rev-parse and help, keeping old names as hidden aliases and letting `--ref-storage-format=` accept a `format://payload` URI. Earlier reviewers debated quiet deprecation versus `OPT_ALIAS()`. Today Kaartic Sivaraam pointed out that existing deprecated aliases such as `--recursive` and `--negotiation-tip` are not hidden and still appear in help output, and Junio C Hamano explained that `OPT_HIDDEN` belongs to a later stage of the deprecation lifecycle, saying that if `OPT_ALIAS()` cannot take `OPT_HIDDEN` that is a bug in the infrastructure, to be marked with a `#leftoverbit`.
+
+### http.sslVerifyStatus for stapled OCSP responses
+
+*Long thread: 21 replies so far from 4 participants over 36 days; 1 message that day.*
+
+Grayson Gordon's patch adds an `http.sslVerifyStatus` boolean mapping to `CURLOPT_SSL_VERIFYSTATUS` so git can check stapled OCSP responses, defaulting to false because enabling it blocks connections to servers that send no stapled response. Earlier rounds reworked the commit message and error text, and Patrick Steinhardt supplied OCSP test infrastructure. Today v7 was posted as the combined version discussed with Junio C Hamano and Patrick Steinhardt: tests needing no OCSP setup stay in `t5551` (run over https by `t5559`), everything needing a responder moves to the new `t5585`, the Apache OCSP block sets `DefaultRuntimeDir` so the stapling mutex stays in the server root, and `LIB_HTTPD_OCSP` support moved into lib-httpd so both test files share one prerequisite.
+
 ## The day in brief
-The Git mailing list saw a flurry of activity today, with key developments including a finalized security feature for OCSP staple validation, a bugfix series for `--force-if-includes` in `git push`, and architectural discussions around ODB transactions and ref storage terminology. Documentation and build system improvements also advanced, while several long-running threads neared completion.
+
+The day's most consequential developments were v7 of the `http.sslVerifyStatus` patch arriving as the combined version with OCSP tests split across two files, v5 of the `--force-if-includes` push series fixing fast-forward rejections, and Karthik Nayak saying the `receive-report` hook series' coccinelle fix "looks good".
 
 ## Notable threads
 
-### `http.sslVerifyStatus` security feature graduates to `next`
-The final combined patch for the `http.sslVerifyStatus` feature was posted today, adding OCSP staple validation to Git's HTTPS certificate verification. When enabled via the new `http.sslVerifyStatus` configuration option (default `false`), Git will reject connections to servers that don't provide a valid OCSP staple, closing a security gap where revoked certificates could be accepted. The feature is particularly relevant for government and FIPS-compliant users (e.g., US DoD PKI deployments) where OCSP stapling is mandated.
+### --force-if-includes fast-forward fix in push
+Tyler Cipriani posted v5 of the series checking the pushed ref for `--force-if-includes`. The new third patch defers the reflog verification until after determining whether a force is needed, so valid fast-forward pushes are no longer rejected when the local reflog is expired -- an existing bug the earlier patches made worse. The series also makes `check_if_includes_upstream()` consult the reflog of the ref actually being pushed, explicitly rejecting non-branch pushes while allowing deletions, and adds a `pushRefUnverifiable` advice message suggesting `--force-with-lease=<ref>:<expect>` or `--no-force-if-includes`.
 
-The v7 patch merges the author's original tests with Patrick Steinhardt's OCSP test harness, providing comprehensive coverage of fail-closed behavior, per-URL scoping, and staple validation. Junio C Hamano and Patrick Steinhardt have both confirmed the patch is technically complete, with no remaining procedural or test-coverage concerns. The patch is currently in `next` and awaits Junio's merge action to graduate to `master`. The only open discussion points—whether the default should eventually change to `true` or if users should be warned when staples are ignored—are forward-looking and don't block this merge.
+### repack losing objects to a mid-run ".keep"
+The series fixes a race where `git repack -d` can delete a pack whose objects were never copied anywhere, because a concurrent push links a `.keep` onto an existing pack between repack's two scans. Today Justin Tobler reviewed the first patch, agreeing that a process should only delete a `.keep` it created itself, and suggested not registering `.keep` tempfiles before the ODB transaction commit -- instead letting the commit phase create the `.keep` explicitly and aborting if it already exists -- offering to send adjusted local patches from another series.
 
-### `--force-if-includes` bugfix series reaches v5
-Tyler Cipriani posted v5 of a three-patch series fixing long-standing flaws in Git's `--force-if-includes` safety mechanism. The series addresses two critical issues: (1) the feature incorrectly checks the reflog of the *local* branch matching the *remote* destination name (e.g., `refs/heads/main`) instead of the branch actually being pushed (e.g., `refs/heads/src` in `src:main`), and (2) it unnecessarily rejects fast-forward pushes of non-branch refs (tags, detached HEADs) even when no force is needed.
-
-The v5 update adds a third patch to exempt fast-forward pushes from `--force-if-includes` checks, resolving an existing bug that was exacerbated by the stricter validation in v4. The core logic now consults the reflog of the pushed ref (`ref->peer_ref->name`) and unconditionally resolves `peer_ref` with `RESOLVE_REF_READING`, ensuring non-branch pushes are rejected for force-pushes but allowed for fast-forwards. The series also introduces `advice.forceIfIncludesDetachedHead` to provide actionable guidance for rejected cases. All prior review feedback—from Patrick Steinhardt, Junio C Hamano, and D. Ben Knoble—has been incorporated, and the series is ready for final scrutiny.
-
-### ODB transaction race fix sparks architectural discussion
-A data-loss race in `git repack -d` prompted a six-patch series from Qin ShiCheng, which in turn sparked a deeper architectural discussion. The bug occurs when concurrent pushes cause the repack machinery to delete packs whose objects were never copied elsewhere, leaving dangling refs. The series fixes this by ensuring `.keep` files are only removed by the process that created them and by replacing the `--honor-pack-keep` mechanism with a consistent snapshot of kept packs.
-
-Justin Tobler's review of the first patch proposed an alternative: stop relying on `git index-pack` to create `.keep` files prematurely and instead have the ODB transaction's commit phase create them explicitly. This would eliminate the need for pre-migration tracking and simplify the fix by allowing the process to abort early if the `.keep` file already exists. Justin noted he has prototyped this approach locally as part of a separate series, indicating it is feasible and tested. The discussion highlights a tension between incremental fixes and more fundamental refactoring, with reviewers likely to weigh in on the trade-offs.
-
-### Ref storage terminology unification nears completion
-Patrick Steinhardt's series to unify Git's ref storage terminology (`--ref-format=` → `--ref-storage-format=`) advanced with Junio C Hamano confirming that `OPT_ALIAS_F()` with `PARSE_OPT_HIDDEN` is the correct deprecation mechanism for backward-compatible option aliases. The series standardizes terminology across CLI options, environment variables, config keys, and documentation, addressing confusion ahead of an analogous `--object-storage-format=` extension.
-
-Kaartic Sivaraam questioned whether the added complexity of `OPT_ALIAS_F()` is justified, noting Git's historical tolerance of public aliases for deprecated options (e.g., `--recursive` in `git clone`). Junio clarified that the current approach aligns with Git's deprecation lifecycle (public → hidden → removed/errors), though he acknowledged the historical tolerance. The series remains under review, with the only open question being whether to leave a `#leftoverbit` to track the future cleanup of `OPT_ALIAS()`'s inability to support `OPT_HIDDEN`.
-
-### `git var` extension series to be reorganized
-Andrew Pleeter agreed to split the v8 patch extending `git var` into three smaller patches: (1) adding `-z` output mode, (2) enabling multi-variable queries, and (3) introducing the new variables (`GIT_AUTHOR_NAME`, `GIT_SIGNING_KEY`, etc.). The series provides a unified, scriptable interface for Git's identity and signing configuration, addressing prior feedback from Junio C Hamano and Phillip Wood.
-
-The v8 patch is technically complete and ready for integration, but Junio's structural critique requested the split for clarity and maintainability. The series remains in `seen` pending Andrew's response, which arrived today with the agreement to reorganize. The next step is a v9 series with the proposed breakdown, bringing the feature closer to graduation.
+### stash.index autostash leaves a redundant stash entry
+The bug report describes how, with `stash.index=true`, a successfully applied merge autostash is still stored as a stash entry and deleting `MERGE_AUTOSTASH` fails, because `git stash apply --index` reaches a reset mode that discards branch state via `remove_merge_branch_state()`. Today D. Ben Knoble reproduced the bug, confirmed the analysis lines up with the code, and said he is experimenting with replacing the `git reset` subprocess call with a direct `reset_working_tree()` call, while rejecting disabling `stash.index` for merge autostashes as papering over the underlying problem.
 
 ## In brief
-- **`git history` leak fix**: Kaartic Sivaraam's memory leak fix for `git history` (v4) was confirmed ready for `next` after incorporating Jeff King's feedback. The patch unuses the commit buffer in `show_commit()` and is part of the ongoing stabilization of the experimental command.
-- **Precompiled headers**: SZEDER Gábor posted v2 of a build system series introducing precompiled headers for `git-compat-util.h`, updating only the commit message of patch 3/4 to address Junio's editorial feedback. The series aims to reduce build times by ~35% and is uncontroversial except for the broken `rust/` subdirectory move in a related topic.
-- **`git range-diff --matched-only`**: Harald Nordgren posted v3 of the `--matched-only` feature for `git range-diff`, reverting the error-handling layering violation from v2 and restoring architectural separation. The patch is now mechanically final and ready for merging.
-- **Documentation fixes**: Todd Zullinger's v3 series fixing inconsistent backtick-quoting in `git-refs` and `git-pack-refs` man pages was accepted by Junio C Hamano and merged to `master`. The changes ensure visual consistency in rendered man pages and HTML output.
-- **`git pull` segfault fix**: Junio C Hamano reviewed a patch preventing `git pull` from segfaulting when encountering an invalid merge head. The fix treats failed object lookups as "not up to date," allowing the normal merge machinery to report the broken object. Junio suggested simplifying the test by removing the object file instead of truncating it.
-- **ODB transaction race fix**: Justin Tobler's two-patch series fixing a race in the ODB transaction layer during commit was effectively approved after Karthik Nayak's review. The series ensures pending packfiles are flushed before transaction migration, resolving a "No such file or directory" error.
-- **`git status --ignored` bugfix**: René Scharfe posted a patch removing an optimization in `dir.c` that caused `git status --ignored` to perform substring matching instead of exact matching for pathspecs. The regression was introduced in 2020 and affects ignored directories.
-- **`git-contacts` stdin support**: Brigham Campbell posted a patch teaching `git-contacts` to read patch content from stdin when stdin is not a terminal and no arguments are supplied. Junio C Hamano requested minor stylistic adjustments to the commit message and argument-handling logic.
-- **Refspec inconsistency report**: André Kießling reported inconsistent behavior between the `+` refspec modifier and `--force` in `git fetch`, with `+` pruning deleted tags while `--force` does not. Junio C Hamano disputed the inconsistency, providing reproduction steps showing no pruning with `+` on Unix.
-- **Worktree hook environment bug**: Phil Sainty reported that `GIT_WORK_TREE` is not exported to `post-checkout` hooks in worktrees, causing `git rev-parse --show-toplevel` to return the wrong path. The issue is specific to worktrees and affects scripts relying on the correct toplevel path.
+- René Scharfe bisected the `git status --ignored` partial-pathspec match bug to commit 95c11ecc73 and proposed removing the `!excluded` optimization check in `treat_directory()`.
+- Royce Remer posted a fix swapping the order of `send_wanted_ref_info()` and `send_shallow_info()` in `upload_pack_v2()` so shallow fetches with `uploadpack.allowRefInWant=true` work, arguing there is no backwards-compatibility concern because the combination never worked.
+- Kaartic Sivaraam posted v4 fixing a commit-buffer leak in `builtin/history.c` by pairing `repo_logmsg_reencode()` with `repo_unuse_commit_buffer()`.
+- Justin Tobler's two-patch series fixes packfile flush during ODB transaction commit with `core.fsyncMethod=batch`; Karthik Nayak reviewed both patches positively.
+- Junio C Hamano reviewed Jiri Kuncar's NULL-guard patch keeping `git pull` from crashing on an unresolvable merge head, calling it a good improvement, and suggested simplifying the test's corrupt-object step.
+- SZEDER Gábor posted v2 of the series precompiling `git-compat-util.h`, reporting about 35% faster builds.
