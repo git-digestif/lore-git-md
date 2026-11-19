@@ -1,87 +1,37 @@
 # Git mailing list daily digest for 2026/09/19
 
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. A bugfix for `git stash` autostash handling with staged index entries was submitted, addressing a long-standing issue with `stash.index=true`. Outreachy project planning advanced with the approval of a third project, "Implement promisor remote fetch ordering," and mentor assignments were clarified. A regression in the `reference-transaction` hook for branch renames was diagnosed, with a contributor offering to submit a fix. Meanwhile, a proposed "safe" `strbuf` API faced substantive critique over naming, usability, and a safety-violating bug.
+
+Maciej Ciemborowicz posted a three-patch series teaching `refs_delete_refs()` to accept old OIDs so the reference-transaction hook sees the object a deleted ref pointed to, and D. Ben Knoble sent a two-patch series fixing the `stash.index=true` autostash bug by merging the index in-core. r.norouzi reported that `git reflog expire` has pruned reachable entries after 30 days instead of the documented 90 since Git 2.50 because the default expiry values were swapped.
 
 ## Notable threads
 
-### Outreachy December 2026 cohort: project approval and mentor assignments
-**What changed?**
-Christian Couder approved the third Outreachy project, "Implement promisor remote fetch ordering," and offered to co-mentor if needed. The project, tentatively mentored by Kaartic Sivaraam, aims to improve partial-clone functionality by allowing configurable fetch ordering for promisor remotes.
+### Batched ref deletions drop old OIDs from the reference-transaction hook
 
-**Background**
-Git is participating in the Outreachy December 2026 cohort with three approved projects. The other two projects—"Improve how command arguments and options are scanned and parsed" and "Reduce Git’s global state to enable Git's libification"—already have confirmed mentors. The Outreachy application deadline is October 5, 2026.
+The reference-transaction hook reports an all-zero update when `git branch -d`, `git tag -d`, `git remote prune`, or `git fetch --prune` deletes a ref, so hook consumers cannot identify the object the ref pointed to; for branch and tag deletion this is a regression from `8198907795`, which batched deletions for speed but dropped the old OIDs the callers had already resolved. D. Ben Knoble suggested that `git bisect` would be a good way to answer whether the loss of old OIDs was intentional, since a good and a bad version with a reproduction script had been identified. Maciej Ciemborowicz traced the regression to commit `8198907795`, which before Git 2.31 replaced single-ref `delete_ref()` calls with `delete_refs()`, and concluded the information loss was a side effect of the batching optimization, which cut deletion of 24,000 tags from roughly 30 minutes to 5 seconds, and should be fixed while preserving that performance. He then posted [PATCH 0/3] "refs: report old OIDs for batched deletions", teaching `refs_delete_refs()` to accept an optional `oid_array` of old OIDs and passing the values already resolved by the branch, tag, `fetch --prune`, and `remote prune` callers, keeping a single batched transaction with no added ref reads; deleting 10,000 packed tags took a median of 0.86s before and 0.85s after the series. Karthik Nayak reviewed [PATCH 1/3], noting that verifying old OIDs introduces a possible race for callers that checked a ref's OID beforehand, and offered a nit suggesting a local `struct string_list_item *item = refnames->items[i];`.
 
-**Why it matters**
-The addition of the promisor-remote project expands internship opportunities and addresses a performance optimization for partial clones, a growing area of interest in Git’s scalability efforts. The mentor assignments are now complete, though they remain tentative pending intern applications.
+### stash.index=true leaves a redundant stash entry after an autostash fast-forward
 
----
+With `stash.index=true`, an autostash that is applied successfully during a merge is nevertheless stored as a stash entry and deleting `MERGE_AUTOSTASH` fails, and a staged change at the time of the merge is required to trigger it; the rebase backend is unaffected because it keeps its autostash in `.git/rebase-merge/autostash`. Phillip Wood diagnosed why an earlier `reset_tree(&c_tree, 0, 1)` suggestion failed six test files without fixing the bug: merging the stashed index clears the stat data and `CE_UPTODATE` flag for paths updated by the merge, so removing those merged changes from the index requires a `refresh_index()` call after `reset_tree()`, which he noted is moot if the `merge_incore_nonrecursive()` approach is used instead. D. Ben Knoble confirmed the diagnosis, said that since the `merge_incore_nonrecursive()` version works he might skip the intermediate `reset_tree()` state and go straight to it, agreed to re-examine whether the conflict labels can appear in logged messages, accepted Phillip Wood's suggestion to use `oidcpy` to copy the merged tree, and sent out the patch series for the fix.
 
-### `stash.index=true` + `--autostash` bugfix: final polish and submission
-**What changed?**
-D. Ben Knoble incorporated Phillip Wood’s review feedback and submitted a formal patch series to fix a bug where `git stash` autostash fails to correctly handle staged index entries when `stash.index=true` is set. The series replaces subprocess-based index merging with in-core logic via `merge-ort.c`, eliminating a race condition that could corrupt the `MERGE_AUTOSTASH` ref.
+### In-core index merge for git stash apply --index
 
-**Background**
-The bug manifests during merge operations that trigger autostash, causing incorrect index state preservation. The fix targets `builtin/stash.c` and `merge-ort.c`, with test coverage added to `t/t7600-merge.sh`. Phillip Wood’s earlier feedback identified the root cause (cleared stat data and `CE_UPTODATE` flags) and suggested targeted improvements, which Knoble has now implemented.
+D. Ben Knoble posted a two-patch series fixing the bug reported by Eli Barzilay in the interaction between autostashing, staged index entries, and `stash.index=true`. Patch 1/2, "builtin/stash: remove unused header", removes the unused `oid-array.h` include from `builtin/stash.c` that Clang flagged. Patch 2/2, "builtin/stash: merge index in-core", replaces the subprocess-based index merge (`git-diff-tree`, `git-apply`, `git-reset`) in `git stash apply --index` with an in-core `merge_incore_nonrecursive()` call, fixing an autostash bug where the file-system round-trip was not re-entrant and caused a lock failure on a deleted `MERGE_AUTOSTASH` ref when `stash.index=true`; the patch also removes `assert()` calls in `merge-ort.c` and adds a test for fast-forward merge with `--autostash` and `stash.index`. He apologized for the unusual subject line "[PATCH 0/2] Hi all," attributing it to a mishap when editing the branch description.
 
-**Why it matters**
-This is a correctness fix for a real-world annoyance affecting users of `stash.index=true` and `--autostash`. The in-core approach improves performance and reliability, and the added test coverage ensures the bug won’t regress. The series is now ready for review, with no open technical questions beyond a minor design choice about `assert()` retention in `merge-ort.c`.
+### reflog expire default expiry times swapped since 2.50
 
----
+r.norouzi reported that `git reflog expire` prunes reachable reflog entries older than 30 days instead of the documented 90, because the total cut-off is checked first and every entry older than 30 days is pruned. The defaults were swapped in commit `85658275702b` (first released in 2.50.0): `reflog.h` now sets `default_expire_total` to `now - 30 * 24 * 3600` and `default_expire_unreachable` to `now - 90 * 24 * 3600`, reversing the previous assignments in `builtin/reflog.c`. The behavior was observed with Git 2.55.0 (Git for Windows 2.55.0.windows.5) and is not platform-specific.
 
-### "Safe" `strbuf` API: substantive critique and safety bug
-**What changed?**
-Phillip Wood raised three key concerns about Derrick Stolee’s RFC series introducing a "safe" `strbuf` API that avoids `die()` calls:
-1. The "safe" framing is vague; the API should instead be described as error-returning, with naming aligned to existing patterns (e.g., `strbuf_*_gently`).
-2. Usability is poor due to the need to check errors on every call; a sticky error bit (like C’s `stdio` functions) would simplify error handling.
-3. A bug in `sstrbuf_grow()`: it uses `st_add3()`, which calls `die()` on overflow, violating the safety guarantee.
+### RFC: a "safe" strbuf API that returns errors instead of dying
 
-**Background**
-The series aims to provide a subset of the `strbuf` API for critical code paths like trace2, where crashes are unacceptable. It introduces new methods (`sstrbuf_init()`, `sstrbuf_release()`, `sstrbuf_grow()`) and refactors `json-writer.c` to use them. The RFC is complete at patch 6/6, with CodeQL used to verify the safety property.
-
-**Why it matters**
-The critique undermines the series’ core premise. The naming and usability issues could hinder adoption, while the `st_add3()` bug invalidates the safety guarantee. The discussion now centers on whether the API can be salvaged with targeted fixes or if a broader redesign is needed. The thread highlights the tension between safety, usability, and backward compatibility in Git’s low-level APIs.
-
----
-
-### `reference-transaction` hook: branch rename regression diagnosed
-**What changed?**
-Karthik Nayak diagnosed a regression where the `reference-transaction` hook omits the new ref when a branch is renamed (`git branch -m`). The hook only reports the deletion of the old branch name, not the creation of the new one, due to branch renames bypassing the ref transaction mechanism entirely.
-
-**Background**
-Maciej Ciemborowicz reported the bug, noting it affects both the files and reftable backends. Karthik traced the issue to backend-specific behavior: the files backend uses `refs_delete_ref()`, which triggers the hook for the deletion, while the reftable backend writes a TOMBSTONE entry directly, skipping the hook. The expected behavior—confirmed via `git update-ref --stdin`—is that both deletion and creation events should be included in the same transaction.
-
-**Why it matters**
-The `reference-transaction` hook is relied on by external tools (e.g., Gerrit, GitLab) to monitor ref changes. The regression breaks workflows that depend on tracking branch renames, and the backend inconsistency complicates the fix. Karthik’s diagnosis provides a clear path forward: update the branch-rename logic to use transactions, ensuring the hook receives both events. He has offered to submit a patch, signaling this is likely to be resolved soon.
-
----
-
-### GitLab CI breakage: Windows Rust support validated
-**What changed?**
-Karthik Nayak set up an internal GitLab merge request (MR #671) and pipeline (#2863888081) to validate Johannes Schindelin’s patch series fixing GitLab CI breakage for Windows builds after Rust support was enabled. The series addresses missing Rust toolchain provisioning (`cargo`), silent data loss in dependency setup, and linker unavailability for MinGW builds.
-
-**Background**
-The breakage occurred after Rust was enabled in Windows CI jobs, causing build failures due to `cargo: command not found` errors and missing GNU Rust host-linker support. Schindelin’s series introduces a `-Mingw` switch in `ci/install-dependencies.ps1`, preserves `.git/info/exclude` contents, and adjusts `PATH` in `.gitlab-ci.yml` to ensure `cargo` is accessible.
-
-**Why it matters**
-The MR and pipeline provide a realistic test environment for the fix, addressing the "lightly tested" caveat in the original submission. The series is narrowly scoped to GitLab’s MinGW environment and does not affect other CI platforms. Karthik’s validation increases confidence in the fix, which is critical for maintaining CI stability as Git’s Rust support matures.
-
----
-
-### `reference-transaction` hook: regression fix and race condition concern
-**What changed?**
-Maciej Ciemborowicz submitted a three-patch series to fix a regression where the `reference-transaction` hook receives all-zero OIDs for both old and new fields when deleting branches or tags. The series restores the correct behavior (old OID followed by all-zeros) while preserving the performance gains of the original optimization. However, Karthik Nayak identified a race condition in the first patch: `refs_delete_refs()` now performs conditional deletion based on supplied old OIDs, which could cause transaction failures if the ref’s value changes between resolution and execution.
-
-**Background**
-The regression was introduced in Git 2.31 by commit `8198907795`, which optimized bulk tag deletions but inadvertently omitted the old OID for safety-checked deletions. The fix modifies `refs_delete_refs()` to accept optional old OIDs and updates callers (`git branch -d`, `git tag -d`, `git fetch --prune`, `git remote prune`) to pass the resolved values. Performance measurements confirm no regression.
-
-**Why it matters**
-The series addresses a correctness issue affecting tools that rely on the hook to track ref deletions. The race condition, however, is a serious concern: it could lead to spurious transaction failures in production workflows. The author will need to resolve this before the series can proceed, likely by reverting to unconditional deletion or implementing a retry mechanism.
-
----
+The RFC series proposes a strbuf API that returns errors rather than dying on allocation failure or overflow, motivated by the fact that the trace2 API can trigger recursive `die()` loops if allocation fails, since trace2 uses json-writer which in turn uses the strbuf API. Phillip Wood endorsed the general direction of APIs that return errors rather than dying, noting that the xdiff and reftable code already have something similar, but objected to the name "safe" as not describing how the APIs differ from existing ones. He proposed that checking for failure on every strbuf function call would not be attractive and instead suggested a sticky error bit like the stdio functions, so a string can be built and checked for failures once just before use. He also identified a flaw in the RFC's CodeQL verification: the implementation of `sstrbuf_grow()` in patch 4 calls `st_add3()`, which dies on overflow, rather than `st_add_overflows()`, indicating the checks are not working as intended.
 
 ## In brief
-- **`git reflog expire` regression**: r.norouzi reported a regression in Git 2.50 where the default expiry times for reachable and unreachable reflog entries were swapped. The bug was introduced by commit `85658275702b`, which reversed the order of `.default_expire_total` and `.default_expire_unreachable` in `reflog.h`. No fix has been posted yet.
-- **`fetch.shallow` config**: Harald Nordgren submitted a patch introducing `fetch.shallow` to restrict refspec-less fetches to the current branch’s upstream in shallow repositories. The feature addresses performance issues with `git fetch`/`git pull` in large repositories and is opt-in (default: `false`). The patch includes thorough test coverage and is ready for review.
-- **`git commit` date warning withdrawn**: Yashwanth Sai withdrew an RFC patch proposing a warning in `git commit` for commits dated before their parents, due to AI co-authorship in the commit message violating Git’s contribution guidelines. The feature, which aimed to address usability issues with `git log --since`, was endorsed by brian m. carlson as "useful" but will not proceed in its current form.
-- **`git stash` autostash fix**: D. Ben Knoble submitted a two-patch series to fix a bug in `git stash` autostash handling of staged index entries. The series replaces subprocess-based index merging with in-core logic via `merge-ort.c` and adds test coverage. The patches are under review, with no substantive feedback yet.
+
+- Harald Nordgren submitted a patch adding a `fetch.shallow` configuration option, off by default, that causes a refspec-less `git fetch` or `git pull` in a shallow repository to fetch only the current branch's tracked upstream instead of every branch the remote advertises, while still updating `refs/remotes/<name>/HEAD`.
+- Johannes Schindelin posted a four-patch series fixing the GitLab CI cargo invocation in the Windows job, which had been broken since Rust was enabled in the Windows-based CI jobs; Karthik Nayak created a merge request to test the series.
+- Maciej Ciemborowicz reported that `git branch -m old new` does not report the destination ref to the reference-transaction hook, and Karthik Nayak explained that branch copy and rename do not use a transaction, called the behavior absurd, and offered to look into a fix.
+- Karthik Nayak reviewed the t4001 modernization patch, flagging an unintentional blank line, a test failing under `meson test t4001-diff-rename`, and an undefined `initial_setup`.
+- Yashwanth Sai posted an RFC patch warning when a new commit is dated earlier than its parent, but brian m. carlsson objected to the AI co-authorship under `Documentation/SubmittingPatches`, and the patch was withdrawn and the pull request closed.
+- brian m. carlsson explained that Git sets `LESS=FRX` only when `LESS` is unset and cannot statically determine whether a custom `core.pager` invokes `less`; Todd Zullinger suggested documenting `LESS="" less` overrides in `Documentation/config/core.adoc`.
+- Christian Couder approved the "Implement promisor remote fetch ordering" project proposal for Outreachy's December 2026 cohort and said it would be nice to get another co-mentor.
