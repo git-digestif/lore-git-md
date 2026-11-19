@@ -1,134 +1,48 @@
 # Git mailing list daily digest for 2026/10/16
 
+## Long threads
+
+### CI housekeeping and modernization series
+
+*Long thread: 39 replies so far from 6 participants over 9 days; 1 message that day.*
+
+Patrick Steinhardt's eight-patch series cleans up Git's CI configuration, fixing smaller issues and moving jobs off EOL Docker images, including renaming the "linux-exotic" job to "linux-feature-testbed" and reworking the reftable job. Earlier revisions addressed Jeff King's review points on the t5004 SHA-256 test, locale handling on the 32-bit job, and the reftable coverage question, and Junio C Hamano marked v4 for `next`. Today Junio C Hamano argued that resurrecting the no-Rust build job is in the same spirit as patch 8/8 and could be added now to the `linux-feature-testbed` or `linux32` job to ensure the system builds without Rust, since it is not too big an effort, though only until Rust becomes required.
+
+### credentialStore.lockTimeout config option
+
+*Long thread: 38 replies so far from 5 participants over 45 days; 2 messages that day.*
+
+Okhuomon Ajayi's Outreachy patch adds `credentialStore.lockTimeout` as the preferred setting for credential lock retries in `builtin/credential-store.c`, retaining `lockTimeoutMS` as a deprecated alias, with tests in `t/t0302-credential-store.sh`. Earlier, Junio C Hamano had suggested looping the two timeout tests over both variable names and questioned the "allows a store" test. Today Okhuomon Ajayi posted v2, which turns the two "lockTimeout=0" and "lockTimeoutMS=0" tests into a single loop over both names, wraps the long lines in `credential-store.c`, adds a comment explaining that the "both are set" test checks for "in 0 ms" rather than "in 500 ms", and drops the "lockTimeout allows a store" test because nothing holds the lock there.
+
+### Incremental connectivity check
+
+*Long thread: 27 replies so far from 3 participants over 33 days; 1 message that day.*
+
+Kristofer Karlsson's four-patch series adds an incremental mode for the connectivity check in `connected.c`, gated behind `transfer.connectivityCheck=incremental`, to keep the check from slowing down as the number of reachable objects from the boundary grows; the verifier runs inside the existing `rev-list` subprocess via a new `--verify-trees-incremental` flag. Earlier, Patrick Steinhardt reviewed the documentation, perf tests, and implementation, raising points about `die()` in library code, counter types, and a possible fallback beyond N commits. Today Kristofer Karlsson benchmarked full vs. incremental checks across several repositories, finding incremental up to ~2.8x faster on large and medium repos and only slightly slower on small ones, concluding a 1000-commit cutoff is valid; he proposed three config modes ("full", "incremental", "auto"), agreed to switch counters to `size_t`, and agreed to a mixed approach on `die()` that introduces no new calls while accepting existing ones.
+
+### ".keep" lockfile ownership in ODB transactions
+
+*Long thread: 6 replies so far from 2 participants over 1 day; 8 messages that day.*
+
+Justin Tobler's series fixes a bug in `object-file.c` where a `git-receive-pack` process could delete another concurrent process's ".keep" lockfile for an identical packfile, leaving its packfile vulnerable to housekeeping; the fix defers lockfile creation to ODB transaction commit. Earlier today Patrick Steinhardt reviewed all three patches, suggesting a `write_pack_lockfile()` rename, errno-based error messages, and a test assertion that the ".pack" file is not migrated. Later today Justin Tobler posted v2 as a four-patch series, splitting the hash-agnostic comment change into its own commit, applying the rename and error-handling improvements, and adding the test assertion.
+
 ## The day in brief
-The Git mailing list saw active discussion around several performance regressions, with fixes proposed for `git log --follow` and deepening fetches. Documentation improvements for detached HEAD and merge conflicts were merged, while CI housekeeping patches addressed GitLab and GitHub workflows. A long-standing debate about branch name validation (`@`) continued, and Outreachy contributions focused on test modernization and global state reduction.
+Justin Tobler posted v2 of the fix for ".keep" lockfile ownership in ODB transactions, and Kristofer Karlsson backed a three-mode `transfer.connectivityCheck` configuration with fresh benchmarks. Okhuomon Ajayi posted v2 of the `credentialStore.lockTimeout` patch, and Ian Hu submitted a fix for a sigchain race that could spin a process at 100% CPU.
 
 ## Notable threads
 
-### Inconsistent branch name validation in porcelain commands
-**What changed?**
-The thread debated whether Git should allow creating branches named `@`, which is currently accepted by some commands (`checkout -b`, `switch -c`, `branch`) but rejected by `git check-ref-format`. Junio C Hamano firmly opposed preserving `@` as a branch name, calling its use a "bad habit" that violates Git's ref name rules.
+### sigchain concurrent double-pop recovery
+Ian Hu submitted a patch to `sigchain.c` fixing a race where two concurrent handlers popping the same signal both read the same chain depth, leaving the dispatcher stuck on a popped handler and spinning at 100% CPU until SIGKILL. The patch adds a `pushed` counter and reinstalls the pre-chain disposition when popping an already-empty chain; fault-injected A/B testing showed the unpatched code froze in 121 of 300 runs while the patched code never froze in 300 runs.
 
-### Why it matters
+### HTTP push failure with token-only URL userinfo
+Dan reported that `git push` over smart HTTP fails when the remote URL carries a token-only userinfo such as `https://<token>@forge.example/...`, after libcurl 8.23.0 stopped returning credentials in `CURLINFO_EFFECTIVE_URL`; fetch and clone keep working. He traced the failure to `update_url_from_redirect()` treating a credential-free effective URL as a redirect, clearing `http_auth`, and proposed comparing URLs after stripping `user[:pass]@`; a workaround is `user:token@` or a credential helper.
 
-The inconsistency creates a usability trap: branches named `@` can be created but cannot be checked out via porcelain commands (e.g., `git switch @` fails, interpreting `@` as `HEAD`). This affects users who rely on `@` as a shorthand in complex expressions.
-
-### Today's developments
-
-- [D. Ben Knoble] defended shorthands as practical for interactive workflows, noting that grep results for `@` likely include legitimate reflog syntax uses (e.g., `@{upstream}`).
-- [Kristoffer Haugsbakk] shared a workaround (`git symbolic-ref refs/H HEAD`) to sidestep the usability trap.
-- Junio reiterated his opposition to `@` as a branch name, dismissing workarounds as insufficient.
-
-**Subsystem**: ref name validation (`refs.c`, `check-ref-format.c`)
-**Impact**: User experience; potential breaking change for workflows using `@` as a branch name.
-
----
-
-### Fix race condition in .keep lockfile cleanup
-**What changed?**
-Justin Tobler posted v2 of a series fixing a race condition where concurrent `git-receive-pack` processes could delete each other's `.keep` lockfiles, leaving packfiles vulnerable to housekeeping deletion.
-
-### Why it matters
-
-The bug affects repository integrity during concurrent fetches/pushes, particularly in CI environments. The fix moves lockfile creation to the transaction commit phase, ensuring lockfiles are only written after the transaction is guaranteed to succeed.
-
-### Today's developments
-
-- [Justin Tobler] addressed Patrick Steinhardt's feedback: split the SHA-1 assumption fix into a separate commit, improved error messages with `errno` context, and consolidated error paths.
-- The v2 series (4 patches) is now technically complete and ready for final polish.
-
-**Files touched**: `object-file.c`, `pack-write.c`, `pack.h`, `t/t5547-push-quarantine.sh`
-**Subsystem**: ODB transactions
-**Impact**: Correctness; eliminates a race condition in concurrent operations.
-
----
-
-### Performance regression in `git log --follow`
-**What changed?**
-Miklos Vajna proposed a fix for a performance regression in `git log --stat --follow` (bisected to commit 304813ed33), which slowed the command from 33 seconds to nearly 8 minutes in repositories with complex merge structures.
-
-### Why it matters
-
-The regression affects users tracing file history in large repositories (e.g., the Linux kernel). The fix optimizes `propagate_follow_pathspec_to_parent()` to skip redundant diffs while preserving rename-following behavior.
-
-### Today's developments
-
-- [Junio C Hamano] identified a potential correctness issue: the patch's `has_same` flag may incorrectly skip rename detection in merge commits where a file is semantically renamed in one parent but syntactically unchanged in the merge.
-- The discussion shifted from performance to correctness, with Junio's scenario becoming a focal point for further review.
-
-**Files touched**: `log-tree.c`
-**Subsystem**: revision-walking / rename detection
-**Impact**: Performance and correctness; affects `git log --follow` usability in large repositories.
-
----
-
-### CI housekeeping updates
-**What changed?**
-Patrick Steinhardt and Junio C Hamano posted patches to modernize Git's CI configurations:
-1. Fixed GitLab CI "check-whitespace" and "check-style" job failures in merge requests with >50 commits by forcing full clones (`GIT_DEPTH: 0`).
-2. Updated GitHub Actions macOS runners from `macos-14` to `macos-15` after a deprecation notice.
-
-### Why it matters
-
-These changes ensure CI jobs remain operational and maintain coverage for Git's test suite across platforms.
-
-### Today's developments
-
-- [Junio C Hamano] questioned the value of GitLab's "check-whitespace" and "check-style" jobs, suggesting they might encourage poorly formatted patches.
-- The macOS update patch is untested but expected to proceed without issues.
-
-**Files touched**: `.github/workflows/main.yml`, `.gitlab-ci.yml`
-**Subsystem**: CI/build infrastructure
-**Impact**: CI reliability; no user-facing changes.
-
----
-
-### Documentation improvements
-**What changed?**
-Two documentation patches were merged:
-1. Julia Evans's rewrite of the detached HEAD guide (`gitdetached-head(7)`), moving it to a standalone man page and improving clarity.
-2. Julia Evans's update to the `git(1)` man page, replacing outdated tutorial references with direct help commands (e.g., `git help --guides`).
-
-### Why it matters
-
-These changes improve discoverability and usability for new users by adopting an "every page is page one" model.
-
-### Today's developments
-
-- [Junio C Hamano] queued both patches for `master`.
-- A follow-up fix was provided for a test breakage in the detached HEAD patch, replacing backtick-quoted commands with single quotes in `advice.c`.
-
-**Files touched**: `Documentation/git.adoc`, `Documentation/detached-head.adoc`, `advice.c`, `t/t2020-checkout-detach.sh`
-**Subsystem**: Documentation
-**Impact**: User experience; no behavior changes.
-
----
-
-### Outreachy contributions
-**What changed?**
-Several Outreachy applicants submitted patches:
-1. Srujith Poojary modernized test idioms in `t/t2030-unresolve-info.sh` (replacing `test -f` with `test_path_is_file`).
-2. Jane Irungu introduced herself and sought guidance on reducing Git's global state.
-3. Shashank S replaced `test -d` with `test_path_is_dir` in `t/t2403-worktree-move.sh`.
-
-### Why it matters
-
-These contributions improve test diagnostics and introduce newcomers to Git's development workflow.
-
-### Today's developments
-
-- [Usman Akinyemi] and [Harald Nordgren] provided feedback on test modernization patches, suggesting scope expansions.
-- Jane Irungu received procedural advice (CC mentors) but no technical guidance yet.
-
-**Files touched**: `t/t2030-unresolve-info.sh`, `t/t2403-worktree-move.sh`
-**Subsystem**: Test suite
-**Impact**: Test infrastructure; no behavior changes.
+### repack --dry-run rebuilds packs
+Siddharth Shrimali posted v3 of a fix to `builtin/repack.c` for `git repack --drop-filtered --dry-run`, which was documented to list droppable objects without rebuilding packs but instead wrote a new promisor pack and deleted old ones. The patch returns right after listing candidates, drops two now-redundant `!dry_run` checks, and adds a test that the pack directory is untouched with and without `-d`; Junio C Hamano said he will queue it as-is.
 
 ## In brief
-- **`git fetch --depth` regression**: [Rong Bao] argued for propagating `--depth` to submodules, aligning with `--tags` behavior.
-- **`git var` refactoring**: [Junio C Hamano] requested a v2 to address cosmetic issues (sign-off placement, indentation).
-- **`git stash` completion**: [Patrick Steinhardt] raised a design question about preserving option autocompletion for the deprecated `save` subcommand.
-- **`git log --follow` optimization**: Junio's correctness concern may require revisiting the patch's classification logic.
-- **`git describe` i18n**: [Antoni Borowski] proposed removing gettext wrappers from debug output for consistency with `transport-helper.c`.
-- **`git push` HTTP regression**: [Dan] reported a libcurl 8.23.0+ issue where credentials are stripped from `CURLINFO_EFFECTIVE_URL`, causing false redirect detection.
-- **`What's cooking` report**: Junio listed 16 new topics under review, including performance fixes and refactoring efforts.
+- Junio C Hamano marked Patrick Steinhardt's "odb/files: cleanups and improvements for alternates" topic ready for `next`.
+- Junio C Hamano questioned whether Miklos Vajna's `has_same` shortcut in the `log --follow` speed-up is broken in a merge scenario where one branch updates a file in place while another renames it.
+- Julia Evans posted v4 of the detached HEAD documentation rewrite, and Junio C Hamano reported the `advice.c` change breaks `t2020` without a test update, supplying a squash patch.
+- Jeff King reported the "refs of a shallow alternate are ignored" test failing on Windows CI with an alternate-path normalization error and suggested a relative path fix.
+- Patrick Steinhardt proposed setting `GIT_DEPTH: 0` for the GitLab CI "check-whitespace" and "check-style" jobs so they work on merge requests over 50 commits; Junio C Hamano said he will queue the patch.
