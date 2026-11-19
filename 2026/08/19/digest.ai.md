@@ -1,116 +1,50 @@
 # Git mailing list daily digest for 2026/08/19
 
+## Long threads
+
+### Pluggable packfile writes for git-receive-pack(1) via ODB transactions
+
+*Long thread (root 2026/08/06/21-38-53): 29 replies so far from 3 participants over 14 days; 1 message that day.*
+
+Justin Tobler posted v4 of the series "builtin/receive-pack: support pluggable packfile writes", which introduces a generic `odb_transaction_write_pack()` transaction interface so that git-receive-pack(1) can write incoming packfiles without being tied to the "files" backend; the existing logic that spawns git-index-pack(1) and git-unpack-objects(1) becomes the "files" backend implementation of that interface. Changes since v3 include making the unpack limit consider `odb_transaction_flags`, adding a test assertion that the keep file is generated in the quarantine directory, replacing an include with a forward declaration, and updating commit messages. The nine patches update `index_pack_lockfile()` to derive the ".keep" path from an explicitly provided ODB source, add `odb_transaction_finalize()` with an optional backend finalize callback, lift global state out of `unpack()`, resolve the unpack limit lazily, and move the `unpack()` logic into the "files" backend, which removes ".keep" files during finalize after commit. Earlier, Patrick Steinhardt questioned the ".keep" handling, and Justin Tobler proposed using transaction flags such as `ODB_TRANSACTION_RECEIVE` to differentiate callers of `odb_transaction_write_pack()`, which Patrick Steinhardt agreed with and v4 now implements.
+
 ## The day in brief
-The Git mailing list saw significant progress on several fronts today. The zsh completion bugfix for global options (`-C`, `--git-dir`, etc.) reached a stable v2, while the ODB abstraction for `git receive-pack` advanced with a comprehensive v4 series addressing all prior feedback. The `git history` bash completion series received final endorsements and is poised for integration. Meanwhile, design discussions continued around the new `report` hook for `git receive-pack` and reftable backend optimizations.
+
+Justin Tobler posted v4 of the pluggable packfile-writes series for git-receive-pack(1), and Patrick Steinhardt posted v2 of a series making `OBJECT_INFO_DIE_IF_CORRUPT` handling backend-agnostic. Karthik Nayak's reftable stack series avoids redundant stack reloads during reference transactions, and his report hook for git-receive-pack(1) drew detailed review.
 
 ## Notable threads
 
-### zsh completion: fix for global options
-**What changed**: Lutz Lengemann posted v2 of a bugfix patch that aligns zsh completion with bash's handling of global Git options like `-C <path>`, `--git-dir`, and `-p`. The patch expands scope beyond just `-C` to cover all global options, addressing the core issue where the zsh wrapper hard-coded `__git_cmd_idx=1`.
+### Pluggable packfile generation for the transport layer
 
-**Problem/goal**: The zsh completion script failed to complete commands or arguments when global options were used (e.g., `git -C <path> <command> <TAB>`), due to incorrect command-index calculation.
+Elijah Newren identified a potential use-after-scope bug in `odb_source_files_generate_pack()`: with `clean_on_exit = 1`, `mark_child_for_cleanup()` retains a pointer to the function-local `cp`, which `cleanup_children()` would dereference on abnormal exit. Justin Tobler asked for confirmation that having git-bundle(1) generate packfiles via the object database interface is meant to enable bundle creation on repositories using a different ODB backend, while the bundle still uses a packfile as the common format. The series makes the transport-layer parts of packfile generation pluggable.
 
-**Subsystem**: Shell completion (`contrib/completion/git-completion.zsh`)
+### Recovering when a multi-pack-index names a removed pack
 
-**Impact**: This is a long-standing usability bug affecting zsh users who rely on global options. The fix is low-risk (25 lines added) and mirrors the robust bash implementation.
+Junio C Hamano confirmed the diagnosis behind the replay fix -- any value other than `0 < result->clean` is a failure, but the code treated any non-zero value as OK -- and gave the verdict "Well spotted and fixed." He explained that a proposed `test_grep ! "[Ss]egmentation"` check is unnecessary because `test_must_fail` already requires controlled failure. On the packfile recovery patch, he said he will prepare an evil-merge to rewrite the `packfile_fill_entry(p, oid, e)` call to match an API change from another in-flight topic when merging to 'seen'. The series addresses objects treated as missing due to a race with geometric repacking, plus a git-replay(1) SIGSEGV on unreadable merge input.
 
-**Today's developments**: The v2 patch addresses all prior feedback from Junio C Hamano and D. Ben Knoble, expanding coverage to all global options and documenting remaining limitations (e.g., chained `-C` directory completion). The patch is effectively unblocked and ready for merging.
+### Report hook for git-receive-pack(1)
 
----
+Karthik Nayak's patch introduces a 'report' hook that receives the pkt-line encoded status report on stdin and whose stdout replaces the report sent to the client; a non-zero exit makes receive-pack die. Reviewers Kristoffer Haugsbakk and Patrick Steinhardt suggested moving the GitLab MVCC context into the commit message, listing the hook in git-receive-pack(1) with githooks(5) as the canonical documentation, dropping "remote" from the description, and renaming a `code` variable to `ret`. Karthik Nayak agreed to most of these, and Patrick Steinhardt accepted a non-zero hook exit as a "nuclear option" for cases where failing the operation is the only remaining choice.
 
-### ODB abstraction for `git receive-pack`
-**What changed**: Justin Tobler posted v4 of a nine-patch series completing the ODB abstraction for `git receive-pack` by introducing the generic `odb_transaction_write_pack()` interface. This iteration addresses all v3 feedback, including fixes for `.keep` file placement, context-aware unpack limit resolution, and transaction lifecycle management.
+### Generic OBJECT_INFO_DIE_IF_CORRUPT handling in the ODB
 
-**Problem/goal**: Replace `git receive-pack`'s hardcoded use of `git index-pack` and `git unpack-objects` (which assume the "files" backend) with a backend-agnostic transaction interface, enabling alternative ODB backends (e.g., reftable, cloud storage).
+Patrick Steinhardt posted v2 of "odb: handle `OBJECT_INFO_DIE_IF_CORRUPT` generically", restructuring the series around `enum odb_read_status` with negative error codes exclusively (`ODB_READ_OK`, `ODB_READ_ERROR`, `ODB_READ_NOT_FOUND`), adding an `errmsg` parameter to `read_object_info()` so sources can bubble up corruption messages, and making the die-if-corrupt check backend-agnostic instead of relying on `has_packed_and_bad()`. Junio C Hamano accepted the explanation that only the objects in a bad pack are marked, not the whole pack, but noted the reasoning relies on a single pack containing each object at most once.
 
-**Subsystem**: Object database (ODB) abstraction
+### Avoiding reftable stack reloads while locked
 
-**Impact**: This is a critical step toward making Git's object storage layer pluggable. The series is technically complete, with all design flaws addressed and the interface refined based on reviewer feedback.
-
-**Today's developments**:
-- Patch 1/9 fixes a regression in `.keep` file cleanup by updating `index_pack_lockfile()` to accept an explicit `struct odb_source *`.
-- Patch 2/9 splits `odb_transaction_commit()` into `commit()` and `finalize()` phases to enable deferred cleanup (e.g., `.keep` file removal).
-- Patches 3–5/9 remove global state (shallow file, unpack limit, fsck settings) by passing configuration explicitly.
-- Patches 6–7/9 refactor error reporting and file descriptor passing to align with ODB transaction patterns.
-- Patch 8/9 adds explicit ODB source tracking to avoid fragile source list ordering.
-- Patch 9/9 introduces the `odb_transaction_write_pack()` interface, moving packfile ingestion logic into the "files" backend.
-
-The series is now ready for integration, pending any final surface-level feedback.
-
----
-
-### Bash completion for `git history`
-**What changed**: Vincent Mailhol's four-patch v3 series adding bash completion for `git history` received final endorsements from Patrick Steinhardt. Junio C Hamano confirmed plans to handle the trivial merge conflict with the in-flight `squash` subcommand during integration.
-
-**Problem/goal**: Add comprehensive bash completion support for `git history`'s subcommands (`drop`, `fixup`, `reword`, `split`, and soon `squash`), including their options, option values, and positional arguments.
-
-**Subsystem**: Shell completion (`contrib/completion/git-completion.bash`)
-
-**Impact**: This series fills a usability gap for users of the `git history` command, with minimal risk (no on-disk format changes) and thorough test coverage.
-
-**Today's developments**:
-- Patrick Steinhardt explicitly endorsed the v3 series as "a good base to build on," signaling readiness for integration.
-- Junio confirmed he will handle the trivial merge conflict with the `squash` subcommand as an "evil merge" during integration into `seen`.
-- The series is now unblocked and ready for `next`.
-
----
-
-### `report` hook for `git receive-pack`
-**What changed**: Karthik Nayak's patch adding a new `report` hook for `git receive-pack` saw continued design discussion, with agreement on treating non-zero exit status as a "nuclear option" that discards stdout.
-
-**Problem/goal**: Allow server administrators to intercept or modify the status report sent to clients after ref updates are committed, enabling use cases like GitLab's MVCC (multi-version concurrency control).
-
-**Subsystem**: Hooks (`git-receive-pack`)
-
-**Impact**: This hook fills a timing gap not covered by existing hooks (`pre-receive`, `update`, etc.), but its design (exit status vs. stdout semantics) remains under discussion.
-
-**Today's developments**:
-- Patrick Steinhardt and Karthik Nayak agreed that a non-zero exit status should be treated as a "nuclear option" for exceptional cases, discarding stdout and causing `receive-pack` to die.
-- Documentation updates are planned to clarify this behavior in `githooks.adoc` and `git-receive-pack(1)`.
-- The unresolved question of where to document the `pkt-line` format remains open.
-
----
-
-### Reftable backend optimizations
-**What changed**: Karthik Nayak posted a three-patch series optimizing reftable stack reloads during transactions, reducing `fstat()` calls from O(n) to ~55 constant. Junio C Hamano raised a safety concern about the lock relocation in patch 2/3.
-
-**Problem/goal**: Eliminate redundant stack reloads in the reftable backend during reference transactions, addressing a performance bottleneck identified by Jeff King.
-
-**Subsystem**: Reftable backend (`refs/reftable-backend.c`)
-
-**Impact**: The optimization shows consistent 1–2% clock-time improvements in `git-update-ref` benchmarks, with more significant reductions in `newfstatat()` syscalls.
-
-**Today's developments**:
-- Junio raised a safety concern about patch 2/3: if multiple `reftable_addition` instances operate on the same stack, the shared lock could be prematurely released when the second instance closes.
-- Justin Tobler endorsed the lock relocation as conceptually sound but deferred to Junio's safety concern.
-- The series remains under review pending resolution of this issue.
-
----
-
-### ODB corruption handling refactoring
-**What changed**: Patrick Steinhardt posted v2 of a five-patch series refactoring how the ODB handles corrupt objects when `OBJECT_INFO_DIE_IF_CORRUPT` is used. Junio C Hamano identified a latent correctness issue in the error-reporting mechanism.
-
-**Problem/goal**: Make handling of corrupt objects consistent and backend-agnostic, ensuring error messages are generated by the backend that encountered the failure.
-
-**Subsystem**: Object database (ODB)
-
-**Impact**: This refactoring improves error reporting consistency and removes abstraction-breaking code, but a latent issue with duplicate objects in corrupt packs remains unresolved.
-
-**Today's developments**:
-- Junio identified a latent correctness issue: if a corrupt pack contains duplicate objects, the error message cannot distinguish which copy was corrupt.
-- The series is otherwise technically complete, with all prior feedback addressed.
-
----
+Karthik Nayak posted a three-patch series for reftable/stack that skips reloading the stack when it is already locked inside a reference transaction, reporting that `newfstatat()` calls stay constant at about 55 regardless of ref count, versus linear growth before. Justin Tobler reviewed the patches, calling the lock move to `struct reftable_stack` "Looks good", but Junio C Hamano raised an unresolved concern: with the lock now per-`reftable_stack`, a second `reftable_addition` on an already-locked stack would fail `flock_acquire()`, and closing it would release the lock shared with other addition holders.
 
 ## In brief
-- **GSoC 2026 – Partial clones**: Siddharth Shrimali's progress report detailed finalized design for the `gc-promisor` maintenance task, including per-remote `.keep`-file safety mechanisms and `--dry-run` support.
-- **`git worktree add` regression fix**: Yoichi Nakayama's bugfix for DWIM behavior with `-b/-B` was merged to `master`.
-- **`http.sslVerifyStatus`**: Patrick Steinhardt provided a complete OCSP stapling test harness, addressing the last major test-coverage gap for graysongordon-gl's patch.
-- **`core.useNanosec`**: D. Ben Knoble accepted all of Patrick Steinhardt's suggestions, including adding a platform/filesystem warning and unconditionally initializing the `use_nanosec` field.
-- **Ambiguous remote branch names**: Yoichi Nakayama posted v5 of a series improving error messages for `git checkout`, `git switch`, and `git worktree add`, unifying the advice logic via a shared helper.
-- **Geometric repacking threshold**: Patrick Steinhardt explained the historical rationale for the 6700 threshold in `git gc --auto`, reinforcing its stability and pragmatism.
-- **Refname character tests**: Nikolaus Schuetz's patch adding coverage for documented but untested refname characters received endorsements for a refactoring to loop over forbidden characters.
-- **`git symbolic-ref` exit codes**: Patrick Steinhardt questioned the design rationale for differing exit codes (128 vs. 1 with `--quiet`) and proposed additional test coverage.
-- **Bash completion performance**: Matthew Hughes proposed a refined workaround for slow completion in large repositories, selectively disabling index-based completion for "slow" options.
-- **`git stash` non-atomic failure**: Yuri reported that `git stash push` fails non-atomically for large (2GB) untracked files, leaving invalid stash entries and unhelpful error messages.
-- **Trace2 for `git pack-objects`**: friel@openai.com posted v2 of a patch adding a Trace2 event for total bytes written, simplifying the byte-accumulation logic.
+
+- D. Ben Knoble and Patrick Steinhardt continued reviewing the runtime `core.useNanosec` conversion; Ben proposed compiling the `cfg->use_nanosec` checks unconditionally while ignoring the config under `NO_NSEC`, and Junio C Hamano decided against warning when the config is enabled under `NO_NSEC` because users sharing a `$HOME/.gitconfig` across machines would be annoyed.
+- Patrick Steinhardt approved Vincent Mailhol's v3 Bash completion for `git history`, calling it a good base to build on; Junio C Hamano said he will evil-merge a test adjustment for a new subcommand from another in-flight topic.
+- Yoichi NAKAYAMA posted v5 of the series improving messages for ambiguous remote branch names in `git checkout` and `git worktree add`, now listing matched remote names via a new `advise_ambiguous_remote()`; D. Ben Knoble suggested renaming a helper and splitting the refactoring from the message changes.
+- Lutz Lengemann posted v2 of the zsh completion fix for `git -C <path>`, now walking all global options to locate the command, which also fixes completion after options like `git -p checkout`.
+- Patrick Steinhardt asked for more accurate wording in Grayson Gordon's `http.sslVerifyStatus` OCSP patch and supplied comprehensive OCSP stapling test infrastructure, while questioning whether the complexity is worth it.
+- Patrick Steinhardt posted v2 patch 1/5 flagging known-bad packed objects as corrupt rather than missing by threading a `struct packed_git **bad_pack` out-parameter through the pack lookup path.
+- Yoichi Nakayama proposed restructuring a conditional in `git worktree add` to reduce nesting in the fix that stops DWIM when `-b` or `-B` is given.
+- Junio C Hamano declined Kenneth Lorber's patch surfacing editor failure in `git config -e` exit codes, noting an equivalent change is already in flight, and advised against `test_env` in the tests.
+- Patrick Steinhardt and Junio C Hamano approved Nikolaus Schuetz's t1402 tests for forbidden characters in refnames, agreeing they protect authors of new backends.
+- Friel posted v2 of a patch adding a `write_pack_file/wrote_bytes` Trace2 datum to `builtin/pack-objects.c` reporting total pack bytes written.
+- Patrick Steinhardt traced the 6700 loose-object threshold for geometric repacking to commit 2c3c439947 (2007), chosen so git-gc(1) would not trigger for a fully unpacked Git v0.99 but would for v1.0.
+- Yuri reported that `git stash push` is not atomic: on failure over a file exceeding the diff size limit it leaves both an invalid stash and working-directory changes, and asked for more informative error messages.
