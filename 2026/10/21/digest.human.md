@@ -1,74 +1,58 @@
 # Git mailing list daily digest for 2026/10/21
 
+## Long threads
+
+### branch: detect squash- and rebase-merged branches in `--delete-merged`
+
+*Long thread: 35 replies so far from 6 participants over 23 days; 3 messages that day.*
+
+Harald Nordgren posted v3 of a series that changes `git branch --delete-merged` so branches merged via GitHub "Squash and merge" or "Rebase and merge" -- whose tips are unreachable from upstream -- are treated as merged. By default a branch now counts as merged when some upstream commit since the fork point has the branch's version of every file it changed, comparing object ids only; an opt-in `--squashed` flag also catches cases where upstream changed the same files, by merging the branch's version into upstream's and counting it landed when upstream is left unchanged. Jasper Mayone tested v3 on generated repositories and found t3200 passes, but the earlier false positive remains: a never-merged branch is deleted because another author made the same change in an unrelated commit, with no option to disable that in v3's default check. Harald Nordgren replied that the case is an extremely rare edge case and the content is already upstream, and rejected a single opt-in plus config-variable design as too much UX mental load.
+
+### connected: incremental connectivity check via rev-list
+
+*Long thread: 29 replies so far from 3 participants over 38 days; 2 messages that day.*
+
+Kristofer Karlsson posted v4 of a series adding an incremental mode to the connectivity check, gated behind `transfer.connectivityCheck=incremental` or `"auto"`, to keep the check from slowing as the number of reachable objects from the boundary grows. v4 adds an internal `--connectivity-check=` rev-list option, an "auto" mode that uses the incremental check up to a configurable cutoff (default 1000 incoming commits), and fallback to the full check for unknown config values, clones, pushes into empty repositories, and deepening fetches; the cover letter cites up to 190x speedup for one commit against a 3.4 GB boundary closure. Junio C Hamano reviewed patch 5/6, questioning whether assuming all non-full modes want to avoid lazy fetching is a trap for future developers and whether `verify_blob` needs explicit flag bits rather than relying on `repo->fetch_if_missing`.
+
+### doc: new beginner Git tutorial
+
+*Long thread: 21 replies so far from 5 participants over 16 days; 2 messages that day.*
+
+Julia Evans's series replaces the old `gittutorial` with a new 739-line `Documentation/gittutorial.adoc` walking beginners from an empty repo through local commits to pushing to a Git host. Today's exchange concerned heading style: Junio C Hamano clarified that he finds mistakes easier to correct with the Atx-style prefix format and has no strong preference, while Julia Evans said she finds the prefix format easier for consistency, but writing `DESCRIPTION` as `== DESCRIPTION` makes `make lint-docs` report the required `DESCRIPTION` section missing, so she prefers keeping the usual Setext heading format rather than mixing formats or updating the linter.
+
+### doc: move BreakingChanges to a manpage
+
+*Long thread: 20 replies so far from 5 participants over 24 days; 3 messages that day.*
+
+Kristoffer Haugsbakk's series moves `Documentation/BreakingChanges.adoc` to a `gitbreaking-changes(7)` manpage so the content is reachable via `git help`. Today Junio C Hamano asked what should happen when Git 3.0 arrives -- whether every section would have to be rewritten -- and later questioned whether keeping such a historical document is worth it, asking whether anyone still cares about the Git 1.x-to-2.0 transition issues. Kristoffer Haugsbakk proposed a trailing section for "what happened in 3.0", introduced with text noting the changes are written in the future tense for readers coming from version 2.98, so the rest of the document would not need to change.
+
+### worktree: copy-on-write creation and ephemeral branches
+
+*Long thread: 11 replies so far from 5 participants over 139 days; 9 messages that day.*
+
+Jason Newton posted v3 of a series adding `git worktree add --reflink`, which populates a new worktree by reflinking the source's files and index on copy-on-write filesystems (disabled on Windows because of a ReFS zero-fill bug), plus reaping of the ephemeral branch auto-created by `worktree add` when the worktree is removed. Eric Sunshine objected that the ephemeral-branch patch adds complexity for a use case already covered by `--detach` and would have to be opt-in; Jason Newton argued a detached HEAD leaves status, push, rename and upstream with nothing to name while the worktree exists. Phillip Wood said that reply fell short of the standard of constructive discussion expected on the list.
+
 ## The day in brief
-The Git mailing list saw significant activity around several key themes today: **SHA-256 interoperability** with a major 13-patch series for pack index v3 support, **workflow improvements** including a controversial ephemeral branch reaping feature for `git worktree`, **performance optimizations** like incremental connectivity checks for fetches, and **governance discussions** about AI contributions and voting processes. The maintainer queued several bugfixes and refactorings, while heated debates continued around usability features and project direction.
+
+v3 of the `--delete-merged` squash-detection series and v4 of the incremental connectivity check landed on the list today, alongside a new beginner tutorial replacing `gittutorial` and a report that a partial-clone merge can fail by requesting a locally created blob from the promisor remote.
 
 ## Notable threads
 
-### SHA-1/SHA-256 interoperability: pack index v3 support
-**What's changing**: Christian Couder posted a 13-patch series implementing pack index v3, which stores object IDs in both primary and compatibility hash algorithms. This enables packed objects to be mapped between algorithms (e.g., SHA-1 and SHA-256) just as loose objects already can.
+### fetch: commit references before backfilling tags
+Karthik Nayak's patch commits the batched ref updates before backfilling tags, so shallow fetches can advertise newly fetched refs as haves instead of making the server resend objects the client already has. Patrick Steinhardt endorsed Justin Tobler's alternative of supplementing the backfill "haves" with the uncommitted refs in the pending transaction, calling it a much better fix if feasible; Karthik Nayak was wary of advertising uncommitted refs since they could fail, while Justin Tobler argued the required objects are already present and `.keep` lockfiles are expected to remain until the transaction commits anyway.
 
-**Why it matters**: This is a critical component of Git's SHA-256 transition effort, allowing repositories to operate with both hash algorithms simultaneously. The series includes comprehensive validation to prevent corruption from malformed indices.
+### gpg-interface: fail when the SSH revocation file is missing
+Christian Noé Ramos López posted a patch making signature verification fail with an error when `gpg.ssh.revocationFile` names a missing file -- previously Git warned and verified without it -- with a `:(optional)` prefix to skip the check, plus tests, and a companion doc patch on `gpg.ssh.allowedSignersFile` key lifetimes. Junio C Hamano called most of the doc text "empty fluff" and proposed succinct wording, and on the code patch objected that placing the missing-file check in the `else if` block leaves known keys with no signature info on that failure, wondering whether it should fold into the earlier failure block.
 
-**Current status**: Junio identified a DCO compliance issue requiring a reroll, but acknowledged the series' improvements and test coverage. The implementation is technically sound and ready for deeper review once the procedural issue is resolved.
-
----
-
-### Ephemeral branch reaping for `git worktree`
-**What's changing**: Jason Newton's v3 series adds automatic cleanup of auto-created branches when worktrees are removed, addressing a long-standing maintenance nuisance.
-
-**Why it matters**: The feature aims to improve ergonomics for throwaway worktrees by preserving branch semantics during the worktree's lifetime, avoiding the "degraded halfway state" of detached HEADs.
-
-**Controversy**: The series has become **polarized** due to heated exchanges between Jason and reviewers. Eric Sunshine and Phillip Wood argue the feature is redundant with `--detach` and risks breaking existing workflows, while Jason dismisses objections as "nitpicking" and frames reviewers as out of touch. Phillip's latest reply condemns Jason's confrontational tone as disqualifying.
-
-**Current status**: The technical implementation is complete, but the interpersonal conflict risks alienating reviewers. Junio has not weighed in on the core design, but the combative tone may hinder consensus.
-
----
-
-### Incremental connectivity checks for fetch/push
-**What's changing**: Kristofer Karlsson's v4 series introduces an opt-in incremental connectivity check (`transfer.connectivityCheck=incremental` or `auto`) that dramatically speeds up small pushes to large repositories by processing commits in topological order.
-
-**Why it matters**: The existing full check scales poorly with repository size; the new mode shifts cost from repository size to incoming change size, offering up to **190x speedup** for small pushes to large repos while preserving correctness.
-
-**Current status**: The series is **ready for integration**, with all prior feedback addressed. Junio called the feature "exciting" and accepted the performance trade-offs as reasonable for an opt-in feature. The only remaining loose end is a potential stack overflow risk in recursive tree verification.
-
----
-
-### Governance: Community voting process
-**What's changing**: Emily Shaffer proposed a formal voting process to resolve contentious decisions when consensus cannot be reached, motivated by the stalled AI contributions debate.
-
-**Why it matters**: This would formalize a last-resort mechanism for divisive issues, potentially setting a precedent for future governance decisions.
-
-**Current status**: Junio engaged constructively with the proposal, suggesting refinements to versioning, vote counting, and eligibility criteria. The patch is well-motivated but may spark debate about whether voting is the right tool for Git's consensus-driven culture.
-
----
-
-### `git branch --delete-merged` enhancements
-**What's changing**: Harald Nordgren's v3 series extends `git branch --delete-merged` to detect branches whose changes (but not their tips) have been integrated via squash or rebase merges.
-
-**Why it matters**: This provides a practical one-step maintenance command for common forge and local workflows, reducing repository clutter.
-
-**Controversy**: Junio proposed a fundamental CLI redesign—decoupling strict `--delete-merged` (tip-reachability only) from a new `--delete-irrelevant` (change-based detection)—while Harald rejects the split. Jasper Mayone's testing confirms persistent false positives, reinforcing Junio's safety concerns.
-
-**Current status**: The series is feature-complete but blocked on the CLI design debate. The first patch (refactoring) is uncontroversial and ready for integration.
-
----
-
-### Worktree improvements: `--reflink` and ephemeral branches
-**What's changing**: Jason Newton's v3 series introduces copy-on-write worktree creation (`--reflink`) and ephemeral branch reaping.
-
-**Why it matters**: The reflink feature avoids full checkout overhead on supported filesystems, while ephemeral branches address cleanup nuisances.
-
-**Controversy**: Eric Sunshine argues the reflink design should default to automatic for tracked files, while the ephemeral branch feature is contested as redundant with `--detach`. Windows ReFS reflink is **permanently disabled** due to silent corruption risks.
-
-**Current status**: The series is technically complete but faces **substantive objections** on both features. The Windows disablement resolves the immediate technical blocker but leaves design debates unresolved.
-
----
+### object-file: fix ".keep" lockfile ownership in ODB transactions
+Justin Tobler posted v4 of a series fixing a bug where a `git-receive-pack` process deletes a concurrent process's `.keep` lockfile for an identical packfile, leaving the newly written pack vulnerable to housekeeping. The reroll corrects the `write_pack_lockfile()` error-variable handling per Patrick Steinhardt's suggestion; Junio C Hamano had marked the topic "Expecting a reroll".
 
 ## In brief
-- **Queued for `next`**: Phillip Wood's seven-patch refactoring of `git stash` to eliminate redundant index operations.
-- **Test modernization**: Multiple patches replacing low-level shell test constructs with semantic helpers (e.g., `test -e` → `test_path_is_file`).
-- **Bugfixes**: Fixes for SSH signing verification flaws, shallow fetch regressions, and ODB transaction race conditions.
-- **i18n improvements**: Outreachy microprojects converting hardcoded English plural forms to `Q_()` for proper translation.
-- **Governance**: XuRua's RFC proposing Git-level throttling to curb "comma programmer" workflows and reduce cloud compute waste.
-- **Documentation**: Updates to `MyFirstContribution.adoc` emphasizing review discussion before sending v2 patches.
+- Junio C Hamano reviewed Phillip Wood's v3 stash series removing redundant index loads and refreshes in `git stash push`/`create`, called it "nicely split and described", and said "Will queue."
+- Patrick Steinhardt posted v2 of the `extensions.objectStorage` series, currently supporting only the "files" backend whose payload can relocate `.git/objects`; Karthik Nayak reviewed it and is okay with the series as is.
+- Andrew Parmet reported that in a partial clone a merge can fail with "not our ref" because it requests a locally created blob from the promisor remote, with a minimal reproducer script.
+- Masaya Kazama reported that since 6e95b07e5f a killed detached maintenance child leaves a stale `objects/maintenance.lock` that makes every later `git maintenance run --auto` return silently; in one large partial clone packs grew to 13.9 GB before a manual run.
+- Junio C Hamano marked the refs/files fix keeping root refs out of the loose ref cache for `next` after Patrick Steinhardt's review approval.
+- Phillip Wood reviewed Erik Cervin-Edin's v3 allowing `-m`/`-F`/`-c`/`-C` with all `--fixup` variations, found it good, and asked for tests that the editor is or is not invoked.
+- tsukasa inoue posted v2 making `git switch -c` and `checkout -b` finish the switch and exit 0 when the tracking config cannot be written; Junio C Hamano said "OK" to the hint fix and called leaving the fully atomic switch for a separate topic sensible.
+- Patrick Steinhardt's series restores reloading alternates when an object lookup is retried; Christian Couder noted patch 2/4 reads alternates from the quarantine temporary directory and suggested always reloading the repository's real alternates.
