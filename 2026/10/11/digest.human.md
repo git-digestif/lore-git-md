@@ -1,30 +1,45 @@
 # Git mailing list daily digest for 2026/10/11
 
+## Long threads
+
+### rerere: wait for MERGE_RR.lock before giving up
+
+*Long thread: 29 replies so far from 4 participants over 40 days; 2 messages that day.*
+
+Thomas Bachem's series changes `rerere` so that a rebase hitting a conflict no longer dies at once when a background `git rerere gc` holds `MERGE_RR.lock`: `setup_rerere()` now waits up to `rerere.lockTimeout` milliseconds (default 1000) before failing, and a hidden `--skip-locked` option on `git rerere gc` makes auto maintenance quietly do nothing while the lock is held. Earlier revisions dropped the patch that let conflict-stopping commands go on without rerere. Today Junio C Hamano reviewed patch 1/2, accepting the millisecond unit for `rerere.lockTimeout` and the call to `repo_hold_lock_file_for_update_timeout()`, while questioning a doc sentence about lock-timeout behavior and several test details. Thomas Bachem answered, agreeing to drop the sentence, moving the `wait` safeguard into `test_when_finished`, and using Junio's more specific `Unable to create.*MERGE_RR\.lock` error pattern in the tests.
+
+### branch: let --delete-merged find squash merged branches
+
+*Long thread: 22 replies so far from 4 participants over 13 days; 1 message that day.*
+
+Harald Nordgren's series teaches `git branch --delete-merged` to treat a branch as merged when some upstream commit since the fork point contains all of its changes, printing `Deleted branch topic (was 1a2b3c4, landed as 9f8e7d6)` and keeping branches whose changes only partly landed. Today he reposted the series as v2, which diffs each upstream commit once and shares the result between all branches for speed, fixes a branch merged with a merge commit being reported as "landed as" the merge when another branch was searched first, uses `git merge --squash` as the example, and adds `--no-squashed` to skip the squash search, which is slower and may download blobs in a partial clone.
+
 ## The day in brief
-The `git blame` default ignore-revs file feature reached integration-ready status after Junio C Hamano approved the v3 series. A ZIP archive timestamp bugfix was posted, omitting extended timestamps for out-of-range commits. The `git fast-import` crash fix gained test confirmation, and a new OpenSSL compatibility patch for `imap-send` was submitted. Documentation updates clarified patch submission guidelines for test-and-fix patterns.
+
+Junio C Hamano marked the `repack --dry-run` fix for `next` and said the v3 blame ignore-revs series looks good and would be marked ready for `next` unless objections arrive. Harald Nordgren reposted his squash-merge detection for `git branch --delete-merged` as v2 with a `--no-squashed` opt-out, and Thomas Bachem answered Junio's review of the rerere lock-wait patch.
 
 ## Notable threads
 
-### `rerere` race condition fix nears integration
-The v7 series fixing a long-standing race condition in Git’s `rerere` subsystem received final polish. Junio C Hamano reviewed patch 1/2, requesting documentation and test improvements to align with Git’s existing patterns for lock timeouts. Thomas Bachem incorporated all feedback, dropping redundant documentation and tightening test error-message matching. The series—introducing a configurable `rerere.lockTimeout` and `--skip-locked` mode for background maintenance—is now technically complete and ready for integration.
+### repack: do not rebuild packs on --dry-run
 
-### `git blame` default ignore-revs file approved for `next`
-The v3 series making `git blame` automatically use `HEAD:.git-blame-ignore-revs` as the default ignore file was approved by Junio C Hamano. Ravi Mistry addressed the last maintainer request by replacing the global `the_repository` variable with `sb->repo` in `parse_default_ignore_revs_blob()`. Junio confirmed the series looks good and marked it for the `next` branch. The hardening (rejecting malformed input and preventing promisor fetches) and default file lookup are now feature-complete, with no unresolved technical concerns.
+A patch fixes `git repack --drop-filtered --dry-run`, which is documented to list droppable objects without rebuilding any pack or deleting anything but actually writes a new promisor pack and deletes old packs because the `--dry-run` block falls through into the regular repack code. The fix returns right after the candidates are listed, with a test that the pack directory is unchanged with and without `-d`. Junio C Hamano marked the topic for `next`.
 
-### ZIP archive timestamp bugfix posted
-René Scharfe posted a patch addressing one of three date-handling bugs in Git’s ZIP export. The fix omits the Extended Timestamp (UT) extra field when the commit time exceeds the 32-bit signed integer range, preventing silent timestamp wrap that causes tools like UnZip to misbehave in update mode. The patch aligns with René’s updated position advocating rejection (omission) of out-of-range timestamps rather than clamping, prioritizing correctness over tool compatibility. Tests verify the UT field is included for 32-bit timestamps and omitted for out-of-range values.
+### blame: ignore revs in HEAD:.git-blame-ignore-revs by default
 
-### `git fast-import` crash fix gains test confirmation
-Aniket Gupta confirmed the `git fast-import` crash fix resolves the issue for commits, tags, and tags-of-tags created mid-session. The patch adds a cache lookup in `parse_from_existing` before falling back to the object database, preventing crashes when resolving in-session objects. Aniket requested test coverage in `t9300` to ensure the fix is covered by the test suite. The patch remains minimal and targeted, touching only `builtin/fast-import.c`.
+Ravi Mistry posted v3 of the series that makes `git-blame` and `git-annotate` automatically use the `HEAD:.git-blame-ignore-revs` blob when it exists, so local runs match hosting platforms without per-clone `blame.ignoreRevsFile` configuration. The only change since v2 is that `parse_default_ignore_revs_blob()` uses `sb->repo` instead of `the_repository`. Junio C Hamano said v3 looks good and that he would mark the topic ready for `next` unless objections are heard in a few days.
 
-### OpenSSL compatibility patch for `imap-send`
-Xiangfei Ding posted a patch updating `imap-send.c` to stop assuming `ASN1_STRING` data is null-terminated. The change uses `ASN1_STRING_length` and `strncasecmp` to safely compare hostnames in TLS certificates, addressing an upcoming breaking change in OpenSSL derivatives like BoringSSL. Junio C Hamano reviewed the patch, requesting minor commit message and code hygiene improvements. The fix is forward-looking and low-risk, with no behavior changes for existing OpenSSL versions.
+### status: agree with diff and add when conversion is active
+
+Curtis Allen Smith's series fixes `git status` disagreeing with `git diff` and `git add` when a clean filter is active: under `text eol=lf`, a tool rewriting a file with CRLF endings makes `git status` report it modified while `git diff` shows nothing, because `ie_match_stat()` trusts a size difference as proof of change. Torsten Bögershausen corrected the description of `git add` (it stages nothing but still updates the index), confirmed the issue is not Windows-specific, and objected to the proposed `core.convertAwareStatus` opt-out as unnecessary.
 
 ## In brief
-- **`git worktree repair` validation**: Yoichi NAKAYAMA agreed to split patch 1/2 into smaller commits to separate behavioral changes from refactoring, improving clarity for the worktree ID validation logic.
-- **`git branch --delete-merged` squash detection**: Harald Nordgren posted v2 of the series, adding a `--no-squashed` flag to skip slower squash detection and fixing a merged-branch attribution bug.
-- **Test infrastructure cleanup**: Junio C Hamano requested commit message clarification for the first patch in the mergesort Clar migration series.
-- **`git repack --dry-run` regression fix**: Junio marked the topic for the `next` branch after D. Ben Knoble provided his `Reviewed-by`.
-- **`git push` refspec-matching performance**: Jon Simons acknowledged Kristoffer Haugsbakk’s feedback about combining regression tests and fixes into a single commit, planning to squash them in v2.
-- **GSoC microproject proposal**: Aniket Gupta proposed pluralizing the "Checking connectivity (%d objects)" message in `builtin/fsck.c` using `Q_()`.
-- **Documentation update**: Jon Simons and Junio C Hamano discussed wording for a `SubmittingPatches` update discouraging the "add failing test, then fix" anti-pattern.
+
+- Marc Becker's patch fixes a crash in `git fast-import` when looking up commits created in the same session; Aniket Gupta tested it, confirmed the fix, and requested a test in `t9300`.
+- Xiangfei Ding's patch makes `imap-send.c` use `ASN1_STRING_length` and `strncasecmp` instead of assuming null-terminated `ASN1_STRING` data; Junio C Hamano reviewed it, asking about the in-body `From:` line and line wrapping.
+- Yoichi NAKAYAMA explained adjusted error-case behavior in `worktree repair` and said he will split the commits to separate modified from unchanged behavior.
+- Jon Simons documented in `Documentation/SubmittingPatches` the preference for submitting a bug fix's test as `test_expect_success` in the same commit as the code change; Junio C Hamano suggested shorter wording.
+- René Scharfe's patch makes `archive-zip.c` omit the UT extra field when the commit time exceeds the signed 32-bit range.
+- **Jon Simons on v2 commit squashing**: Jon Simons said he will look at squashing test-then-fix commits for v2 of his series speeding up client-side refspec matching in push.
+
+- Junio C Hamano asked for clarification on the commit message of the patch moving mergesort tests to Clar.
+- Aniket Gupta introduced himself as a GSoC applicant and proposed an fsck plural-message microproject using `Q_()`.
