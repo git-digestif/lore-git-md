@@ -1,95 +1,57 @@
 # Git mailing list daily digest for 2026/09/25
 
+## Long threads
+
+### http.sslVerifyStatus OCSP stapling in the HTTP transport
+
+*Long thread: 31 replies so far from 5 participants over 46 days; 2 messages that day.*
+
+Grayson Gordon's series adds an `http.sslVerifyStatus` boolean mapping to `CURLOPT_SSL_VERIFYSTATUS` so libcurl requests stapled OCSP responses, defaulting to off because enabling it would block connections to servers that do not staple. Earlier, the combined v7 was reverted out of `next` after SZEDER Gábor reported the new t5585 test failing on his system. Today SZEDER Gábor confirmed his setup used the GnuTLS curl backend, which does not properly support OCSP, and that switching to the OpenSSL backend makes t5585 pass; Junio C Hamano thanked the contributors and noted the test's prerequisite setting still needs improvement.
+
+### In-core index merge in builtin/stash.c
+
+*Long thread: 21 replies so far from 3 participants over 7 days; 11 messages that day.*
+
+D. Ben Knoble's four-patch series fixes a bug in the interaction between autostashing, staged index entries, and `stash.index=true` by replacing the file-system-based index merge in `builtin/stash.c` with an in-core `merge_incore_nonrecursive()` call. Earlier, Phillip Wood flagged a missing `merge_finalize()` leak and Junio C Hamano questioned the tree argument order. Today Junio diagnosed that the new test fails because the trees are passed in the wrong order for `merge_incore_nonrecursive()`, whose parameter order differs from `merge_ort_nonrecursive()`; he supplied a fix plus a new test, and D. Ben Knoble confirmed the root cause, agreed to fix the confusing "Upstream index" label, and noted CI caught the leak. Phillip Wood agreed the two functions should take trees in the same order, but both agreed that change is out of scope for this series.
+
+### --force-if-includes with a reflog-less remote-tracking ref
+
+*Long thread: 20 replies so far from 6 participants over 23 days; 2 messages that day.*
+
+Aleksei Sviridkin's patch fixes `push --force-if-includes` rejecting valid pushes when the remote-tracking ref has no reflog, by initializing the cutoff timestamp to 0 in `is_reachable_in_reflog()` so the local reflog walk is not cut off at the first entry. Earlier discussion weighed 0 against a gc-based cutoff. Today Tyler Cipriani argued for `date=0` as always correct with usually equivalent runtime, giving a clone/reset/wait/commit/push scenario where a cutoff produces the wrong answer; Junio C Hamano responded that with a never-expired reflog, using all available information works better than any cutoff.
+
+### AsciiDoc cross-references and the tutorial rewrite in Documentation/
+
+*Long thread: 17 replies so far from 4 participants over 4 days; 8 messages that day.*
+
+Julia Evans's patch replaces "see EXAMPLES below" with `<<EXAMPLES,EXAMPLES>>` cross-references in the man pages so the rendered text is controlled across asciidoc implementations, at the cost of changing some heading HTML IDs. Today she reposted v2 with a corrected commit message and Jeff King said it looks good to him; she also announced a planned rewrite of `gittutorial.adoc` covering only `git init`, `git add`, `git commit`, `git status`, `git diff`, `git push`, `git config`, and `git remote add`. Junio C Hamano agreed the current tutorial has outlived its time but stressed that new guides must be sufficient to replace it, with removing the stale document as the primary goal.
+
+### New gitmergeconflicts(7) guide
+
+*Long thread: 12 replies so far from 5 participants over 2 days; 8 messages that day.*
+
+Julia Evans's seven-patch series adds `Documentation/gitmergeconflicts.adoc` explaining how to handle merge conflicts and links to it from the `git merge`, `git rebase`, `git revert`, `git cherry-pick`, and `git pull` pages. Today D. Ben Knoble flagged that the `git-merge.adoc` rewrite dropped both an explanation of what a conflict is and the `git log --merge -p <path>` tip; Julia Evans proposed restoring the latter under "Tools to get more context", and Junio C Hamano objected that the `git-cherry-pick.adoc` rewrite removed cherry-pick-specific details such as `CHERRY_PICK_HEAD`.
+
 ## The day in brief
-The Git project saw significant progress on several fronts today. The `http.sslVerifyStatus` security feature's test infrastructure issues were resolved by switching from GnuTLS to OpenSSL. A critical bug in `git stash` autostash handling was fixed, with all technical concerns addressed. The `git replay` command gained GPG signing support, and a new `gitmergeconflicts(7)` man page was proposed to centralize conflict resolution guidance. Several CI improvements were made, including better leak sanitizer reporting and dynamic parallelism adjustments.
+The `http.sslVerifyStatus` OCSP failure was traced to a GnuTLS curl backend without OCSP support, with the test prerequisite still needing work. D. Ben Knoble's in-core stash index merge was diagnosed as transposed tree arguments in `merge_incore_nonrecursive()`, with a fix and new test supplied. Jeff King fixed two `parse_revision_opt()` bugs so unknown options are reported by name instead of `(null)`, and Julia Evans advanced both the AsciiDoc cross-reference patch and a plan to rewrite the Git tutorial.
 
 ## Notable threads
 
-### `http.sslVerifyStatus` test infrastructure resolved
-**What changed**: The test failure in the `http.sslVerifyStatus` security feature was resolved by switching from the GnuTLS backend to OpenSSL for libcurl.
+### git-history during an interactive rebase
+Nikita Bobko reported that running `git history` mid-rebase updates the branch currently being rebased, so `git rebase --continue` fails with a ref lock error and leaves a state even `git branch --force` cannot repair. He proposed five possible fixes, from forbidding the command during rebase to updating all branches except the one being rebased, and noted related interactions with cherry-pick, the `git-rebase-todo` file, and `rebase --update-refs`.
 
-**Problem/goal**: Git's HTTPS certificate verification was enhanced with OCSP staple validation, but tests were failing on systems using GnuTLS due to its incomplete OCSP stapling support.
+### GIT_WORK_TREE missing for the post-checkout hook
+Phil Sainty reported that in a worktree the post-checkout hook sees `GIT_DIR` but not `GIT_WORK_TREE`, so `git rev-parse --show-toplevel` returns the CWD instead of the real toplevel. Today he tested Junio C Hamano's patch and found `GIT_WORK_TREE` is exported as `.` rather than the actual worktree path, so the problem persists; he pointed at setup.c as the source of the `.` value.
 
-**Subsystem**: HTTP transport, security
-
-**Impact**: This environmental fix removes the last blocker for the feature, which was previously reverted from `next` due to test infrastructure issues. The core functionality remains intact in `master`, and the feature is now ready to graduate.
-
-### Key details
-
-- The test failure was caused by using GnuTLS backend for libcurl, which lacks full OCSP stapling support
-- Switching to OpenSSL backend resolves the issue
-- The fix is purely environmental and doesn't affect the core feature implementation
-
-### `git stash` autostash bugfix completed
-**What changed**: A critical bug in `git stash` autostash handling of staged index entries was fixed, with all technical concerns now addressed.
-
-**Problem/goal**: The `--force-if-includes` safety mechanism in `git stash` contained a race condition that could corrupt staged index entries during autostash operations when `stash.index=true` was set.
-
-**Subsystem**: Stash, merge operations
-
-**Impact**: This bugfix replaces subprocess-based index merging with in-core merging via `merge-ort.c`, eliminating the race condition. The series is now technically complete and ready for integration.
-
-### Key details
-
-- The fix addresses a critical correctness issue in the tree argument order for `merge_incore_nonrecursive()`
-- All memory leaks and test robustness issues have been resolved
-- The series consists of four patches: cleanup, refactoring, test additions, and the functional fix
-- The broader argument-order standardization between merge functions is acknowledged as a future cleanup task
-
-### `git replay` gains GPG signing support
-**What changed**: The `git replay` command now supports GPG commit signing via a new `-S` option.
-
-**Problem/goal**: The `git replay` command, introduced in Git 2.46, lacked commit signing support, which was inconsistent with other Git commands.
-
-**Subsystem**: Replay, commit signing
-
-**Impact**: This feature addition aligns `git replay` with other Git commands that support signing, while maintaining plumbing command consistency by ignoring `commit.gpgSign`.
-
-### Key details
-
-- Two-patch series: bugfix for error handling and feature implementation
-- New CLI options: `-S`/`--gpg-sign` and `--no-gpg-sign`
-- Comprehensive test coverage for signing behavior and failure modes
-- The series explicitly ignores `commit.gpgSign` to maintain plumbing command consistency
-
-### Git version numbering and 3.0 planning
-**What changed**: The discussion about Git 3.0 version numbering and scope continued, with new information about JGit's production readiness.
-
-**Problem/goal**: The Git project is planning its next major release (3.0) and needs to decide on version numbering, scope, and timeline.
-
-**Subsystem**: Project planning, ecosystem coordination
-
-**Impact**: The discussion affects downstream projects and the broader Git ecosystem, particularly regarding breaking changes and foundational work like SHA-256 support.
-
-### Key details
-
-- JGit's pluggable backend architecture is production-ready, as validated by Google's internal Git servers and GerritForge's global refdb backend
-- Git's experimental Rust support compiles successfully on Cygwin using an unofficial toolchain
-- The stabilization period for Git 2.99 may require additional maintenance releases before Git 3.0 is finalized
-- Security process improvements are being implemented, with GitLab increasing staffing for report triage
-
-### New `gitmergeconflicts(7)` man page proposed
-**What changed**: A new `gitmergeconflicts(7)` man page was proposed to centralize merge conflict resolution guidance.
-
-**Problem/goal**: Git's current documentation scatters merge-conflict advice across multiple command man pages, leading to duplication and user confusion.
-
-**Subsystem**: Documentation
-
-**Impact**: This new guide aims to improve user experience by providing a single, comprehensive resource for conflict resolution, while reducing maintenance burden.
-
-### Key details
-
-- The new guide consolidates information from `git merge`, `git rebase`, `git revert`, `git cherry-pick`, and `git pull`
-- It provides practical examples and clarifies terminology like "ours" vs. "theirs"
-- The series must balance centralization with preserving command-specific nuances
-- Cherry-pick-specific details may need to be retained in the cherry-pick man page alongside the cross-reference
+### parse_revision_opt() bugfixes in revision.c
+Jeff King posted two fixes for `parse_revision_opt()`: treating a negative return from `handle_revision_opt()` as an already-reported error so malformed options are no longer called "unknown", and reading the unknown option from the consolidated argv so `git shortlog -n --no-such-option` reports the option name instead of `(null)`. Junio C Hamano reviewed the series and said both patches make sense.
 
 ## In brief
-- **[`--force-if-includes` reflog walk]**: Tyler Cipriani confirmed that `date=0` is the only safe fallback value for reflog traversal, ensuring safety at negligible performance cost.
-- **[CI improvements]**: Tamir Duberstein provided benchmark data showing a 2% speedup with dynamic parallelism in CI jobs, opting for a conservative `1x CPU count` baseline.
-- **[Line-log subsystem]**: Kristofer Karlsson updated the line-log patch to trim trailing blank lines from function ranges, aligning with `git grep -W` behavior.
-- **[Leak sanitizer reporting]**: Harald Nordgren improved leak sanitizer failure reporting in GitHub Actions by stopping tests at the first failure and emitting detailed annotations.
-- **[Temporary pack files]**: Royce Remer registered temporary pack files with Git's tempfile subsystem to ensure cleanup on process exit, preventing disk space exhaustion.
-- **[`git history` bug]**: Nikita Bobko reported that `git history fixup` updates branch refs locked during interactive rebase, causing Git to refuse further ref modifications.
-- **[`git fetch-pack` design]**: Junio C Hamano clarified that `git fetch-pack` should remain a low-level command without DWIM heuristics, preserving the ability to send `want-ref` requests for arbitrary ref names.
-- **[`git shortlog` regression]**: Junio C Hamano confirmed the fix for a regression where unknown options were incorrectly reported as `(null)` instead of their actual name.
+- Royce Remer registers the temporary pack files from `pack-write.c` and `pack-bitmap-write.c` with the tempfile subsystem so killed `git gc`/`git maintenance` runs no longer leave orphaned files in `objects/pack/`.
+- Harald Nordgren posted v3 of the shallow-repo fetch series, replacing the special `+:` refspec with a `remote.<name>.refmap` mechanism; Junio C Hamano objected to always including the remote's default branch in the inferred fetch set.
+- Patrick Monette added `-S`/`--gpg-sign` signing to `git replay` and fixed `pick_regular_commit()` to mark commit-creation failures.
+- Colin Hinton posted v3 deferring `fetch.followRemoteHEAD` validation to `do_fetch()`, applying the `xstrdup_or_null` fix.
+- SZEDER Gábor advised that custom `EXTRA_CPPFLAGS` affecting `git-compat-util.h` should also add `-Wno-invalid-pch` when using the precompiled header.
+- Tamir Duberstein posted v2 using `cmp` for the huge t4205 comparison and aligning CI job counts across providers.
+- Brigham Campbell posted v4 of `git-contacts` reading a patch from stdin via `-`; Junio C Hamano accepted the approach and asked for a doc update.
+- Nathan Froyd's patch sets `exact_oid` in `builtin/fetch-pack.c`; Junio C Hamano argued fetch-pack should pass its ref arguments through exactly as given.

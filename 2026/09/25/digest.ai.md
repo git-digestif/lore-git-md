@@ -1,57 +1,69 @@
 # Git mailing list daily digest for 2026/09/25
 
+## Long threads
+
+### http.sslVerifyStatus for stapled OCSP responses
+
+*Long thread (root 2026/08/11/17-02-00): 31 replies so far from 5 participants over 46 days; 2 messages that day.*
+
+Grayson Gordon's series adds an `http.sslVerifyStatus` boolean mapping to libcurl's `CURLOPT_SSL_VERIFYSTATUS`, so git requests and checks stapled OCSP responses instead of ignoring them, including ones stating a certificate is revoked. Earlier, v7 was posted as the combined test version discussed with Junio C Hamano and Patrick Steinhardt, was reviewed and queued in `next`, then reverted after SZEDER Gábor reported the last test in the new t5585 failing on his system. Today SZEDER Gábor confirmed the cause: his system used the GnuTLS curl backend, which does not properly support OCSP, and switching to the OpenSSL backend makes t5585 succeed. Junio C Hamano thanked the contributors and noted the test's prerequisite setting still needs improvement.
+
+### stash: in-core index merge for `apply --index`
+
+*Long thread (root 2026/09/19/21-26-34): 21 replies so far from 3 participants over 7 days; 11 messages that day.*
+
+D. Ben Knoble's four-patch series fixes a bug in the interaction between autostashing, staged index entries, and `stash.index=true`, replacing the file-system-based index merge in `builtin/stash.c` with an in-core `merge_incore_nonrecursive()` call. Earlier, v2 added branch labels, ui merge options, and new tests, and Phillip Wood flagged a missing `merge_finalize()` leak. Today Junio C Hamano supplied a diff swapping the tree arguments to `merge_incore_nonrecursive()` to (merge_base, merge, head) plus a new test, noting "with the change to the code, it passes again." D. Ben Knoble confirmed the root cause was the differing parameter orders of the two merge functions, agreed to fix the confusing "Upstream index" label, and noted CI caught the leak. Phillip Wood said aligning the two functions' tree argument order is "definitely worth fixing," while D. Ben Knoble and Junio C Hamano declared that out of scope for this series.
+
+### push: `--force-if-includes` with a reflog-less remote-tracking ref
+
+*Long thread (root 2026/09/03/01-05-47): 20 replies so far from 6 participants over 23 days; 2 messages that day.*
+
+Aleksei Sviridkin's patch fixes `is_reachable_in_reflog()` in the push code, where an uninitialized timestamp cut off the local reflog walk when the remote-tracking ref has no reflog, wrongly rejecting pushes with "remote ref updated since checkout"; the fix initializes the timestamp to 0. Earlier discussion debated whether 0 or a gc-based cutoff is the right fallback. Today Tyler Cipriani argued for `date=0` as always correct with usually equivalent runtime, giving a scenario where a cutoff yields the wrong answer; Junio C Hamano responded that with a never-expired reflog, using all available information works better than a cutoff.
+
+### AsciiDoc cross-references and the tutorial rewrite
+
+*Long thread (root 2026/09/22/19-29-02): 17 replies so far from 4 participants over 4 days; 8 messages that day.*
+
+Julia Evans's patch changes documentation cross-references to the verbose `<<EXAMPLES,EXAMPLES>>` form so rendered text stays `EXAMPLES` across asciidoc implementations, at the cost of changing some heading HTML IDs. Today she reposted v2 with a rewritten commit message, and Jeff King said it looks good. Separately, she announced a plan to rewrite `gittutorial.adoc` covering only `git init`, `git add`, `git commit`, `git status`, `git diff`, `git push`, `git config`, and `git remote add`; Junio C Hamano said he is excited as long as learners do not end up reading three documents instead of two, agreed the current tutorial has outlived its time, and clarified that "replace" means dropping the stale file and freshly explaining salvageable topics elsewhere.
+
+### New gitmergeconflicts(7) guide
+
+*Long thread (root 2026/09/24/14-44-15): 12 replies so far from 5 participants over 2 days; 8 messages that day.*
+
+Julia Evans's seven-patch series adds a `gitmergeconflicts(7)` manual page explaining merge conflicts with examples, linking to it from the `git merge`, `git rebase`, `git revert`, `git cherry-pick`, and `git pull` man pages. Today D. Ben Knoble flagged that the `git-merge.adoc` rewrite dropped what a conflict is and the `git log --merge -p <path>` tip; Julia Evans proposed adding the latter under "Tools to get more context", which Ben Knoble accepted. Junio C Hamano objected that the `git-cherry-pick.adoc` rewrite removed cherry-pick-specific details such as the `CHERRY_PICK_HEAD` pseudo-ref, and explained that `git log --merge` reads the index for conflicted paths; Ben Knoble added that the implied `HEAD...MERGE_HEAD` argument is the important half.
+
 ## The day in brief
-The Git mailing list saw significant progress on several fronts today. A regression in `git shortlog` error reporting was fixed, with maintainer Junio C Hamano confirming the solution. The `http.sslVerifyStatus` security feature thread closed its diagnostic phase after SZEDER Gábor confirmed the test failure was caused by using the GnuTLS backend for libcurl. Harald Nordgren's matching-inspired fetch mode for shallow repositories received substantive review, with Junio raising design concerns about automatically fetching the remote's default branch. Documentation efforts continued, with the `gitmergeconflicts(7)` guide making progress on technical accuracy and the cross-reference modernization patch receiving final approval.
+SZEDER Gábor traced the t5585 failure that got the `http.sslVerifyStatus` topic reverted from `next` to the GnuTLS curl backend. Junio C Hamano found transposed tree arguments in the new in-core stash index merge. Julia Evans advanced both the AsciiDoc cross-reference patch and a plan to rewrite `gittutorial.adoc` down to eight commands.
 
 ## Notable threads
 
-### `http.sslVerifyStatus` test infrastructure follow-up
-The diagnostic phase for the `http.sslVerifyStatus` security feature has concluded. SZEDER Gábor confirmed that the test failure was caused by using the GnuTLS backend for libcurl, which lacks full OCSP stapling support. Switching to the OpenSSL backend resolves the issue, and the test suite now passes. Junio C Hamano acknowledged this finding, noting that the root cause is environmental rather than a flaw in the test logic. The thread's focus remains on post-merge test robustness, with no new technical concerns introduced.
+### `git history` during an interactive rebase breaks the repo
+Nikita Bobko reported that running `git history` mid-rebase updates the branch currently being rebased, so `git rebase --continue` fails with a ref lock error and leaves a state even `git branch --force` cannot repair. He proposed five potential solutions, from forbidding `git history` during rebase to updating all branches except the one being rebased, and noted related interactions with cherry-pick, the rebase-todo file, and `--update-refs`.
 
-The feature, which adds OCSP staple validation to Git's HTTPS certificate verification, was merged to `master` in June 2025 but reverted from `next` due to test infrastructure issues. The core functionality remains intact, and the revert was procedural. This resolution removes the last blocker for the feature to graduate to the next release cycle.
+### Registering temporary pack files for cleanup
 
-### `--force-if-includes` reflog walk fallback value discussion
-The ongoing debate about the fallback timestamp value for `--force-if-includes` reached a critical juncture. Tyler Cipriani provided a substantive review advocating for `0` (epoch start) as the fallback value, arguing that any cutoff risks rejecting valid pushes when matching reflog entries are older than the cutoff. He demonstrated that the performance penalty for `0` is negligible in practice because both local and remote reflogs are typically pruned by `gc`, limiting the reflog walk to the same 90-day window either way.
+Royce Remer posted a patch registering temp pack files from `git gc` and `git maintenance` in `pack-write.c` and `pack-bitmap-write.c` with the tempfile subsystem so they are unlinked on exit. Motivation: disk exhaustion in Kubernetes pods running Gitea mirrors, where killed gc left orphaned `tmp_pack_*` files (~60 GiB) and killed repacks left `.tmp-*-pack-*` files (~118 GiB, ~39 GiB).
 
-Junio C Hamano responded with skepticism about the necessity of scanning all reflog entries, reasserting his preference for a 90-day or `gc.reflogExpire` fallback. The unresolved tension between safety (`0`) and performance (cutoff) remains the sole obstacle to integration. The patch is otherwise technically complete, with all prior review feedback addressed.
+### fetch: limited branch fetching in shallow repos
+Harald Nordgren posted v3 of a four-patch series avoiding fetching every branch of a new remote in a shallow repository, now using a `remote.<name>.refmap` mechanism instead of v2's special `+:` refspec. Junio C Hamano reviewed the first two patches, calling the code good but objecting to always including the remote's default branch in the inferred fetch set, since Git should not fetch the remote's HEAD unasked.
 
-This discussion highlights a fundamental design trade-off in Git's safety mechanisms. The outcome will determine whether the patch graduates to `next` as-is or prompts a follow-up adjustment to the fallback value.
+### parse_revision_opt() bugfixes
+Jeff King posted a two-patch series fixing `parse_revision_opt()` in `revision.c`: one stops malformed options like `--default` from producing a spurious "unknown option" message, the other reads the unknown option from the consolidated argv so `git shortlog -n --no-such-option` reports the option name instead of `(null)`. Junio C Hamano reviewed and said both patches make sense.
 
-### Matching-inspired fetch mode for shallow repositories
-Harald Nordgren's v3 series implementing the `remote.<name>.refmap`-based "matching-inspired" fetch mode for shallow repositories received substantive review. The series introduces a new fetch mode that dynamically fetches only the branches tracked by local branches at the remote, plus the remote's default branch, addressing the performance problem in shallow repositories where a refspec-less fetch would otherwise negotiate history for every remote branch.
-
-Junio C Hamano raised two significant concerns:
-1. Documentation wording for `remote.<name>.refmap` should avoid implying the configuration is inactive in edge cases.
-2. Design concern about automatically fetching the remote's default branch, arguing it is overly presumptive and may be wasteful or redundant for some users.
-
-The first concern is a documentation clarification that can be addressed in a follow-up patch. The second concern is more fundamental, questioning whether the forced inclusion of the remote's default branch is justified. This could lead to a significant design change in the series' core behavior.
-
-The series is well-structured and directly targets a real user pain point, but this design question may require a v4 iteration before it can proceed to `next`.
-
-### `gitmergeconflicts(7)` documentation improvements
-The documentation effort to introduce `gitmergeconflicts(7)` made significant progress on technical accuracy. The thread focused on clarifying the behavior of `git log --merge -p <path>`, with Junio C Hamano correcting a misunderstanding about the command's output. The `--merge` option implies a `HEAD...<other>` revision range, where `<other>` is context-dependent (e.g., `MERGE_HEAD`, `REBASE_HEAD`, or `CHERRY_PICK_HEAD`). D. Ben Knoble supplemented this with the mechanism of the `--merge` option, explaining that it constructs a symmetric difference traversal.
-
-The approved wording for the guide is now: "will print out all commits which caused the merge conflict for `<filename>`, and the diff of how they changed the file." This clarification ensures the guide provides accurate and practical advice for users resolving conflicts.
-
-The series also received substantive review from D. Ben Knoble, who validated key design choices and provided real-world context for terminology and edge cases. The discussion remains focused on content accuracy and completeness, with mechanical integration issues (e.g., `command-list.txt` registration) being the primary blockers.
-
-### Regression fix for `git shortlog` error reporting
-A regression in `git shortlog` and related revision commands, where unknown options were incorrectly reported as `(null)` instead of their actual name, was fixed by Jeff King (Peff). The issue was introduced by commit cd439487 ("revision: manage memory ownership of argv in setup_revisions()", 2025-09-19) and affected all current integration branches.
-
-Junio C Hamano confirmed the fix, providing a simple reproduction test that demonstrates the correct behavior. The series consists of two patches:
-1. A minimal fix for a latent bug where known-but-invalid options were misreported as unknown.
-2. A broader fix that restores the pre-cd439487 behavior by conditionally nulling `*value` only when `opt->free_removed_argv_elements` is set.
-
-The patches are small, well-motivated, and now have maintainer approval, making them strong candidates for inclusion in the next release.
+### GIT_WORK_TREE exported as '.' for the post-checkout hook
+Phil Sainty reported that testing Junio C Hamano's patch shows `GIT_WORK_TREE` exported as `.` rather than the actual worktree path, so `git rev-parse --show-toplevel` still returns the CWD; he suggested `discovery.worktree` may not be the right value and pointed at `setup.c` lines setting that `.`.
 
 ## In brief
-- **Git 3.0 planning**: Kristoffer Haugsbakk proposed a configuration analysis tool to recommend modern Git settings as a less disruptive alternative to changing defaults.
-- **Precompiled headers**: SZEDER Gábor addressed an edge case where target-specific `EXTRA_CPPFLAGS` invalidate the precompiled header, proposing a workaround.
-- **CI improvements**: Tamir Duberstein provided benchmark data for dynamic parallelism in CI jobs, showing a 2% speedup with `1x CPU count` and a 7% speedup with `2x CPU count`.
-- **Documentation cross-reference modernization**: Jeff King approved the v2 patch, which is now ready for integration.
-- **`git history` bug**: Nikita Bobko reported that `git history fixup` updates branch refs locked during interactive rebase, causing Git to refuse further ref modifications.
-- **Leak sanitizer reporting**: Harald Nordgren improved leak sanitizer failure reporting in GitHub Actions by stopping the test script at the first leak failure and emitting annotations.
-- **`git replay` GPG signing**: Patrick Monette added GPG commit signing support to `git replay` via a new `-S` option.
-- **Packfile tempfile cleanup**: Royce Remer registered temporary pack files with Git's tempfile subsystem to ensure cleanup on process exit.
-- **Line-log whitespace trimming**: Kristofer Karlsson updated the line-log patch to trim trailing blank lines (whitespace-only) from function ranges, aligning with `git grep -W` behavior.
-- **JGit pluggable backend validation**: Luca Milanesio provided production-scale validation of JGit's pluggable backend architecture, citing Google's internal Git servers and GerritForge's global refdb backend.
+- Colin Hinton posted v3 of deferring `fetch.followRemoteHEAD` validation to `do_fetch()`, applying the `xstrdup_or_null` fix from review.
+- Patrick Monette added `-S`/`--gpg-sign` signing to `git replay`, fixing a FIXME and a commit-failure handling bug.
+- Brigham Campbell posted v4 of `git-contacts` reading a patch from stdin via `-`; Junio C Hamano accepted and asked for doc updates.
+- Junio C Hamano argued `git fetch-pack` should not dwim its ref arguments and that an explicit way to send `want-ref <oid>` may be needed.
+- Tamir Duberstein posted v2 using `cmp` for a huge-output test and aligning CI job counts across providers.
+- Kaartic Sivaraam reviewed the series making `create_repository()`'s repo a pure out-parameter and said it looks good.
+- Post-2.56 version naming discussion included a proposal for a tool recommending modern config alternatives.
+- **Junio on CI warning patch**: Junio C Hamano said checking the correctness of the patch scoping perforce/git-lfs/JGit warnings to platforms that install them would be a "no brainer."
+
+- Harald Nordgren posted a patch making leak-sanitizer CI failures point at the actual test file and line.
+- Kristofer Karlsson posted v2 trimming whitespace-only trailing lines from `git log -L :funcname:` ranges.
+- Johannes Sixt queued the git-gui Afrikaans translation.
+- Kaartic Sivaraam advised using `--in-reply-to` from the next version of the t40* modernization series.
