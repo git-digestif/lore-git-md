@@ -1,104 +1,57 @@
 # Git mailing list daily digest for 2026/09/03
 
+## Long threads
+
+### Convert build-time USE_NSEC into runtime `core.useNanosec`
+
+*Long thread: 44 replies so far from 6 participants over 28 days; 3 messages that day.*
+
+This series exposes the build-time `USE_NSEC` knob as the runtime `core.useNanosec` config, so distributed Git builds can avoid racy-git problems in index-related commands like `git diff`. Today Ben Knoble declined to remove the remaining `NO_NSEC`-related `#ifdef` in a reroll, agreeing with Jeff King that it is not worth the hassle. Knoble also said that making the test apparatus set the config globally would help scare out potential `BUG()`s from `repo_config_values()` on repositories other than `the_repository`. Junio C Hamano said his concern is future in-process recursion into submodules, as `git grep --recurse-submodule` already does, and Knoble argued that recent work in these areas should instead be impetus to lift the restriction rather than paper over it with a safe default.
+
+### Introduce the receive-report hook
+
+*Long thread: 37 replies so far from 5 participants over 17 days; 7 messages that day.*
+
+This series adds a `receive-report` hook for `git-receive-pack` that runs after the reference transaction completes but before the report reaches the client, receiving the pkt-line report on stdin and replacing it with its stdout; a non-zero exit marks all references rejected. Karthik Nayak posted v6, introducing `enum report_status_version` to replace static variables and rewording the docs to explain why the reference-transaction hook cannot be used. Patrick Steinhardt offered nits -- a switch statement for the enum, noting `report()` and `report_v2()` are now identical except for the enum value, and unnecessary curly braces -- and Nayak agreed to fold these into a new version.
+
+### Add `--drop-filtered` to `git repack` for partial clones
+
+*Long thread: 36 replies so far from 5 participants over 50 days; 1 message that day.*
+
+This GSoC series lets users reclaim space in partial clones by enumerating promisor blobs over a size threshold, dropping them locally, and relying on the existing lazy-fetch machinery to restore them. Samuel Bronson reported testing `--drop-filtered` on a real llvm-project clone not originally cloned with `--filter`, finding it worked well and greatly reduced the object database size. He proposed an RFC change so that instead of dying when a blob referenced by the current index would be dropped, the operation skips it with a warning, allowing `git repack -a --filter=blob:limit=0 --drop-filtered` to work in non-bare repositories.
+
+### Refactor checkout/switch/restore dispatch
+
+*Long thread: 27 replies so far from 5 participants over 8 days; 1 message that day.*
+
+This 8-patch series repartitions the monolithic `checkout_main()` so `cmd_switch()` and `cmd_restore()` dispatch directly to `checkout_branch()` or `checkout_paths()`. Karthik Nayak stated that there is merit in merging the patch down since it leaves the code in a better place than before.
+
+### Make t/lib-httpd CGI test helpers concurrency-safe
+
+*Long thread: 23 replies so far from 3 participants over 58 days; 1 message that day.*
+
+This series fixes race conditions in the `apply-one-time-script.sh` and `http-429.sh` test helpers, which can misbehave under concurrent Apache requests, as seen in flaky t5616 failures on macOS CI. Patrick Steinhardt reviewed v5 and said the version looks good to him.
+
 ## The day in brief
-The Git project saw significant progress on several fronts today. A long-awaited `--missing-only` option for `git rev-list` was approved and queued for `next`, addressing GitLab's Gitaly workflow needs. The `git repack --drop-filtered` series received substantive usability feedback that may require a v6 revision. Meanwhile, the Outreachy December 2026 cohort gained another mentor, strengthening Git's application. Several bugfixes and documentation improvements also advanced, including fixes for memory leaks, pathspec handling, and partial clone documentation.
+Karthik Nayak posted v6 of the receive-report hook series with an enum-based report version, while Ben Knoble held the line on the `core.useNanosec` series' remaining `#ifdef`. Samuel Bronson validated `git repack --drop-filtered` on a real large clone and proposed softening its index guard, and Patrick Steinhardt both approved the lib-httpd concurrency fixes and posted a new heuristic for `rerere gc` auto-maintenance.
 
 ## Notable threads
 
-### `git rev-list --missing-only` approved and queued for `next`
-**What changed**: The `--missing-only` option for `git rev-list` has been approved and queued for `next`. This feature enables output of only missing object IDs without post-processing, addressing GitLab's need to efficiently identify objects not present in a partial clone during transaction packing.
+### Keep a background `rerere gc` from killing a rebase
+Thomas Bachem's patch addresses a race where the background `git rerere gc` spawned by auto-maintenance collides with the sequencer's `MERGE_RR.lock` during `git rebase --continue`. Patrick Steinhardt proposed both a locking grace period and a less aggressive `maintenance.rerere-gc.auto` heuristic; Bachem agreed to a wait-then-warn approach in v2, and Phillip Wood endorsed both the grace period and the heuristic change, while supporting disabling auto-maintenance during a rebase as a separate topic.
 
-**Why it matters**: This feature provides a script-friendly way to list only missing objects while preserving existing `--missing=` formatting options. It's particularly useful for GitLab's Gitaly workflow, which uses a one-shot walk during transaction packing to record missing objects as dependencies.
+### Avoid sending the whole tree when pushing from a shallow clone
+Elijah Newren's patch stops shallow clones from pushing the entire toplevel tree. Responding to Derrick Stolee's reported bug, Newren called it a good discovery but argued the test description was self-contradictory: re-running it showed no receiver corruption (`git fsck` passes, the ref was safely rejected), though the error message is inscrutable, and he said he has patches to improve those messages.
 
-### Key technical details
-
-- Files: `builtin/rev-list.c`, `Documentation/rev-list-options.adoc`, `t/t6022-rev-list-missing.sh`
-- New flag: `--missing-only` (filters output to missing objects only)
-- Requires `--missing=print` or `--missing=print-info`
-- Rejects incompatible options (`--count`, `--disk-usage`) with clear error messages
-- Output format: one OID per line (no `?` prefix), or `path=`/`type=` fields if `--missing=print-info` is used
-
-**Current status**: Queued for `next`. Junio C Hamano has approved the feature after the commit message was strengthened to clarify the Gitaly workflow.
-
-[2026/09/03/20-45-50 by Siddharth Asthana]
-
----
-
-### `git repack --drop-filtered` usability feedback may require v6
-**What changed**: Samuel Bronson provided substantive usability feedback on the `git repack --drop-filtered` series, identifying a pain point where the current implementation dies when encountering an index-referenced blob, forcing users to restart the entire enumeration process.
-
-**Why it matters**: The series aims to safely reclaim disk space in partial clones by removing locally cached promisor blobs exceeding a user-specified size threshold. However, the current fail-fast behavior creates a poor user experience for large repositories.
-
-### Key technical details
-
-- Proposed change: Skip index-referenced blobs with a warning instead of failing
-- Attached patch demonstrates the change but omits test updates
-- Affects patch 6/6 (safety guards)
-- The change would improve usability without compromising safety
-
-**Current status**: Proposed for `next` but may need a v6 to address this feedback before integration.
-
-[2026/09/03/21-52-06 by Samuel Bronson]
-
----
-
-### Outreachy December 2026 cohort gains another mentor
-**What changed**: Pablo Sabater confirmed his availability to co-mentor an Outreachy project for the December 2026 cohort, joining the growing list of volunteers.
-
-**Why it matters**: Git's participation in Outreachy depends on having sufficient mentors and org admins. With four confirmed or potential mentors and two org admin candidates, the project is well-positioned to submit a strong application.
-
-**Current status**: The thread now has four confirmed or potential mentors and two org admin candidates. The deadline for mentoring organizations to sign up is September 11, 2026.
-
-[2026/09/03/10-24-48 by Pablo Sabater]
-
----
-
-### `git rerere` lock race fix progresses
-**What changed**: The fix for a race condition between `git rerere` and background maintenance during rebase has made significant progress, with the design now settled for a two-patch series.
-
-**Why it matters**: The race condition causes rebases to fail when background maintenance holds the `MERGE_RR.lock`, creating a poor user experience. The fix addresses this by making `rerere_setup()` return errors instead of dying and disabling background maintenance during rebase.
-
-### Key technical details
-
-- Two-patch series: locking changes and config overrides
-- `rerere_setup()` will wait up to 1 second for non-maintenance callers
-- Background maintenance will skip the lock entirely (timeout=0)
-- Uses `LOCK_REPORT_ON_ERROR` for better error reporting
-- Merge and apply backends will behave consistently
-
-**Current status**: Design settled; awaiting Phillip Wood's review of the v2 implementation.
-
-[2026/09/03/08-11-05 by Thomas Bachem]
-
----
-
-### Pathspec handling bugfix series queued for merging
-**What changed**: A bugfix series addressing a long-standing edge case in `common_prefix_len()` and a memory-safety issue in `match_pathspec_with_flags()` has been queued for merging.
-
-**Why it matters**: The series fixes an edge case where an exclude pathspec appearing first in the list causes `common_prefix_len()` to incorrectly return zero, even when subsequent positive pathspecs share a directory. It also prevents a heap-buffer-overflow when negative pathspecs are shorter than the common prefix derived from positive pathspecs.
-
-### Key technical details
-
-- Three-patch series: preparatory refactoring, memory-safety fix, core fix
-- Files: `dir.c`, `pathspec.c`, `pathspec.h`, `t/t6132-pathspec-exclude.sh`, `t/unit-tests/u-dir.c`
-- New behavior: `common_prefix_len()` correctly returns the common prefix of positive pathspecs even when an exclude pathspec appears first
-- Memory-safety fix: negative pathspecs are matched with a zero prefix to prevent out-of-bounds reads
-
-**Current status**: Queued for merging. Junio C Hamano has confirmed the integration plan.
-
-[2026/09/03/18-51-42 by Junio C Hamano]
-
----
+### Fix `--force-if-includes` when the remote-tracking ref has no reflog
+Aleksei Sviridkin posted a patch initializing a previously uninitialized timestamp to 0 in `is_reachable_in_reflog()`, so a remote-tracking ref without a reflog no longer cuts the walk short and wrongly rejects the push. Junio C Hamano reviewed the code as good but flagged the `Assisted-by: LLM` trailer placement; Sviridkin defended the bare trailer, citing kernel practice, and said v2 will put the sign-off last.
 
 ## In brief
-- **`git checkout -m` autostash conflict handling**: The v5 series refining autostash conflict handling has been queued for `next` after all prior review feedback was addressed. [2026/09/03/18-53-27 by Junio C Hamano]
-- **`git var` extension**: Junio C Hamano provided a substantive review of the `git var` extension patch, requesting documentation improvements, code structure changes, and usability edge case handling. [2026/09/03/17-40-48 by Junio C Hamano]
-- **`git push` shallow-clone performance**: Elijah Newren corrected Stolee's over-exclusion critique, clarifying that the flaw is a false-positive failure (rejecting valid refs unnecessarily) due to `receive-pack`'s connectivity checks, not a corruption risk. [2026/09/03/09-22-39 by Elijah Newren]
-- **`git imap-send --draft`**: The v2 patch for the `--draft` option addresses Junio's requests to remove the `Assisted-by: LLM` trailer and improve test cleanup placement. [2026/09/03/20-00-15 by Aleksei Sviridkin]
-- **`git history` NULL-dereference fix**: Patrick Steinhardt confirmed the fix "looks good to me," marking it ready for integration. [2026/09/03/07-52-18 by Patrick Steinhardt]
-- **`git-contacts` boundary commit fix**: A bugfix for the `git-contacts` contrib script prevents false positives in reviewer suggestions by ignoring boundary commits in blame output. [2026/09/03/12-55-27 by Aleksei Sviridkin]
-- **`git cherry-pick --no-commit` documentation**: The documentation patch clarifies that `CHERRY_PICK_HEAD` is not created when a `--no-commit` cherry-pick fails due to conflicts, addressing a long-standing asymmetry with `git revert`. [2026/09/03/21-45-53 by Aleksei Sviridkin]
-- **Partial clone documentation**: The v2 patch narrows the scope of the "one-at-a-time" fetch limitation in `Documentation/technical/partial-clone.adoc` to the fallback path in `odb.c`. [2026/09/03/20-00-13 by Aleksei Sviridkin]
-- **`git history reword` memory leak**: A memory leak in `git history reword --dry-run` was reported, introduced by the merge of `ps/receive-pack-shallow-optim`. [2026/09/03/15-26-44 by Kristoffer Haugsbakk]
-- **Git GUI Windows fix**: Johannes Sixt reported being unable to reproduce the Windows-specific pipe-handling issue in Git GUI and questioned the necessity of the fix. [2026/09/03/17-49-40 by Johannes Sixt]
-- **`git maintenance` rerere gc heuristic**: Patrick Steinhardt posted a two-patch series improving the heuristic for the `git maintenance` `rerere gc` task, replacing the hard-coded 60-day cutoff with a dynamic heuristic. [2026/09/03/09-04-56 by Patrick Steinhardt]
+- Yannik Tausch resubmitted the pathspec-prefix-with-exclusions fix as v3 including Junio C Hamano's const-correctness patch; Hamano said the const patch will be queued separately and v3 can be ignored. *Long thread: 10 replies so far from 2 participants over 2 days; 12 messages that day.*
+- Harald Nordgren posted v5 of the `checkout -m` autostash refinement; Junio C Hamano said both patches look good and will queue them. *Long thread: 22 replies so far from 4 participants over 41 days; 8 messages that day.*
+- Patrick Steinhardt posted a two-patch series refining the `rerere gc` auto heuristic to run only when estimated stale entries reach a threshold (default 512); Derrick Stolee said both patches look good to him.
+- Michael Montalbo posted v3 of the series scoping `--stat`, `--check`, and `-G` to `-L` line ranges, with simplified tests and a bug fix in the line-range filter.
+- **pack-objects prefetch fix**: Aleksei Sviridkin fixed `pack-objects` prefetch ordering so the batch starts correctly; his test with 2 absent and 16 loose objects now uses 1 fetch instead of 2.
+
+- Andrew Pleeter posted v3 of `git var` extensions (broken-down idents, `GIT_DEFAULT_KEY`, multiple args, `-z`); Junio C Hamano endorsed multiple arguments and raised doc and code-level points.
+- Jinbao Chen posted v2 guarding a NULL tree in `write_ondisk_index()` so `git history split` errors gracefully instead of crashing when the parent tree is missing.
