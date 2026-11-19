@@ -1,101 +1,60 @@
 # Git mailing list daily digest for 2026/08/25
 
+## Long threads
+
+### history: add squash subcommand to fold a range
+
+*Long thread (root 2026/06/14/19-25-39): 90 replies so far from 9 participants over 73 days; 2 messages that day.*
+
+This is Harald Nordgren's long-running series adding `git history squash <revision-range>` to fold a range of commits into one, with v14 posted earlier updating commit message trailers and simplifying `rev-parse`/`tr` usage in the tests. Today's exchange concerns the case-sensitivity of matching hex object IDs in `fixup!`/`amend!` subjects: Phillip Wood argued that `starts_with()` is sufficient when the target comes from `git commit --fixup`, but that if uppercase hex remains accepted elsewhere, this new code should not newly reject it. Junio C Hamano countered that the point is not to add new places accepting uppercase hex, and that using `starts_with()` here supports discouraging uppercase hex.
+
+### worktree add: improve message for ambiguous remote branch name
+
+*Long thread (root 2026/08/08/08-21-41): 29 replies so far from 6 participants over 18 days; 2 messages that day.*
+
+Yoichi Nakayama's series improves the error shown when `git worktree add` or `git checkout` hits a branch name matching multiple remote tracking branches, listing the matched remotes in the advice. Today he posted v8, whose new fourth commit changes `git worktree add --guess-remote` to fail when the path basename matches multiple remote-tracking branches instead of falling back to HEAD, with documentation updated accordingly; the earlier commits extract `advice_disambiguating_remotes()` in `builtin/checkout.c`, extend `unique_tracking_name()` to collect matching remote names, and make `git worktree add` die with a descriptive error. Junio C Hamano reviewed patch 4/4, suggesting the advice function could have been placed higher in the series, and concluded "Looking good."
+
+### repo: add path keys to git repo info
+
+*Long thread (root 2026/07/16/01-21-31): 26 replies so far from 4 participants over 41 days; 2 messages that day.*
+
+K Jayatheerth's GSoC series adds `path.*` keys to `git repo info` exposing repository component paths. The keys `path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, and `path.grafts` each support absolute and relative suffixes, while `path.git-prefix` and the newly added `path.cdup` are single suffix-less keys. Today's v5 adds `path.cdup`, giving the relative path from the current directory to the working tree root, and drops an unused-header cleanup patch. Junio C Hamano suggested creating a common helper library shared between `builtin/repo.c` and `builtin/rev-parse.c` so only a single implementation of `cdup` exists, noting the same applies to other features duplicating `rev-parse` implementations.
+
+### hex: restrict object IDs to lowercase only (Git 3.0 RFC)
+
+*Long thread (root 2026/07/29/23-32-09): 25 replies so far from 6 participants over 28 days; 10 messages that day.*
+
+brian m. carlson's RFC series proposes removing the ability to use uppercase hex in object IDs in Git 3.0, since Git has always emitted lowercase and accepting uppercase leads to software assuming a unique hex form and to security problems. Today Phillip Wood asked brian to explain the security problems, specifically why `ABCDEF` is a risk when `abcdef^0` is not; brian answered with two cases: policy checks against the lowercase hex form can be bypassed by uppercase input, and regexps like `[0-9a-f]{40}` used to distinguish object IDs from refs fail to match uppercase IDs, and he said he will fix a dropped case-normalization and a comment typo in v2. Junio C Hamano's review flagged the "68-67" comment that should read "68-6f", remaining `HEX_KIND_MIXED` uses in `builtin/index-pack.c` and `notes.c` that should be `HEX_KIND_OID`, a changed `hex_out[]` API contract during the transition, and a question about the t5324 test; Elijah Newren echoed the case-normalization concern and asked about a possible dead `if (val < 0)` check.
+
 ## The day in brief
-The Git mailing list saw significant activity around several major patch series. The `git history squash` series reached a key decision point on case-sensitive OID matching, while the trace2 hardening series received detailed technical reviews. A new `git whoami` command sparked debate about project scope, and architectural concerns were raised about the `git repo info` path keys. Several bugfix series (reftable stack reloads, HTTP redirects, worktree basename handling) advanced toward integration.
+
+Yoichi Nakayama's v8 reroll of the ambiguous-remote-branch work adds a new fourth commit making `git worktree add --guess-remote` fail on multiple remote-tracking matches, and Junio C Hamano found it looking good. brian m. carlson's lowercase-hex RFC drew concrete security justification and detailed review fixes slated for v2. Derrick Stolee posted a v2 of the trace2 banned-die work that Elijah Newren promptly found bugs in, including a dropped character in `redact_arg()`.
 
 ## Notable threads
 
-### `git history squash`: Autosquash marker resolution policy resolved
-**What changed?**
-The final technical blocker for Harald Nordgren’s `git history squash` series was resolved today. Junio C Hamano reaffirmed the project’s direction toward strict case-sensitive matching for autosquash markers, rejecting Phillip Wood’s suggestion to adopt permissive matching for consistency with `git rebase --autosquash`.
+### trace2: stop allowing die()
+Derrick Stolee posted v2 of a series keeping the low-level trace2 API from ever calling `die()`, via a new root-level `banned-die.h` included by all trace2 API sources, banning `xsnprintf`, `xstrdup`, `ALLOC_ARRAY`, `xstrfmt`, `ALLOC_GROW`, and `xcalloc` one patch at a time. Junio C Hamano endorsed the approach and asked whether it could extend to `the_hash_algo` and `the_repository`. Elijah Newren pointed out that `#define die banned(die)` should be `BANNED(die)`, questioned whether a `-1` return in patch 3/7 really avoids `die()`, flagged that patch 5/7's `redact_arg()` memcpy drops the trailing ">" of `:<REDACTED>`, and reported that patch 6/7 alone dies with "no open regions in thread 'main'". Junio C Hamano confirmed the `redact_arg()` observation, agreeing `redact_len + 1` would have worked better.
 
-**Technical details**
-The resolution requires a one-line mechanical change in Patch 7/8: replacing `istarts_with()` with `starts_with()` in `squash_check_can_autosquash()`. This enforces strict case-sensitive matching for autosquash markers (e.g., `squash!`, `fixup!`, `amend!`), rejecting all uppercase OIDs. The change aligns with Git’s historical convention of emitting only lowercase OIDs and the precedent set by `bc/restrict-hex-to-lowercase`.
+### branch: protect local upstreams from -d
+Harald Nordgren posted a two-patch series making `git branch -d` protect a local branch that is the upstream of another surviving local branch, checking all requested deletions first so multi-branch deletion is order-independent, with `-D` overriding and a complete stack deletable together. Junio C Hamano objected that changing the long-established semantics of `-d` would break end-user workflows, citing the required test change from `-d` to `-D` as evidence that previously safe deletions break, and stated a configuration variable to tweak the behavior is unwelcome.
 
-**Why it matters**
-This decision removes the last technical hurdle for the series, which is now functionally complete except for test coverage for the strict matching policy. The series introduces a new `git history squash` subcommand to efficiently collapse commit ranges while preserving descendant history, avoiding the repeated conflict stops of a rebase-based approach. The strict matching policy ensures consistency with Git’s broader effort to discourage uppercase OID usage, addressing security concerns where tools might check only lowercase forms.
+### am: record blobs of cleanly applied patches with --3way
+Nikita Leshenko submitted a patch making `git am --3way` record postimage blobs of cleanly applied patches so a later patch whose preimage is that postimage can be 3-way merged instead of failing with "could not build fake ancestor". Junio C Hamano rejected the eager per-patch overhead and proposed lazily reconstructing the missing preimage inside `fall_back_threeway()` only when `build_fake_ancestor()` fails; Nikita agreed the eager approach was unacceptable but argued the surgical version needs elaborate scanning, proposing instead a simpler lazy alternative that applies all previous patches on their fake ancestors when the build fails and records a marker in `.git/rebase-apply` to avoid repeating work.
 
----
+### t1401: check symbolic-ref exit codes and --quiet silence
+Nikolaus Schuetz submitted a test-only patch asserting that querying a non-symbolic ref exits 128 with the "is not a symbolic ref" message and that `--quiet` exits 1 silently. Junio C Hamano objected that the patch is the kind of "casting wrong behaviour into stone by either documentation or tests" he had advised against earlier.
 
-### Trace2 hardening: Architectural feedback and correctness bugs
-**What changed?**
-Elijah Newren provided substantive reviews of Derrick Stolee’s seven-part trace2 hardening series, identifying several correctness issues and architectural concerns. The series aims to eliminate all `die()`-triggering helpers from the trace2 API to prevent Git crashes during telemetry operations.
-
-**Technical details**
-Key findings from Elijah’s reviews:
-1. **Naming inconsistency**: `banned-die.h` uses `banned(die)` instead of `BANNED(die)`, deviating from Git’s existing convention (e.g., `NO_THE_REPOSITORY_H`).
-2. **Include-ordering risk**: `banned-die.h` is included in the middle of the include list in `trace2.c`, which could silently bypass enforcement for future banned functions.
-3. **Incomplete hardening**: The third patch’s replacement of `xstrdup()` with `strdup()` does not fully eliminate the risk of crashing in trace2’s config parsing path, as the error path still triggers a `die()` via `xstrfmt()`.
-4. **Off-by-one error**: The fifth patch’s manual string concatenation for `:<REDACTED>` omits the trailing `>`, producing `:<REDACTED` instead of `:<REDACTED>`.
-5. **Splitting error**: The sixth patch introduces a regression (region stack underflow) when applied in isolation, which is only resolved by the seventh patch.
-
-**Why it matters**
-The series addresses a critical stability issue: trace2, a low-level telemetry layer, should never crash Git, even under memory pressure or system call failures. The hardening is particularly important for Git for Windows, where `libintl_vsnprintf()`’s allocation behavior differs from POSIX. Elijah’s feedback highlights the fragility of manual string manipulation and the importance of thorough testing for low-level code. The series is now technically complete but requires a v3 to address these issues.
-
----
-
-### `git repo info`: Architectural duplication concerns
-**What changed?**
-Junio C Hamano raised a substantive architectural concern about K Jayatheerth’s `git repo info` series, which adds seven new path-related keys (e.g., `path.cdup`, `path.toplevel`). The concern centers on duplication of logic between `git repo info` and `git rev-parse` for keys that mirror existing functionality.
-
-**Technical details**
-Junio proposed consolidating the shared logic into a new helper library (e.g., `repo-info.c`) to avoid long-term maintainability issues. The affected keys include:
-- `path.cdup` (mirrors `git rev-parse --show-cdup`)
-- `path.toplevel` (mirrors `git rev-parse --show-toplevel`)
-- `path.superproject-root` (mirrors `git rev-parse --show-superproject-working-tree`)
-- `path.git-prefix` (mirrors `git rev-parse --show-prefix`)
-
-The series is otherwise feature-complete and mechanically clean, with all prior feedback addressed. The new `path.cdup` key, added in v5, resolves the last open design question by providing symmetry with `path.git-prefix`.
-
-**Why it matters**
-The concern highlights a broader tension in Git’s architecture: as new porcelain commands are added, they often duplicate logic from existing plumbing commands. Junio’s proposal to consolidate this logic into a shared helper library could reduce maintenance burden and ensure consistency across commands. However, it would require a non-trivial refactor of the series, potentially delaying integration. The discussion now centers on whether the duplication is acceptable or if a v6 is needed to address the architectural concern.
-
----
-
-### `git whoami`: Project scope and usability debate
-**What changed?**
-A new patch introducing `git whoami` sparked debate about whether this functionality belongs in Git core. The command consolidates Git’s identity and signing configuration (author/committer names/emails, GPG/SSH keys, `commit.gpgsign` status) into a single, user-friendly output.
-
-**Technical details**
-Brian m. carlson and Junio C Hamano raised several concerns:
-1. **Project scope**: Why doesn’t this functionality belong in `git var` or another existing command?
-2. **Machine-readable output**: The command should support `key=value` pairs and NUL-terminated output (`-z`) for scripting.
-3. **Flag design**: The current `--author`/`-a`, `--committer`/`-c`, `--name`/`-n`, and `--email`/`-e` interactions are counterintuitive. Junio proposed a more additive design where flags combine predictably (e.g., `-a -e -n` shows full author identity).
-4. **Technical gaps**: The patch uses `the_repository` (violating the ongoing removal effort) and lacks support for X.509 signing keys.
-
-**Why it matters**
-The debate touches on Git’s design philosophy: should the project avoid "random subcommands" unless absolutely necessary? The command addresses a real usability pain point (users often juggle multiple identities or signing keys), but its inclusion in Git core is now contested. The discussion will likely hinge on whether the author can justify the command’s necessity and redesign the flag interactions to align with Git’s existing conventions.
-
----
-
-### Worktree basename handling: Bugfixes and cleanups
-**What changed?**
-René Scharfe’s four-patch series fixing `git worktree add` basename handling advanced toward integration. The series addresses potential data corruption, rejects malformed paths, improves trailing-slash handling, and simplifies the code.
-
-**Technical details**
-Key fixes:
-1. **Out-of-bounds read**: Patch 1 adds a bounds check to prevent corruption when the input path has zero length.
-2. **Separator-only paths**: Patch 2 rejects paths consisting solely of separators (e.g., `"/"` or `"//"`), which previously triggered a BUG assertion.
-3. **Trailing slashes**: Patch 3 trims trailing slashes from derived branch names, fixing a bug where `git worktree add waffle/bit/` attempted to create a branch named `bit/` (invalid due to trailing slash).
-4. **Memory management**: Patch 4 renames `worktree_basename()` to `worktree_basename_dup()` and makes it return a freshly allocated string copy, simplifying memory management.
-
-Junio C Hamano reviewed all patches and signaled approval, requesting only a minor commit-message tweak in Patch 4 to clarify that two callers already make their own copies of the returned string.
-
-**Why it matters**
-The series addresses real-world issues reported in Git for Windows (issue #6346) and improves the robustness of `git worktree add`. The fixes are narrowly scoped and well-tested, making them low-risk candidates for integration. The series also demonstrates the value of thorough edge-case testing in low-level code.
-
----
+### packfile: recover when a multi-pack-index names a removed pack
+Elijah Newren posted v2 of a series fixing objects reported missing despite being present, due to a race with geometric repacking that deletes subsumed packs while a stale multi-pack-index still names them. The reroll switches `fill_midx_entry()` to a tri-state distinguishing "absent" from "owning pack unavailable", performs the recovery re-read only on `SECOND_READ`, handles multiple objects shared across packs, and adds two patches: plugging a per-tree leak in `git mktree --batch` and fixing QUICK reader recovery while keeping QUICK performance for normal cases. He also suggested teaching geometric repacking about `git multi-pack-index expire` as a complementary mitigation.
 
 ## In brief
-- **`git history squash`**: Autosquash marker resolution policy resolved in favor of strict case-sensitive matching; series now functionally complete.
-- **Trace2 hardening**: Elijah Newren identified correctness bugs and architectural concerns; v3 expected to address these.
-- **`git repo info`**: Junio raised architectural duplication concerns; discussion ongoing about consolidating shared logic.
-- **`git whoami`**: New command sparked debate about project scope and usability; flag design and technical gaps remain unresolved.
-- **Worktree basename handling**: René Scharfe’s series advanced toward integration with minor commit-message tweak requested.
-- **ODB alternates refactoring**: Patrick Steinhardt’s 8-patch series completed, removing unused `write_alternates()` infrastructure.
-- **ODB fsck pluggability**: Patrick Steinhardt’s 10-patch series completed, moving fsck logic into backend-specific callbacks.
-- **`git branch -d` protection**: Junio raised backward-compatibility concerns about protecting local upstreams from deletion.
-- **HTTP redirects**: Junio requested broader review for Aaron Plattner’s bugfix preserving `WWW-Authenticate` headers.
-- **Reftable stack reloads**: Patrick Steinhardt expressed mild unease about lock-state tracking but endorsed the series.
-- **Stash design**: Branch-aware stash design refined, but detached HEAD gap remains unresolved.
-- **Range-diff notes**: Kristoffer Haugsbakk acknowledged usability issue with `--range-diff-notes` inheriting patch notes setting.
+- Elijah Newren posted v2 of a patch adding `push.shallowExcludeBoundary` (default true) so pushing from a shallow clone does not send the whole toplevel tree, arguing `push.negotiate` defaults would not cover all cases, and said he plans to split further shallow-related work into two series.
+- Vladimir Sitnikov's RFC on a configurable stash ref drew discussion: Phillip Wood noted stash messages already record the branch, and Sitnikov proposed one knob with shared, per-branch, or per-worktree scope, noting detached-HEAD worktrees group together under a per-branch filter.
+- Andrew Pleeter submitted a new `git whoami` builtin showing resolved author/committer identity and signing configuration; brian m. carlson suggested machine-readable output and a real name in the headers, and Junio C Hamano suggested making the flags additive.
+- René Scharfe posted four `worktree add` fixes for `worktree_basename()`, including an out-of-bounds read fix and trimming trailing slashes from derived branch names; Junio C Hamano confirmed the trailing-slash fix and asked for a commit message rewording.
+- Patrick Steinhardt posted an 8-patch series moving alternate writing to object database creation time via `odb_source_create_on_disk()`, removing the `odb_source_write_alternate()` callback, and fixing a bug where referencing a worktree failed to resolve alternates.
+- Patrick Steinhardt posted a 10-patch series making object database consistency checks pluggable, moving packfile, reverse index, bitmap, multi-pack-index, and loose object verification out of `builtin/fsck.c` into the respective odb sources.
+- Patrick Steinhardt reviewed the reftable series avoiding stack reloads when locked, calling the new `locked` bit-field "somewhat fragile" but acceptable, and concluding the series looks good.
+- Phillip Wood noted that `git commit` is still spawned when rebasing merges, so large rebases can still trigger gc mid-rebase even without conflicts.
+- Kristoffer Haugsbakk clarified that `--no-notes` combined with `--range-diff-notes` yields neither patch notes nor range-diff notes.
+- Junio C Hamano solicited reviewers for the v2 patch preserving `wwwauth_headers` across HTTP redirects.
