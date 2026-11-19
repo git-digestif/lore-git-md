@@ -1,88 +1,59 @@
 # Git mailing list daily digest for 2026/09/30
 
+## Long threads
+
+### stash: in-core index merge for `stash apply --index`
+
+*Long thread: 51 replies so far from 5 participants over 12 days; 3 messages that day.*
+
+D. Ben Knoble posted [PATCH v5 0/4] "stash: clean up index-mode test merge", rebasing on a synthetic merge for the t5520 interaction and fixing the tri-state `merge_result.clean` handling Junio C Hamano had diagnosed in v4. Patch 4/4 replaces the subprocess index merge in `builtin/stash.c` with an in-core `merge_incore_nonrecursive()` call, fixing the autostash bug with `stash.index=true`, and distinguishes `result.clean < 0` (hard error) from `!result.clean` (conflict). Earlier, the thread traced a t5520.69 failure to reflog entries lost when `stash apply --index` stopped spawning `git reset`.
+
+### refs: report old values to reference-transaction hooks
+
+*Long thread: 28 replies so far from 5 participants over 12 days; 1 message that day.*
+
+Maciej Ciemborowicz requested review of [PATCH v6 0/1] "refs: report old values to transaction hooks", a single change in the common transaction layer in `refs.c` that resolves old object IDs for the hook before "preparing" and refreshes them after the backend locks the refs, only when a reference-transaction hook exists. This replaces the caller-specific approach Patrick Steinhardt argued was the wrong layer; it fixes batched branch, tag, and remote-ref deletions reporting all-zero old OIDs.
+
+### Documentation: new `gitmergeconflicts(7)` guide
+
+*Long thread: 21 replies so far from 6 participants over 7 days; 4 messages that day.*
+
+Julia Evans's 7-patch series adds a `gitmergeconflicts(7)` page and links it from the `git merge`, `git rebase`, `git revert`, `git cherry-pick`, and `git pull` man pages. Patrick Steinhardt reviewed the new page -- `linkgit:` references, a "the the" typo, more accurate "stage" terminology -- and Julia Evans said she will adopt most of them. Junio C Hamano agreed that showing the commit message in conflict markers would help resolution and that `merge.conflictstyle=diff3` should become the default.
+
+### rerere: waiting for and skipping `MERGE_RR.lock`
+
+*Long thread: 21 replies so far from 4 participants over 29 days; 1 message that day.*
+
+Thomas Bachem's v5 series makes rerere writers wait `rerere.lockTimeout` for `MERGE_RR.lock`, adds `git rerere gc --auto` (passed by `git maintenance run --auto` and `git gc --auto`) that quietly skips a held lock, and lets conflict-time callers warn and continue. Patrick Steinhardt questioned the `--auto` name, proposed `--skip-locked` or calling `rerere_gc()` directly, and noted `builtin/rerere.c` needs subcommand refactoring outside this series.
+
+### xdiff: `size_t` for `mmfile_t` and merge-ll error reporting
+
+*Long thread: 17 replies so far from 4 participants over 2 days; 10 messages that day.*
+
+Jeff King posted [PATCH v2 0/7] "use size_t for xdiff mmfile_t", moving the `xmallocz()` NUL-termination patch earlier and documenting the `xsize_t()` truncation check and new stderr errors when `read_mmfile()` fails in `merge-ll`. Patrick Steinhardt reviewed the `mmfile_t` consolidation and NUL-termination; Jeff King agreed to reorder and to state the new error-on-failed-read behavior explicitly.
+
 ## The day in brief
-The Git mailing list saw active discussion around several key topics today. A new test case was contributed for the `filter-branch` bugfix, while the `parse-options` API refactoring faced questions about behavioral consistency. The CI/build system improvements continued with a v3 series using twice the CPU count for parallel jobs. A sparse-checkout regression was reported, and the `git stash pop` feature extension faced fundamental design questions. The `gitmergeconflicts(7)` documentation series saw productive discussion about commit accessibility and `diff3` promotion.
+D. Ben Knoble's v5 stash series fixes the tri-state index-merge handling and moves `stash apply --index` to an in-core merge, while Maciej Ciemborowicz asked for review of the transaction-layer fix reporting old OIDs to reference-transaction hooks. Taylor Blau posted four fixes for cruft-less MIDX reachability corner cases, and Philippe Blain bisected the submodule merge "repository corrupt" failure to a commit-graph lookup change.
 
 ## Notable threads
 
-### filter-branch: fix commit mapping inversion with --state-branch
-**What changed**: Michele Locati provided a new test case that directly exercises incremental runs with `--prune-empty` and `--subdirectory-filter`, ensuring the state branch file contains correctly ordered "original:rewritten" entries.
+### submodule merge reading another submodule's commit
+Philippe Blain reproduced a superproject merge that reads a commit existing only in submodule B from submodule A, failing with "repository corrupt" on v2.56.0-rc2. He bisected it to bb5da75d61 ("commit: use commit graph in lookup_commit_reference_gently()") and an older "hash mismatch" behavior to 6f1e9394e2; the related commit-graph bug is fixed in 700f7b74de, in `next` but not master.
 
-**Why it matters**: This test case confirms the bugfix works correctly and prevents future regressions in this area. The test fails on current `master` without the fix and passes with it, providing clear verification of the patch's effectiveness.
+### sparse-checkout clobbering untracked in-cone files
+Webstrand reported that `git checkout` with sparse-checkout clobbers an untracked in-cone file instead of aborting: exit 0 with a misleading warning and the file overwritten, whereas before 681c637b4a git refused the checkout and preserved it.
 
-### Key technical details
+### repack: cruft-less MIDX reachability corner cases
 
-- The test specifically targets incremental runs with `--prune-empty` and `--subdirectory-filter`
-- It verifies the state branch file contains correctly ordered "original:rewritten" entries
-- The test passes on Git v2.49.1 (last version before the regression)
+*Long thread: 7 replies so far from 4 participants over 1 day; 8 messages that day.*
 
-### parse-options: new sub-API for early argument scanning
-**What changed**: Kaartic Sivaraam identified a behavioral inconsistency with `parse_options()` where the API's decision to ignore abbreviations could misinterpret arguments.
-
-**Why it matters**: This inconsistency could lead to subtle bugs in commands adopting the new API. For example, in `git fast-import --quiet --export-pack --allow-unsafe-features`, `--export-pack` is an abbreviation of `--export-pack-edges`, so `--allow-unsafe-features` should be treated as its value, not as a separate option.
-
-### Key technical details
-
-- The API ignores abbreviations, which could misinterpret arguments
-- Proposed solution: stop the scan at the first unrecognized argument
-- Also suggested expanding test coverage for edge cases
-
-### ci: use cmp and align job-count selection
-**What changed**: Tamir Duberstein posted v3 of the CI/build system series, now using twice the CPU count for both GitHub and GitLab CI.
-
-**Why it matters**: This change provides a data-driven approach to parallel job selection, showing a 7% speedup on Linux and avoiding a 26% slowdown on macOS compared to the one-job-per-CPU policy.
-
-### Key technical details
-
-- Replaces GitHub's fixed `-j10` and GitLab's one-job-per-CPU policy
-- Uses native CPU-count queries: `nproc` (Linux), `sysctl -n hw.logicalcpu` (macOS), `NUMBER_OF_PROCESSORS` (Windows)
-- Benchmark data shows optimal trade-off between Linux speed and macOS stability
-
-### sparse-checkout regression: checkout clobbers untracked in-cone files
-**What changed**: Webstrand reported a regression in Git v2.27.0 where `git checkout` in a sparse-checkout working tree silently overwrites untracked files that lie within the sparse-checkout cone.
-
-**Why it matters**: This is a serious correctness issue that can silently destroy untracked work. The expected behavior is to preserve untracked content and abort with an error, but instead the checkout completes and overwrites the untracked file.
-
-### Key technical details
-
-- Regression introduced in commit 681c637b4a
-- Affects all versions from v2.27.0 through current master
-- Misleading warning message: "paths were already present and thus not updated"
-- The bug breaks the invariant that sparse checkouts should behave identically to non-sparse checkouts
-
-### stash: extend `pop` with custom conflict-label options
-**What changed**: Junio C Hamano questioned the fundamental motivation for exposing `--label-ours`, `--label-theirs`, and `--label-base` options in user-facing commands.
-
-**Why it matters**: This design discussion challenges whether these options should exist in user-facing commands at all. Junio traced their origin to internal machinery for `git checkout` and suggested they may have been added to `stash apply` only for debugging convenience.
-
-### Key technical details
-
-- Options allow customizing conflict markers when popping a stash
-- Junio suggests the options might be better removed from `stash apply` rather than extended to `pop`
-- No technical flaws in the implementation were raised
-
-### gitmergeconflicts(7): new man page for merge conflict resolution
-**What changed**: Junio C Hamano and Julia Evans discussed making commit information more accessible during conflict resolution and promoting `merge.conflictstyle=diff3` as a best practice.
-
-**Why it matters**: These discussions are elevating the guide from passive documentation to active tooling advice. Junio provided concrete examples of how commit information can aid resolution, while Julia's user feedback supports making `diff3` a best practice.
-
-### Key technical details
-
-- Junio suggested commands like `git show $commit` and `git diff ...$commit` to reveal intent behind changes
-- Julia is open to including commit messages but skeptical about commit IDs
-- Junio strongly advocated for making `diff3` the default conflict style
-- Julia's user feedback: "every time I show people diff3 someone tells me how happy they are"
+Taylor Blau posted [PATCH 0/4] fixing cruft-less MIDX corner cases whose objects are not closed under reachability, which can fail bitmap generation: extra roots for lone trees/tags in `--stdin-packs=follow`, forcing `midx_must_contain_cruft` on incremental repacks, and including cruft packs when `.keep` packs exist. Reviewers suggested an oidset for extra roots and flagged that `write_midx_incremental()` may share the gap.
 
 ## In brief
-- **rerere: fix race condition**: Patrick Steinhardt reviewed the second patch in Thomas Bachem's series, focusing on documentation clarity and flag naming for `--auto` mode.
-- **submodule merge: stale delta-base cache**: Philippe Blain bisected the regression to two commits, narrowing the root cause to the delta-base cache.
-- **ci: improve leak sanitizer failure reporting**: Phillip Wood reported that clickable links don't work in GitHub UI, creating a critical gap in the patch's functionality.
-- **gitbreaking-changes(7)**: Junio C Hamano proposed a hybrid URL+message-ID format to preserve raw message-IDs for future reference.
-- **gittutorial-2 removal**: Junio C Hamano expressed confusion about Julia Evans's stance on preserving the older `gittutorial`.
-- **xdiff: switch mmfile_t buffers**: Jeff King clarified that the bug fixed in follow-up patches predates the series and is unrelated to the `NULL` behavior.
-- **reftable: fix timezone handling**: Junio C Hamano endorsed explicit sign-flipping logic for readability in timezone conversion.
-- **git backfill --dry-run**: Derrick Stolee objected to the feature on conceptual grounds, arguing the uncompressed size estimate may not be useful.
-- **MIDX reachability closure**: Jeff King identified several edge cases that may remain unaddressed in the series.
-- **checkout -m: remember original conflict labels**: Johannes Sixt suggested using an index extension instead of `.git/MERGE_LABELS` to store conflict labels.
-- **refs/packed-backend: optimize rewrites**: Karthik Nayak posted a performance optimization patch for the packed-refs backend.
-- **revision: add @{p} shorthand**: Junio C Hamano queued the patch for integration, directing the author to strengthen the commit message.
+- Grant Moyer's fix for `git-filter-branch` inverting the commit map when populated from the state branch; Michele Locati supplied a direct regression test.
+- Kaartic Sivaraam reviewed Christian Couder's `early_scan_options()` series, flagging abbreviation handling and test questions.
+- Pablo Sabater's RFC adds `--dry-run` to `git backfill`; Derrick Stolee questioned the size metric and proposed `--info=(count|size)`. *Long thread: 12 replies so far from 4 participants over 1 day; 13 messages that day.*
+- Phillip Wood's series makes `git checkout -m` reuse original conflict labels via `.git/MERGE_LABELS`.
+- Patrick Steinhardt objected to Mark Chu-Carroll's ref-type filter flags for `git repo structure`, preferring revision-based filtering.
+- Harald Nordgren's patch makes `@{p}` short for `@{push}`; Junio C Hamano marked it queued.
+- Karthik Nayak's packed-refs change writes unchanged refs with `fwrite()`, about 20% faster on deletes.
