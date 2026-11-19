@@ -1,253 +1,61 @@
 # Git mailing list daily digest for 2026/09/23
 
+## Long threads
+
+### `git repo info` path keys (GSoC series)
+
+*Long thread (root 2026/07/16/01-21-31): 37 replies so far from 5 participants over 70 days; 3 messages that day.*
+
+K Jayatheerth's series adds path keys to `git repo info` in `builtin/repo.c`: `path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, and `path.grafts` each with absolute and relative suffixes, plus `path.git-prefix` and `path.cdup`. Today he worked through review feedback on v6: he agreed the `if (!index_file)` checks in the `path.index` getters are dead code because `repo_get_index_file()` already BUG()s when the repository is not ready, and will remove them; on `path.cdup` he located the `is_inside_work_tree` branch in `rev-parse` that makes `git rev-parse --show-cdup` print an absolute path when the working directory is outside the work tree, and said adding that logic in `repo.c` should fix the discrepancy; and he agreed to split the `get_superproject_working_tree()` fix from the new `path.superproject-root` keys as Junio C Hamano suggested, while objecting that `t1500-rev-parse.sh` is not a good test location because the bug affects `repo` as well.
+
+### sequencer leaves auto maintenance to the end of a sequence
+
+*Long thread (root 2026/09/04/07-53-44): 32 replies so far from 5 participants over 20 days; 1 message that day.*
+
+Thomas Bachem's series changes `sequencer.c` and the rebase/revert builtins so that auto maintenance runs once when a sequence completes rather than inside spawned commands: `disable_auto_maintenance()` appends `maintenance.auto=false` to `GIT_CONFIG_PARAMETERS` for spawned `git commit`, `git merge`, and exec commands, and `run_auto_maintenance()` is called from `builtin/rebase.c` and `builtin/revert.c` on success. v5 kept the code unchanged and only reworded commit messages and test comments. Today Phillip Wood reviewed the v5 test comments, said they make the tests easier to understand, and stated the series "looks ready for next to me".
+
+### `http.sslVerifyStatus` for stapled OCSP responses
+
+*Long thread (root 2026/08/11/17-02-00): 26 replies so far from 5 participants over 44 days; 4 messages that day.*
+
+Grayson Gordon's patch adds an `http.sslVerifyStatus` boolean mapping to `CURLOPT_SSL_VERIFYSTATUS` so git validates stapled OCSP responses, defaulting to false because enabling it blocks connections to servers that send no stapled response. v7 combined the test approaches, keeping setup-free cases in `t5551` and responder-based cases in the new `t5585`. Today Patrick Steinhardt reviewed v7 and said he is happy with it apart from two commit-message paragraphs he finds excessive. SZEDER Gábor then reported that after the patch was merged to `next`, the last `t5585` test fails on his system (libcurl 7.81.0, Apache 2.4.52) with "server certificate verification failed", and questioned the `SSL_VERIFYSTATUS` prereq being satisfied by unrelated `git ls-remote` failures. Junio C Hamano reverted the topic out of `next` to give it time to mature before a reroll, and welcomed SZEDER's suggestion of a positive prereq check.
+
+### regression fix for amending committed rebase conflicts
+
+*Long thread (root 2026/09/23/13-16-43): 10 replies so far from 4 participants over 1 day; 11 messages that day.*
+
+Patrick Steinhardt posted a regression fix for `builtin/rebase`: after 6257588252 made `git-commit` refuse `--amend` at a conflicted rebase stop, the refusal persisted even after the user committed the resolved conflict; his patch also requires `MERGE_MSG` in `sequencer_ongoing_operation()` and adds a test in `t/t3404-rebase-interactive.sh`. Phillip Wood reviewed it, agreed `MERGE_MSG` is probably the best available proxy, but asked whether cherry-pick, merge, and revert have the same problem. Elijah Newren warned that `MERGE_MSG` is unreliable because `git reset` removes it without moving HEAD, and proposed reverting the series for 2.56 or recording HEAD in `rebase-merge/stopped-head`. Junio C Hamano judged that restricting plain `git commit` would be post-3.0 work and preferred a clean revert over adopting the mechanism at -rc2; Patrick Steinhardt defended the direct-commit workflow and agreed reverting is the safest change for now.
+
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. A regression in `git commit --amend` during interactive rebase was slated for a full revert in Git 2.56-rc2, with broader architectural questions deferred. The `http.sslVerifyStatus` feature was reverted from `next` due to test infrastructure issues, while a new `parse-options` sub-API for early argument scanning advanced with a v2 redesign. Performance optimizations for `git ls-files` using the untracked cache were proposed, and several bugfixes—including one for submodule merges with stale delta-base caches—were reported and discussed.
+The `http.sslVerifyStatus` topic was reverted out of `next` after SZEDER Gábor reported a failing OCSP test on his system, and the rebase `--amend` regression sparked a debate in which Junio C Hamano and others leaned toward a clean revert of 6257588252 for Git 2.56. Phillip Wood called Thomas Bachem's sequencer auto-maintenance series ready for `next`.
 
 ## Notable threads
 
-### Regression in `git commit --amend` during interactive rebase
-**What changed**: A regression introduced in Git 2.56-rc0 (commit 6257588252) that prevents `git commit --amend` during interactive rebase conflict resolution will be fully reverted for the 2.56 release cycle. The revert was agreed upon by Junio C Hamano, Elijah Newren, and Patrick Steinhardt after identifying a race condition in the proposed fix and broader architectural concerns about sequencer-based commands.
+### `ls-files` reuse of the untracked cache
+Tamir Duberstein's series lets `git ls-files` reuse the untracked cache that `git status` populates. He posted a v1 two-patch series with benchmarks showing a synthetic 100,000-file wildcard query dropping from 361 ms to 50 ms with a warm cache, retracted it as "operator error", then posted a revised v2 in three patches: fixing inconsistent ignore-file hashes, sharing the cache between `-unormal` and `-uall` via a new `dir_flags` value, and making `ls-files` write pending untracked cache and fsmonitor updates back to the index unless `--no-optional-locks` is given; updated benchmarks show the wildcard query at 33.3 ms.
 
-**Problem**: The original commit aimed to prevent users from accidentally amending the wrong commit during conflict resolution but overreached, blocking legitimate amendments to newly created commits. Elijah Newren identified a critical flaw in the proposed fix: using `MERGE_MSG` as a proxy for conflict state is vulnerable to a race condition with `git reset`, which removes `MERGE_MSG` without advancing `HEAD`.
+### avoiding full fetches of new remotes in shallow repos
+Harald Nordgren posted v2 of a patch making `git remote add` in an already-shallow repository use a special `+:` fetch refspec that fetches the branches local branches are built on plus the remote's default branch, instead of the wildcard refspec that makes plain `git fetch` unusably slow. Earlier in the day Phillip Wood, Junio C Hamano, and D. Ben Knoble discussed alternatives such as refusing remotes without `--track`, priming with `fetch = :`, or a `remote.<name>.refmap` configuration; Junio rejected the `+:` syntax as giving no clue that remote-tracking branches belong under `refs/remotes/<name>/` and said the patch should be split into bite-sized commits.
 
-**Impact**: The revert restores the pre-2.56 behavior, allowing users to amend commits during interactive rebase. The broader architectural question—whether plain `git commit` should be rejected during conflict resolution for sequencer-based commands—is deferred until after Git 2.56. A future direction was clarified: extend `git commit` to consume a new pseudoref (`REBASE_HEAD`), analogous to `CHERRY_PICK_HEAD`, to preserve authorship information during interactive rebase.
+### submodule merge reads a commit from the wrong repository
+Guillaume CHAUVEL reported that during a merge of a superproject with submodules, Git v2.56.0-rc2 sometimes tries to read from submodule A a commit that exists only in submodule B, producing "error: failed to merge submodule A (repository corrupt)" instead of a submodule conflict. His reproducer triggered the bug in all 50 Ubuntu 26.04 runs and 43 of 50 Alpine runs, and an AI analysis identified a likely cause: a stale delta-base cache entry surviving its pack's closure, where a pack from another submodule reusing the same `packed_git` address and base offset could return cached data from the wrong repository.
 
-**Files touched**: `sequencer.c`, `t/t3404-rebase-interactive.sh` (tests).
+### stash index merge moved in-core
+D. Ben Knoble posted v2 of a four-patch series fixing a bug reported by Eli Barzilay in the interaction between autostashing, staged index entries, and `stash.index=true`. Patch 4/4 replaces the file-system-based index merge (subprocesses `git-diff-tree`, `git-apply`, `git-reset`) with an in-core merge using `merge_incore_nonrecursive` and branch labels, which fixes the autostash bug where `git reset` attempted to lock a deleted `MERGE_AUTOSTASH` ref. v2 also gives the incore merge branch labels (without which merge-ort segfaults on conflicts), adds a test for conflicted index merges, and adds a `t7600` test for fast-forward merge with `--autostash`.
 
-**Status**: Revert planned for Git 2.56-rc2.
-
----
-
-### `http.sslVerifyStatus` reverted from `next`
-**What changed**: The `http.sslVerifyStatus` feature, which enables OCSP staple validation for HTTPS connections, was reverted from the `next` branch due to test infrastructure issues reported by SZEDER Gábor. The core functionality remains intact in `master`.
-
-**Problem**: The new `t5585-http-ssl-ocsp.sh` test fails on Gábor’s system due to two issues: (1) the `SSL_VERIFYSTATUS` prerequisite check is too permissive, passing when `git ls-remote` fails for unrelated reasons, and (2) the test’s expectation that a revoked certificate is accepted without `http.sslVerifyStatus` is invalid on systems where libcurl (7.81.0) checks CRLs by default.
-
-**Impact**: The revert is procedural and does not reflect a rejection of the feature. The test suite must be fixed before the feature can graduate to the next release cycle. Gábor also noted two minor code-quality nits in the test script: the test should check the exact error message, and the `with_ssl_verification` helper should use `export` for portability.
-
-**Files touched**: Test infrastructure (`t5585-http-ssl-ocsp.sh`, `t/lib-httpd.sh`).
-
-**Status**: Reverted from `next`; awaiting test suite fixes.
-
----
-
-### New `parse-options` sub-API for early argument scanning
-**What changed**: Christian Couder posted v2 of a series introducing a new `parse-options` sub-API (`early_scan_options()`) to replace fragile hand-rolled early argument scans in Git commands. The v2 redesign addresses Junio C Hamano’s v1 feedback by reusing `struct option` instead of introducing a separate `early_scan_option` structure and focusing on the `git fast-import` bugfix.
-
-**Problem**: The series targets a real bug in `git fast-import` where `--allow-unsafe-features` is silently ignored when preceded by `--depth 5`. The new API is deliberately limited—ignoring short options, negated forms, abbreviations, and subcommands—to prioritize simplicity and speed over completeness.
-
-**Impact**: The v2 series is more aligned with `parse-options` and reduces duplication. Junio raised a substantive usability concern: the API’s requirement for callers to handle argument skipping (`--option value`) could lead to duplication or inconsistencies. The series is now more likely to proceed to `next` once this question is resolved.
-
-**Files touched**: `parse-options.h`, `parse-options.c`, `builtin/fetch.c`, `t/t0040-parse-options.sh`, `t/t9300-fast-import.sh`.
-
-**Status**: Under review; v2 posted.
-
----
-
-### Performance optimization for `git ls-files` using untracked cache
-**What changed**: Tamir Duberstein posted v2 of a three-patch series that teaches `git ls-files` to reuse and update the untracked cache populated by `git status`. The series expands on the original goal of reducing directory traversal overhead in repeated queries.
-
-**Problem**: The series fixes a long-standing inconsistency in ignore-file hash computation (patch 1), enables cache sharing between `git status -unormal` and `git status -uall` (patch 2), and implements cache reuse in `git ls-files` with optional index writes (patch 3).
-
-**Impact**: Benchmarks show dramatic improvements: on a synthetic tree with 100,000 files, a wildcard query (`**/pyproject.toml`) now runs in 33 ms (down from 241 ms upstream). The series also benefits from fsmonitor integration, with similar speedups observed when fsmonitor is enabled.
-
-**Files touched**: `dir.c`, `builtin/ls-files.c`, `t/perf/p3010-ls-files.sh`, `t/t7063-status-untracked-cache.sh`.
-
-**Status**: Under review; v2 posted.
-
----
-
-### Submodule merge: stale delta-base cache causes corruption
-**What changed**: Guillaume Chauvel reported a bug where merging a superproject containing two submodules (A and B) causes Git to attempt to read a commit that exists only in submodule B from submodule A. The merge either fails with "repository corrupt" or misreads the commit due to stale delta-base cache data.
-
-**Problem**: The root cause is a stale cache entry: when a pack is closed, its cached data may linger, and if another submodule’s pack reuses the same memory address and base offset, Git returns incorrect cached data rather than the correct object.
-
-**Impact**: This is a serious bug that can affect users merging superprojects with divergent submodule histories. The author provided a clear, self-contained reproducer that reliably triggers the issue in 93 out of 100 runs across two container environments.
-
-**Files likely touched**: `packfile.c`, `sha1-file.c` (cache invalidation logic).
-
-**Status**: Bug report with reproducer; no patch yet.
-
----
-
-### `git reflog expire` regression fix
-**What changed**: Pushkar Singh posted v2 of a patch fixing a regression in Git 2.50 where the default expiry times for reachable and unreachable reflog entries were swapped. The patch restores the documented behavior: reachable entries expire after 90 days, and unreachable entries after 30 days.
-
-**Problem**: The regression was introduced by commit `85658275702b`, which reversed the order of `.default_expire_total` and `.default_expire_unreachable` in `reflog.h`.
-
-**Impact**: The fix is uncontroversial and narrowly targeted, touching only the misordered defaults in `REFLOG_EXPIRE_OPTIONS_INIT()`. The v2 update addresses Junio’s test-structure concern by consolidating all test cases into a single repository.
-
-**Files touched**: `reflog.h`, `t/t1410-reflog.sh`.
-
-**Status**: Under review; v2 posted.
-
----
-
-### `git stash` autostash fix for staged index entries
-**What changed**: D. Ben Knoble posted v2 of a four-patch series fixing a bug in `git stash` where autostashing fails to correctly handle staged index entries when `stash.index=true` is set. The series replaces subprocess-based index merging with in-core logic via `merge-ort.c`.
-
-**Problem**: The bug manifests during merge operations that trigger autostash, causing incorrect index state preservation due to a race condition in the subprocess-based logic (`git diff-tree` and `git apply`).
-
-**Impact**: The fix eliminates the race condition and simplifies the code. The series is well-structured, with clear precursors (cleanup and refactoring) leading to the functional fix.
-
-**Files touched**: `builtin/stash.c`, `merge-ort.c`, `t/t3900-stash.sh`, `t/t3903-stash.sh`.
-
-**Status**: Under review; v2 posted.
-
----
-
-### `git-p4` shell injection vulnerability
-**What changed**: Anupam Mediratta posted a patch fixing a shell injection vulnerability in `git-p4.py`’s `applyCommit()` function. Junio C Hamano identified a regression in the patch: the new `diffTreeApply()` helper ignores the exit status of the diff-apply pipeline, whereas the original code raised an exception on failure via `p4_system()`.
-
-**Problem**: When a user supplies a commit ID via the `--commit` option, the value is interpolated into a shell pipeline without validation, allowing an attacker to craft a commit ID containing shell metacharacters (e.g., `$(touch evil)`) that will be executed during command substitution.
-
-**Impact**: The patch must be revised to restore the original error-handling semantics while preserving the shell injection mitigation.
-
-**Files touched**: `git-p4.py`.
-
-**Status**: Under review; awaiting revision.
-
----
-
-### Documentation cross-reference modernization
-**What changed**: Julia Evans posted a patch replacing informal plain-text section references (e.g., "see EXAMPLES below") with AsciiDoc link syntax (`<<target,text>>`) across 38 man pages. The patch was approved by Junio C Hamano and queued for integration in `next`.
-
-**Problem**: The goal is to make HTML-rendered man pages more navigable by ensuring all cross-references are clickable, especially when the target section is in an included file.
-
-**Impact**: The patch uses manual anchors (e.g., `[[EDITING_PATCHES]]`) to preserve existing HTML fragment identifiers, avoiding broken external links. Jeff King (Peff) raised a design trade-off: auto-generated anchors (e.g., `_editing_patches`) would align with AsciiDoc toolchain conventions but break external links.
-
-**Files touched**: 38 files in `Documentation/`.
-
-**Status**: Approved and queued for `next`.
-
----
-
-### CI: Debian 12 HTTP/2 authentication workaround
-**What changed**: Johannes Schindelin posted a patch to skip flaky `t5559.15` and `t5559.16` tests in the Debian 12 CI job due to an HTTP/2 authentication failure in curl 7.88.1. Jeff King (Peff) proposed two refinements: (1) a runtime prereq (`HAVE_CURL_HTTP2_BUG`) that detects curl 7.88.1 and skips the affected tests, and (2) a version-range-aware prereq that skips the tests for any curl version between 7.88.1 and 8.3.0 (exclusive).
-
-**Problem**: The original patch is CI-only and hard-codes test numbers, which could silently break if new tests are added earlier in the script. Peff’s alternatives work both in CI and locally and avoid hard-coded test numbers.
-
-**Impact**: The discussion remains focused on which implementation strategy best balances robustness and simplicity. Junio C Hamano critiqued the commit message wording of the version-range approach, calling the "conservative" label misleading.
-
-**Files touched**: `ci/lib.sh` (original patch), `t/t5551-http-fetch-smart.sh` (Peff’s alternatives).
-
-**Status**: Under discussion; no consensus yet.
-
----
-
-### `git worktree repair` completion support
-**What changed**: Yoichi NAKAYAMA posted a patch adding shell completion support for the `git worktree repair` subcommand. The patch was approved by Patrick Steinhardt and is ready for integration.
-
-**Problem**: The completion scripts did not complete the `repair` subcommand for `git-worktree(1)`.
-
-**Impact**: The patch extends the existing path-completion pattern to cover `repair` alongside other `git worktree` subcommands.
-
-**Files touched**: `contrib/completion/git-completion.bash`.
-
-**Status**: Approved and ready for integration.
-
----
-
-### `git imap-send` OpenSSL compatibility and correctness fixes
-**What changed**: Beat Bolli posted a three-patch series fixing correctness and forward-compatibility issues in `git imap-send`’s TLS certificate verification logic. Junio C Hamano identified a memory-safety bug in patch 2, and Patrick Steinhardt proposed an alternative fix using length-bounded string operations.
-
-**Problem**: The series addresses three issues: (1) replacing a deprecated OpenSSL 4.1 ASN1_STRING function, (2) fixing a latent bug where the code incorrectly assumed ASN1_STRINGs are NUL-terminated, and (3) aligning certificate validation with RFC 6125.
-
-**Impact**: The series is under review, with unresolved technical concerns including the memory-safety bug in patch 2 and incomplete RFC 6125 compliance in patch 3.
-
-**Files touched**: `imap-send.c`.
-
-**Status**: Under review; awaiting revision.
-
----
-
-### `reference-transaction` hook for branch rename/copy
-**What changed**: Maciej Ciemborowicz posted v2 of a patch fixing the `reference-transaction` hook to report both deletion and creation events during branch rename (`git branch -m`) or copy (`git branch -c`). The v2 redesign confines copy/rename state to per-ref-update data, preserving transaction genericity and enabling multi-ref operations.
-
-**Problem**: The hook currently only receives the deletion of the old branch name, not the creation of the new one, breaking tools that rely on the hook to monitor ref changes.
-
-**Impact**: The patch is well-motivated and addresses a real pain point for tools like Gerrit and GitLab. The v2 redesign is clean and scalable.
-
-**Files touched**: `refs.c`, `t/t1416-ref-transaction-hooks.sh`.
-
-**Status**: Under review; v2 posted.
-
----
-
-### `reference-transaction` hook regression fix
-**What changed**: Maciej Ciemborowicz posted v5 of a three-patch series fixing a regression where the `reference-transaction` hook receives all-zero object IDs when branches or tags are deleted via high-level commands (`git branch -d`, `git tag -d`, `git remote prune`, `git fetch --prune`). The series was merged to `next`.
-
-**Problem**: The regression was introduced in Git 2.31 and affects both the files and reftable backends. The series restores the pre-2.31 behavior, where the hook receives the resolved old OID followed by all-zeros.
-
-**Impact**: The fix is low-risk and high-impact, addressing a regression that has persisted since Git 2.31. The series includes comprehensive test coverage for SHA-1/SHA-256, broken/symbolic refs, atomic fetch pruning, and concurrent updates.
-
-**Files touched**: `refs.c`, `builtin/fetch.c`, `builtin/remote.c`, `t/t1416-ref-transaction-hooks.sh`.
-
-**Status**: Merged to `next`.
-
----
-
-### `git rev-parse` shallow history advice
-**What changed**: Harald Nordgren posted v3 of a patch adding advice for shallow history in `<rev>~N` and `<rev>^N` syntax. The v3 patch narrows scope to the failing-syntax case, dropping the flawed `git log` integration for silent truncation.
-
-**Problem**: When a user in a shallow clone attempts to access an ancestor not present locally, Git emits a generic "is not a commit" error with no indication that the operation was limited by the shallow boundary.
-
-**Impact**: The new advice (`advice.shallowHistory`) explains the shallow boundary, why the operation failed, and suggests the exact `git fetch --deepen=<n>` command needed to resolve it. The suggested `--deepen` value is context-aware: for `<rev>~N`, it accounts for history already present; for `<rev>^N`, it always suggests `--deepen=1`.
-
-**Files touched**: `advice.c`, `advice.h`, `object-name.c`, `shallow.c`, `shallow.h`, `Documentation/config/advice.adoc`, `t/t1500-rev-parse.sh`.
-
-**Status**: Under review; v3 posted.
-
----
-
-### CI: GitHub Actions resource exhaustion fixes
-**What changed**: Tamir Duberstein posted a two-patch series addressing resource exhaustion in GitHub Actions CI jobs. The series targets two issues: (1) `t4205-log-pretty-formats.sh` generates enormous output that triggers OOM kills when `diff` compares it, and (2) default `make` and `prove` parallelism (`-j10`) is too aggressive for the Linux runner’s 2 CPU cores, causing ENOSPC errors during large clone/repack tests.
-
-**Problem**: The fixes are minimal and pragmatic: (1) replace `test_cmp` with `test_cmp_bin` and delete the large temporary files immediately after comparison, and (2) dynamically set `-j` to the runner’s CPU count.
-
-**Impact**: The series keeps the long-running test cases enabled rather than disabling them, which is a pragmatic choice for CI reliability.
-
-**Files touched**: `.github/workflows/main.yml`, `t/t4205-log-pretty-formats.sh`, `ci/lib.sh`.
-
-**Status**: Under review; v1 posted.
-
----
-
-### `git config` boolean parsing fix
-**What changed**: Colin Hinton posted a patch fixing a bug in `git config` where boolean settings without a value (e.g., `git config --bool core.foo`) would incorrectly return `true` instead of an error. The patch defers the `die(...)` call to the lazy-validation point and addresses the remote-side parser in the same patch.
-
-**Problem**: The current behavior is inconsistent with the documentation, which states that boolean settings must have a value.
-
-**Impact**: The fix ensures that valueless boolean settings are rejected, aligning behavior with documentation.
-
-**Files touched**: `config.c`.
-
-**Status**: Under review; awaiting revision.
-
----
-
-### "Safe" `strbuf` API RFC
-**What changed**: Derrick Stolee posted an RFC series introducing a subset of the `strbuf` API that cannot transitively call `die()` or `exit()`. The series is motivated by the trace2 subsystem, which requires crash-free operation even under memory pressure.
-
-**Problem**: The current `strbuf` API dies on allocation failures, which is incompatible with critical code paths like trace2. The RFC proposes a "safe" API that returns errors instead of dying.
-
-**Impact**: Jeff King (Peff) critiqued the "safe" framing as misleading and overly broad, noting that the API would still not be safe for signal handlers. He proposed an alternative: fixed-size, stack-allocated `strbuf`-like buffers that avoid `malloc()` entirely.
-
-**Files touched**: `strbuf-safe.h`, `strbuf-safe.c`, `strbuf.h`, `strbuf.c`, `wrapper.h`, `wrapper.c`, `json-writer.c`, `tr2_tgt_event.c`, `tr2_tgt_perf.c`.
-
-**Status**: Under discussion; RFC stage.
-
----
+### reflog default expiry periods fix
+Pushkar Singh reposted v2 of a fix for the swapped default reflog expiry periods in `REFLOG_EXPIRE_OPTIONS_INIT()`, so reachable entries expire after 90 days and unreachable entries after 30 days, with an expanded regression test in `t/t1410-reflog.sh` covering both cases. Patrick Steinhardt acknowledged the fix ("Oops, indeed. Thanks for finding this issue and fixing it!"), and Junio C Hamano reviewed v2, praising the commit message but questioning why the reachable cases use separate repository blocks while the unreachable cases share one.
 
 ## In brief
-- **[PATCH] compat/winansi: fix die_lasterr() formatting bug**: Yongqiang Tian’s patch fixing a long-standing formatting bug in `compat/winansi.c` was acked by Johannes Sixt and is ready for integration.
-- **[PATCH] completion: add support for `git worktree repair`**: Yoichi NAKAYAMA’s patch adding shell completion support for `git worktree repair` was approved by Patrick Steinhardt and is ready for integration.
-- **[PATCH 0/6] parse-options: new sub-API for early argument scanning**: Christian Couder’s v2 series introducing a new `parse-options` sub-API for early argument scanning is under review, with a substantive usability concern raised by Junio C Hamano.
-- **[PATCH 0/4] sequencer: defer auto maintenance until rebase completion**: Thomas Bachem’s series deferring auto maintenance until rebase completion was approved by Phillip Wood and is ready for `next`.
-- **[PATCH 0/3] imap-send: OpenSSL compatibility and correctness fixes**: Beat Bolli’s series fixing correctness and forward-compatibility issues in `git imap-send` is under review, with unresolved technical concerns.
-- **[PATCH 0/2] ci: reduce resource exhaustion in GitHub Actions**: Tamir Duberstein’s series addressing resource exhaustion in GitHub Actions CI jobs is under review.
-- **[PATCH] git-p4: prevent shell injection from user-supplied commit ID**: Anupam Mediratta’s patch fixing a shell injection vulnerability in `git-p4.py` is under review, with a regression identified by Junio C Hamano.
-- **[PATCH] Documentation: remove unnecessary comma in `git-rm` man page**: parovozik’s patch removing an unnecessary comma in the `git-rm` man page is under review, with feedback from Junio C Hamano.
-- **[PATCH 0/6] repack: fix concurrent-push race leading to data loss**: qeesung’s v3 series fixing a race condition in `git repack -d` is under review, with patch 2/5 acked by Junio C Hamano.
-- **[PATCH 0/2] fetch: introduce `+:` refspec for matching-inspired fetch mode**: Harald Nordgren’s series introducing a matching-inspired fetch mode for shallow repositories is under design refinement, with Junio C Hamano proposing a `remote.X.refmap` configuration instead of the `+:` refspec.
-- **[PATCH] fetch: HTTP Basic Authentication with empty username**: Xavier Morel reported a bug where Git fails to include the Basic Auth header in follow-up requests when the credential helper supplies an empty username with a non-empty password.
+- Qin ShiCheng and Junio C Hamano discussed the layering of the kept-pack cache reset in the repack/pack-objects series; Qin proposed a `repo_invalidate_kept_pack_caches()` in `packfile.c` for v3, and both agreed the current downcast is not safe in the long term.
+- Justin Tobler posted v2 of the object-file packfile flush fix, adapting the commit message and switching the test to a subshell per Patrick Steinhardt's review.
+- Maciej Ciemborowicz posted v2 routing reference copy and rename through the transaction API so the reference-transaction hook observes the logical updates and concurrent changes are rejected.
+- Christian Couder posted v2 of the early option scanning series, now using the command's own `struct option` array with a `PARSE_OPT_EARLY` flag, and converting `git fast-import`'s `--allow-unsafe-features` scan.
+- Xavier Morel reported that git sends no basic auth on the second request when a credential helper returns an empty username with a non-empty password, because `init_curl_http_auth` exits early unless proactive auth is enabled.
+- Maciej Ciemborowicz posted v5 of the refs old-OID reporting series for batched deletions, fixing the broken intermediate commits; Junio C Hamano confirmed all three patches build.
+- Patrick Steinhardt endorsed the commit-reach patch that passes the repository explicitly into `can_all_from_reach()`, fixing the superproject/submodule commit-graph merge failure.
+- Junio C Hamano noted that the git-p4 shell-metacharacter fix ignores the exit status of the diff|apply pipeline, unlike the original `system()` call.
+- Jeff King objected to the "safe" naming for the proposed strbuf API, arguing it implies the normal API is unsafe and still would not be signal-handler safe.
+- Harald Nordgren posted v3 of the shallow-clone `<rev>~N` hint patch, fixing a bug where chained `^` resolution past a shallow boundary printed the hint twice.
+- Jeff King explained that the two-part AsciiDoc xref form controls the expanded link text across implementations, and warned that explicit anchors change user-visible HTML fragment URLs.
+- Jeff King and Junio C Hamano debated working around Debian 12's curl 7.88.1 HTTP/2 authentication failures in CI, with Jeff proposing a version-based test prereq instead of a CI-job-name skip.
