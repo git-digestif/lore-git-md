@@ -1,96 +1,63 @@
 # Git mailing list daily digest for 2026/08/21
 
+## Long threads
+
+### Pluggable packfile writes for `git-receive-pack(1)`
+
+*Long thread (root 2026/08/06/21-38-53): 35 replies so far from 3 participants over 16 days; 2 messages that day.*
+
+This series in `builtin/receive-pack.c` and `odb/transaction.c` introduces a generic `odb_transaction_write_pack()` transaction interface for writing incoming packfiles, with the existing logic that spawns `git-index-pack(1)` and `git-unpack-objects(1)` becoming the "files" backend implementation. Patrick Steinhardt said he is happy with the v5 series. Junio C Hamano observed that reading `receive.unpackLimit` and `transfer.unpackLimit` in generic object-layer code feels like a layering violation, explained that the decision whether to unpack or index is inherently up to the file backend, and attributed the current `*.unpackLimit` names to a historical wart, suggesting `odb-file.unpackLimit` would have been more accurate today.
+
+### Pluggable packfile generation in the object database
+
+*Long thread (root 2026/08/07/10-45-06): 31 replies so far from 6 participants over 15 days; 8 messages that day.*
+
+Patrick Steinhardt's series makes packfile generation pluggable in the ODB so the transport layer can generate packfiles through a generic interface rather than only via the "files" backend, hoisting the machinery shared by upload-pack, send-pack, and bundle. He posted v4, whose changelog lists an improved error message and a small stylistic fix. Elijah Newren reviewed the cover letter, said he likes the design, and confirmed the 1/6 fix addresses the use-after-scope bug he raised on v2. Patrick Steinhardt answered Junio C Hamano's question that `opts->pack_fd` is consumed by the generator and that a primary source lacking the `generate_pack` callback would die, since the callback is non-optional. Karthik Nayak reviewed v4 and stated "Everything looks good now. Thanks!"
+
+### Eagerly loading ODB alternates
+
+*Long thread (root 2026/08/10/13-33-27): 31 replies so far from 5 participants over 12 days; 2 messages that day.*
+
+This series in the object database code loads alternates eagerly at ODB initialization instead of lazily on first access, removing scattered `odb_prepare_alternates()` calls, and decouples source path comparisons from `the_repository`. Patrick Steinhardt argued the alternate-deduplication mechanism is imperfect but has worked in practice for roughly twenty years with no reported problems, confirmed both alternate sources go through `parse_alternates()`, which makes paths absolute via `realpath()` without producing a canonical representation, and declined to declare that repositories cannot span filesystems with different case sensitivities. He confirmed `o->repo` is fully initialized when the ODB is set up. Junio C Hamano agreed the hashing mechanism should stay and proposed a best-effort case-insensitive match when the platform hints at a case-insensitive filesystem, concluding the code can stay as-is since inconsistent path casing would merely cause a redundant extra search of a duplicate alternate.
+
+### New path keys for `git repo info`
+
+*Long thread (root 2026/07/16/01-21-31): 25 replies so far from 4 participants over 37 days; 1 message that day.*
+
+K Jayatheerth's GSoC series adds path keys to `git repo info` in `builtin/repo.c`, including `path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.grafts`, and `path.git-prefix`, each with absolute and relative format suffixes. K Jayatheerth agreed that `path.git-prefix` is repository information complementing `cdup`, and committed to adding `cdup` in the next version.
+
+### Ambiguous remote branch message for `worktree add`
+
+*Long thread (root 2026/08/08/08-21-41): 24 replies so far from 6 participants over 14 days; 3 messages that day.*
+
+Yoichi Nakayama's series improves the error and advice shown by `git worktree add` and `git checkout` when a branch name matches multiple remote tracking branches, listing the matched remotes via a shared `advise_disambiguating_remotes()` function. Junio C Hamano flagged a subject-verb agreement error in the new advice message and asked whether the one-argument `git worktree add` path should be disambiguated the same way. Yoichi Nakayama acknowledged the grammar issue, proposed rewording the advice to "Branch name '%s' appears in multiple remotes:", and explained that with `worktree.guessRemote` a multiple match still lets the command succeed by creating the branch from HEAD, so he does not think a warning is necessary there. Junio C Hamano accepted the current behavior as not regressing anything.
+
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. A long-standing URL-as-trailer bugfix was finalized for merging, while the ODB abstraction effort continued with new patches for pluggable packfile generation. Performance optimizations for shallow clones and parallel packfile downloads were proposed, and several documentation improvements were made. The day also featured substantive reviews of new features like the `report` hook for `git receive-pack` and ongoing work on worktree repair functionality.
+Patrick Steinhardt declared himself happy with v5 of the pluggable packfile-writes series for `git-receive-pack(1)`, while Karthik Nayak gave v4 of the pluggable packfile-generation series a final "Everything looks good now." A new two-patch series adds parallel fetching of packfile URIs with a `fetch.packfileURIThreads` option, and the trailers patch that stops recognizing URLs as trailers was marked for `next`.
 
 ## Notable threads
 
-### URL-as-trailer bugfix finalized
-**What changed:** The URL-as-trailer bugfix, which prevents Git from incorrectly interpreting URLs in commit messages as trailers, has been finalized for merging.
+### Trailers stop recognizing URLs as trailers
 
-**Problem/goal:** The patch addresses a bug where URLs containing `://` were incorrectly parsed as trailers, affecting both `--only-trailers` and `%(trailers:only)` formatting.
+Kristoffer Haugsbakk's patch to `trailer.c` makes trailer parsing fail when a separator is followed by `://` before any whitespace, so HTTPS URLs at the end of commit messages are no longer mistaken for trailers. He posted v3, whose only change from v2 is adding "Acked-by: Jeff King" to the commit message after Jeff King said v2 looked great. Junio C Hamano confirmed the v3 change is the only one and marked the topic for `next`.
 
-**Subsystems affected:** Trailer parsing in `trailer.c`, documentation, and unit tests.
+### Parallelizing packfile URI fetches in `fetch-pack`
+Patrick Steinhardt submitted a two-patch series preparing `git-fetch(1)` and `git-clone(1)` to fetch packfile URIs in parallel, refactoring the logic in `fetch-pack.c` into preparation, fetch, and aggregation phases and adding the `fetch.packfileURIThreads` configuration option, which defaults to 1 (sequential) but supports 0 (auto-detect CPUs) or larger values. Benchmarks in the second patch show speedups of up to 7.58x on a throttled 2MB/s connection and 5.35x on an unthrottled connection when the server announces multiple packfiles.
 
-**Technical impact:** The fix modifies `find_separator()` to reject lines containing `://` after a colon separator, preserving legitimate trailers while excluding URLs. The solution is minimal and well-tested, with comprehensive coverage for three real-world scenarios.
+### Worktree repair detects relative paths in `.git` files
+Yoichi Nakayama's patch fixes `git worktree repair` so that relative paths recorded in a worktree's `.git` file are detected correctly, introducing `read_gitfile_raw()` which returns the path as-is without resolving it, unlike `read_gitfile_gently()`. He posted v3 adopting the `read_gitfile_raw(struct strbuf *contents, const char *path)` signature Junio C Hamano had proposed, with `read_gitfile_gently()` refactored to call it. Junio C Hamano initially questioned whether the split dropped needed relative-path resolution and `is_git_directory()` checks for the worktree caller, then retracted half of that objection, concluding the `setup.c` change is fine as is.
 
-**Today's developments:**
-- [2026/08/21/00-42-48] Jeff King confirmed that version 2 of the patch looks correct and ready for integration
-- [2026/08/21/05-28-02] Kristoffer Haugsbakk noted a typo correction in the v3 email
-- [2026/08/21/15-55-07] Junio C Hamano marked the final version for the `next` branch
+### Avoiding whole-tree pushes from shallow clones in `send-pack`
+Elijah Newren submitted a patch adding reachable shallow grafts as negative pack tips so that pushing from a shallow clone no longer sends the entire toplevel tree, controlled by a new `push.shallowExcludeBoundary` config (default true) with an opt-out for `receive.shallowUpdate` receivers. Patrick Steinhardt reviewed it, questioning whether amending a shallow graft could send insufficient information and whether tree-level negotiation could verify the grafted tree, and Elijah Newren replied that amending a shallow graft creates a new root commit, that tree negotiation would arrive too late without `push.negotiate`, and that the manual walk is required to stop at peer-known commits and detect graft boundaries.
 
-### ODB abstraction: Pluggable packfile generation
-**What changed:** Patrick Steinhardt posted v4 of the series making packfile generation pluggable via Git's object database (ODB) layer.
-
-**Problem/goal:** The series aims to decouple Git's transport layer from the "files" ODB backend by introducing a pluggable interface for packfile generation.
-
-**Subsystems affected:** ODB layer, transport commands (`upload-pack`, `send-pack`, `bundle`).
-
-**Technical impact:** The patch introduces a new ODB interface (`odb_generate_pack()`) that allows transport commands to delegate packfile generation to the ODB layer without hardcoding the "files" backend. This enables future alternative ODB backends to handle incoming packfiles.
-
-**Today's developments:**
-- [2026/08/21/06-30-00] Patrick posted v4 addressing feedback: improved error message in `upload-pack.c` and fixed a style nit in `builtin/bundle.c`
-- [2026/08/21/04-41-03] Elijah Newren revealed that a use-after-scope bug was surfaced via AI-assisted review
-- [2026/08/21/06-28-46] Clarified the file descriptor lifecycle contract for the new interface
-- [2026/08/21/07-46-23] Patrick reaffirmed preference for handling the `get_log_output_encoding()` dependency
-
-### Performance optimization for shallow clones
-**What changed:** Elijah Newren proposed a performance optimization for `git push` from shallow clones.
-
-**Problem/goal:** The patch addresses an inefficiency where `git push` from shallow clones resends the entire toplevel tree even for tiny changes.
-
-**Subsystems affected:** `send-pack.c`, shallow clone handling.
-
-**Technical impact:** The patch introduces a new config option, `push.shallowExcludeBoundary`, which instructs `send-pack` to treat shallow grafts as uninteresting tips during pack generation, avoiding redundant transfers.
-
-**Today's developments:**
-- [2026/08/21/06-55-51] Elijah posted the patch with detailed benchmarks showing 5.35x-7.58x speedups
-- [2026/08/21/13-17-32] Patrick Steinhardt raised questions about graft modification safety and negotiation scope
-- [2026/08/21/17-36-04] Elijah clarified that `--depth=2` doesn't meaningfully improve negotiation without additional configuration
-- [2026/08/21/18-21-50] Elijah debunked the `--depth=2` workaround myth
-
-### Report hook for git receive-pack
-**What changed:** Karthik Nayak posted v2 of the `report` hook for `git receive-pack`.
-
-**Problem/goal:** The hook allows server administrators to intercept and modify the status report sent to clients after ref updates are committed.
-
-**Subsystems affected:** `builtin/receive-pack.c`, documentation.
-
-**Technical impact:** The hook acts as a bidirectional filter, receiving the pkt-line encoded status report on stdin and replacing it with its stdout. This enables use cases like GitLab's MVCC system.
-
-**Today's developments:**
-- [2026/08/21/13-34-58] Karthik posted v2 addressing all prior feedback
-- [2026/08/21/13-49-30] Patrick Steinhardt proposed aligning the hook's failure mode with the `pre-receive` hook
-- [2026/08/21/16-55-40] Junio C Hamano endorsed Patrick's proposal as "the most valuable input"
-
-### Worktree repair path resolution
-**What changed:** Yoichi NAKAYAMA posted v3 of the worktree repair bugfix.
-
-**Problem/goal:** The patch fixes how Git detects and handles relative versus absolute paths in `.git` files during worktree repair.
-
-**Subsystems affected:** Worktree management, path resolution.
-
-**Technical impact:** The patch introduces a new function, `read_gitfile_raw()`, which returns the path verbatim without normalization, enabling the repair logic to detect mismatches when `worktree.useRelativePaths` is toggled.
-
-**Today's developments:**
-- [2026/08/21/20-36-26] Yoichi posted v3 incorporating Junio's feedback on API reentrancy
-- [2026/08/21/22-02-42] Junio raised a design question about the split between `read_gitfile_raw()` and `read_gitfile_gently()`
-- [2026/08/21/22-20-56] Junio accepted the `setup.c` implementation but noted the `worktree.c` changes remain under review
+### Report hook for `git-receive-pack(1)`
+Karthik Nayak's series introduces a report hook that lets the server intercept and modify the status report before it is sent to the client, needed for custom post-reference-update logic. He posted v2 with more verbose documentation and an extended test. Patrick Steinhardt suggested handling a non-zero hook exit like the pre-receive hook by marking all refs as failed instead of dying, and Junio C Hamano agreed that a failed report hook should explicitly tell the client the push was declined rather than letting the client assume no news is bad news.
 
 ## In brief
-- **[2026/08/21/12-31-43]** Patrick Steinhardt posted a series enabling parallel fetching of packfile URIs during `git fetch` and `git clone`
-- **[2026/08/21/13-53-43]** K Jayatheerth proposed adding Unicode box-drawing characters to `git repo structure` output for UTF-8 locales
-- **[2026/08/21/14-23-20]** Alexey Samsonov posted a series replacing `utime()` with `utimensat()` for POSIX.1-2024 compatibility
-- **[2026/08/21/23-01-40]** Volodymyr Vriukalo posted a series fixing a crash in `git branch --recurse-submodules` with non-ref start points
-- **[2026/08/21/11-13-13]** Anselm Schüler asked about the purpose of the `--ext-diff` option in Git
-- **[2026/08/21/11-58-13]** Victor reported a bug where `git fetch` fails when submodules are excluded by sparse checkout
-- **[2026/08/21/06-40-46]** Elijah Newren clarified loose object count heuristic behavior in geometric repacking
-- **[2026/08/21/09-29-18]** Junio asked about test coverage completeness for refname validation
-- **[2026/08/21/01-29-18]** Junio posted the "What's cooking" report for August 2026 (#09)
-- **[2026/08/21/00-47-39]** Jeff King endorsed the Trace2 byte-counting patch for `git pack-objects`
-- **[2026/08/21/03-33-53]** Junio endorsed the same patch, noting it looks good
-- **[2026/08/21/12-26-15]** Patrick Steinhardt approved the ODB transaction series for pluggable packfile writes
-- **[2026/08/21/12-10-22]** D. Ben Knoble acknowledged POSIX compliance of empty `case` actions in zsh completion
-- **[2026/08/21/06-34-38]** Patrick Steinhardt flagged a geometric repacking bugfix that may have fallen through the cracks
-- **[2026/08/21/13-16-10]** Kristoffer Haugsbakk agreed to make adjustments to the trailer documentation series
-- **[2026/08/21/09-09-25]** Kristoffer acknowledged Junio's improved topic summary for the trailer documentation series
+- Elijah Newren identified that the multi-pack-index race also affects `OBJECT_INFO_QUICK` callers such as upload-pack's object-existence checks, which get no second read, and plans a patch forcing a packfile reload even under `OBJECT_INFO_QUICK`; he also found a hole in his own unsubmitted fix where a vanished `.pack` with an already-mapped `.idx` would not trigger recovery.
+- Volodymyr Vriukalo posted a two-patch series fixing `git branch --recurse-submodules` when the start point names no ref, which previously aborted with a BUG after already moving the branch; the fix guards the `setup_tracking()` call and makes the submodule helper's start-name argument optional.
+- Alexey Samsonov posted a three-patch series migrating the codebase from the POSIX.1-2024-removed `utime()` to `utimensat()` with a `utimes()` fallback and a MinGW wrapper; Junio C Hamano noted macOS has supported `utimensat` since 10.13, so the migration is safe on Apple platforms.
+- Patrick Steinhardt's patch raising the default `maintenance.geometric-repack.auto` loose-object threshold from 100 to 6700 drew a "Looks good to me" from Elijah Newren, who confirmed two objects in `objects/17/` suffice to trigger a repack because the limit rounds up to a multiple of 256.
+- Friel's patch adding a `write_pack_file/wrote_bytes` Trace2 datum to `builtin/pack-objects.c` received "looks good to me" verdicts from both Jeff King and Junio C Hamano.
+- Artur Bieniek's `git pull --hard` patch drew a response from Junio C Hamano arguing that `--ff-only` already covers the rewritten-upstream case, since a rewound upstream should be surfaced loudly rather than blindly followed.
+- Lutz Lengemann's zsh completion patch for `git -C <path>` drew a discussion where D. Ben Knoble and Junio C Hamano clarified that empty `case` arms are valid under the POSIX grammar in Section 2.10.
