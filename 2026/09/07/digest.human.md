@@ -1,110 +1,43 @@
 # Git mailing list daily digest for 2026/09/07
 
+## Long threads
+
+### receive-report hook for git-receive-pack
+
+*Long thread: 41 replies so far from 5 participants over 21 days; 4 messages that day.*
+
+Karthik Nayak's series adds a `receive-report` hook in `builtin/receive-pack.c` that runs after the reference transaction completes but before the report goes to the client: it receives the pkt-line encoded report on stdin, its stdout replaces the report, and a non-zero exit rejects all references. Earlier revisions had settled the `generate_report()` refactor and `enum report_status_version`, and v7 dropped the now-redundant `report_v2()`. Patrick Steinhardt said he is happy with v7, while Junio C Hamano flagged that patch 4/4 passes `false` to `generate_report()` instead of the `version` variable, that a comment in patch 3/4 no longer matches the interface, and that `REPORT_STATUS_UNKOWN` in patch 2/4 is missing the letter 'N'.
+
+### Git 3.0: restrict hex object IDs to lowercase only
+
+*Long thread: 26 replies so far from 6 participants over 41 days; 2 messages that day.*
+
+brian m. carlsson's series removes Git's acceptance of uppercase hex in object IDs for Git 3.0, since Git has always emitted lowercase and software assuming a unique hex form can break or be exploited by uppercase input; earlier discussion established that policy checks against the lowercase form can be bypassed and regexps like `[0-9a-f]{40}` fail to match uppercase IDs. Phillip Wood said the object-ID-versus-ref case made more sense to him and wondered whether refnames whose last component looks like an object ID should also be forbidden, and brian m. carlsson posted v2, fixing a hex-range comment, updating commit messages, moving the t5324 fixes to a separate commit, and restoring lowercasing in `parse_oid_prefix`.
+
+### sequencer: run auto maintenance once a sequence is done
+
+*Long thread: 18 replies so far from 4 participants over 4 days; 13 messages that day.*
+
+Thomas Bachem's series makes rebase, cherry-pick and revert each end their sequence with one `git maintenance run --auto`, passing `maintenance.auto=false` and `gc.auto=0` to the `git commit`, `git merge` and exec commands a sequence spawns, via a new `git_config_append_parameter()` helper in `config.c`. Patrick Steinhardt asked what `GIT_CONFIG_PARAMETERS` is and whether both config keys are needed, and Phillip Wood suggested rewording commit messages and extending existing tests. Thomas Bachem confirmed every finishing sequence now runs auto maintenance where a conflict-free one previously did not, agreed to drop `gc.auto=0`, document the `GIT_CONFIG_PARAMETERS` format, and move the call out of the sequencer into `builtin/rebase.c` and `builtin/revert.c`, which Phillip Wood endorsed.
+
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. Domen Kožar and Kristoffer Haugsbakk debated the design of a unified `post-worktree` hook versus an ID-based ownership model, with Domen clarifying their complementary purposes. Ted Nyman pinged Junio C Hamano about Trace2 instrumentation for `git fetch-pack`, while Phillip Wood expanded the discussion on lowercase-only object IDs to include ref name validation. Patrick Steinhardt posted v3 of his ODB alternates refactoring series, and Thomas Bachem proposed consolidating auto maintenance calls in sequencer operations. A critical Windows bug in `git worktree add` was reported, and Beat Bolli submitted OpenSSL compatibility fixes for `git imap-send`.
+The receive-report hook series reached a v7 Patrick Steinhardt is happy with, modulo three nits from Junio C Hamano. brian m. carlsson rerolled the Git 3.0 lowercase-hex series as v2, and the sequencer auto-maintenance series absorbed feedback on where the maintenance call should live. The post-2.56 version discussion weighed GitHub SHA-256 support as the main open question for a 3.0 bump.
 
 ## Notable threads
 
-### Unified `post-worktree` hook vs. ID-based ownership model
-**Thread root**: 2026/07/09/23-36-08
+### git pull overwrites a local directory with a symlink
+AIKSXD ax reported that with a `.gitignore` pattern like `dataset/` and a committed symlink of the same name, `git pull` on another machine silently replaces the local directory with the symlink, destroying its contents. brian m. carlsson explained that a trailing-slash pattern ignores everything under the directory rather than the entry itself, so it does not ignore the symlink, and that `git checkout` deletes ignored files and directories by default; he argued both proposed fixes would be substantial behavior changes and recommended not keeping valuable data in untracked or ignored files in the working tree.
 
-Domen Kožar pinged Junio C Hamano to confirm whether the unified `post-worktree` hook proposal meets the bar for a Git-native hook. The hook, which would use subcommands (`add`, `remove`, `move`), is motivated by the growing need for reliable lifecycle notifications as coding agents automate worktree operations. Domen emphasized that the compromise design addresses earlier feedback while narrowing the interface.
+### worktree lifecycle hooks
+Domen Kožar's v2 series adds `post-worktree-add`, `post-worktree-remove` and `post-worktree-move` hooks in `builtin/worktree.c` so tools like devenv can provision and clean up per-worktree environments as agents create and discard worktrees. Kožar pinged the single-`post-worktree` proposal, and Kristoffer Haugsbakk proposed instead a `--id=<string>` option on `git worktree add` recording ownership so commands without that ID leave owned worktrees alone. Kožar replied that his case has two separate participants -- a tool creating worktrees and devenv observing the lifecycle no matter which tool invokes Git -- and asked how devenv would learn of an add or remove under the ownership-ID scheme.
 
-Kristoffer Haugsbakk proposed an alternative: replacing the hook with a `--id=<string>` option for `git worktree add`. This would allow tools to mark worktrees as theirs, preventing interference without requiring hooks. Domen responded by clarifying that hooks and IDs serve complementary purposes—hooks for observability (tools reacting to uncontrolled events) and IDs for ownership (tools preventing interference). While no concrete integration was proposed, Domen suggested the two approaches could coexist.
-
-**What this changes**: The discussion highlights two distinct but complementary approaches to worktree lifecycle management. The hook proposal focuses on observability for third-party tools, while the ID-based model emphasizes ownership and interference prevention. The thread’s outcome may shape how Git handles worktree automation in the future.
-
-**Subsystem**: Worktree management, hooks
-**Kind of change**: Design discussion (feature)
-**Impact**: High (potential new Git-native hook or CLI option for worktree lifecycle management)
-
----
-
-### Trace2 instrumentation for `git fetch-pack`
-**Thread root**: 2026/07/26/08-33-11
-
-Ted Nyman pinged Junio C Hamano to check for remaining concerns on the Trace2 instrumentation patch for `git fetch-pack`. The patch, which adds telemetry for packfile URI downloads, received a positive review from Patrick Steinhardt and is considered ready for `next`. Junio’s feedback on the patch itself is still pending.
-
-**What this changes**: The patch adds Trace2 telemetry to track the duration and count of packfile URI downloads during protocol v2 fetches. This instrumentation is useful for monitoring performance and diagnosing issues without adding per-pack spam.
-
-**Subsystem**: Fetch-pack, Trace2
-**Kind of change**: Feature (instrumentation)
-**Impact**: Low (diagnostic improvement, no user-visible behavior changes)
-
----
-
-### Lowercase-only object IDs and ref name validation
-**Thread root**: 2026/07/29/23-32-09
-
-Phillip Wood expanded the discussion on the lowercase-only object ID series by questioning whether the proposed change is sufficient. He noted that if uppercase hex can defeat a security check, a ref name pointing to the same commit could do the same. This challenges the premise that restricting hex case alone is enough and introduces the idea of forbidding ref names that *look like* object IDs (e.g., `refs/heads/abcdef1234...`).
-
-**What this changes**: The thread’s scope may broaden from hex parsing to broader input validation, potentially leading to new restrictions on ref names. This could have significant implications for repository compatibility and security.
-
-**Subsystem**: Object ID parsing, ref management
-**Kind of change**: Design discussion (breaking change)
-**Impact**: High (potential new restrictions on ref names, security implications)
-
----
-
-### ODB alternates refactoring (v3)
-**Thread root**: 2026/08/25/14-11-49
-
-Patrick Steinhardt posted v3 of his 9-patch series refactoring ODB alternates handling. The series introduces `create_repository()` to split repository initialization into skeleton creation, ODB setup, and refdb setup, eliminating skip flags and consolidating alternates logic into a single code path. Key changes include deferring ODB initialization in `git clone` until after URI resolution and using Git’s lockfile API to write alternates atomically.
-
-**What this changes**: The series simplifies the ODB interface by removing the ability to write alternates after repository creation, consolidating alternates handling into ODB creation. This is a foundational change for the ongoing ODB abstraction effort.
-
-**Subsystem**: ODB, alternates handling
-**Kind of change**: Refactoring (foundational)
-**Impact**: Medium (simplifies ODB interface, prepares for future abstraction work)
-
----
-
-### Auto maintenance deferral in sequencer operations
-**Thread root**: 2026/09/03/15-26-44
-
-Thomas Bachem proposed moving the `run_auto_maintenance()` call from the sequencer to the built-in commands (`run_specific_rebase()` and `run_sequencer()`). This would consolidate maintenance into a single exit path per command, aligning with the apply backend’s design and addressing Patrick Steinhardt’s preference for a unified exit point. Phillip Wood approved the approach, noting it simplifies the code.
-
-**What this changes**: The patch defers auto maintenance until the end of sequencer-driven operations (`git rebase`, `git cherry-pick`, `git revert`), ensuring maintenance runs exactly once at sequence completion. This aligns behavior across backends and prevents maintenance from interfering with intermediate steps.
-
-**Subsystem**: Sequencer, auto maintenance
-**Kind of change**: Refactoring (behavior alignment)
-**Impact**: Low (no user-visible behavior changes, but improves consistency)
-
----
-
-### Critical Windows bug in `git worktree add`
-**Thread root**: 2026/09/07/22-12-50
-
-Paul DE TEMMERMAN reported a critical bug on Windows where `git worktree add "" HEAD` (passing an empty string as the worktree path) deletes the `.git` directory. This is a high-severity, platform-specific data-loss bug in the worktree subsystem.
-
-**What this changes**: The bug highlights a critical flaw in path validation or directory creation logic in `git worktree add`. A fix will need to ensure graceful failure without destructive side effects.
-
-**Subsystem**: Worktree management
-**Kind of change**: Bugfix (critical)
-**Impact**: High (data loss on Windows)
-
----
-
-### OpenSSL compatibility fixes for `git imap-send`
-**Thread root**: 2026/09/07/21-12-07
-
-Beat Bolli posted a three-patch series fixing OpenSSL compatibility and correctness issues in `git imap-send`. The patches prepare for OpenSSL 4.1, fix unsafe ASN1_STRING handling, and align certificate validation with RFC 6125.
-
-**What this changes**: The series addresses latent bugs and forward-compatibility issues in `git imap-send`’s TLS certificate verification logic. The changes are narrowly scoped to the IMAP TLS layer and do not affect other parts of Git.
-
-**Subsystem**: IMAP-send, TLS certificate verification
-**Kind of change**: Bugfix (correctness, compatibility)
-**Impact**: Low (affects only `git imap-send` users)
-
----
+### What will come after Git 2.56?
+Junio C Hamano's question of whether the release after 2.56 should be 3.0, 2.99, or business as usual drew concrete positions. Patrick Steinhardt noted a Git 2.100 is also possible after 2.99, called GitHub's missing SHA-256 support the biggest question mark for a 3.0 bump, and reported that reftable support is upstreamed in libgit2 with SHA-256 default-enabled, so both blockers should clear with the next libgit2 release. Emily Shaffer said GitHub SHA-256 support leaves her most concerned, noted GitOxide has initial SHA-256 support, and said Google would disable SHA-256 for new repos via system config, making her lean toward releasing 3.0.
 
 ## In brief
-- **`receive-report` hook series**: Junio C Hamano identified a copy-paste oversight in the error-handling logic, where `false` should be replaced with the `version` parameter to maintain protocol consistency. The series is otherwise ready for integration.
-- **Rerere race condition**: Patrick Steinhardt clarified that the race is a long-standing conceptual flaw in `rerere` locking, not merely a side effect of the geometric maintenance strategy. He also questioned the wisdom of silently skipping `rerere` recording on lock timeout.
-- **Ref storage terminology cleanup**: Patrick Steinhardt posted v2 of his series standardizing ref storage terminology, renaming `--ref-format=` to `--ref-storage-format=` across commands while retaining backward-compatible aliases.
-- **Test modernization**: Patrick Steinhardt identified a fundamental flaw in a proposed test modernization patch, noting that mechanical replacement of `test -f` with `test_path_is_file` is incorrect in control-flow contexts.
-- **Git 3.0 readiness**: Patrick Steinhardt reported that libgit2’s SHA-256 and reftable support are now upstream and enabled by default, weakening two of brian m. carlson’s technical blockers for Git 3.0.
-- **`.gitignore` symlink bug**: AIKSXD ax reported a data-loss bug where `.gitignore` trailing-slash patterns fail to ignore symlinks, leading to silent overwrites during `git pull`. brian m. carlson argued that both proposed fixes would introduce backward-compatibility risks.
-- **Memory leak in `git history reword`**: Patrick Steinhardt posted a fix for a memory leak in `git history reword --dry-run`, adding a missing `repo_unuse_commit_buffer()` call. The leak is tied to repository conditions that prevent commit buffers from being cached in the slab.
-- **Auto maintenance deferral**: Thomas Bachem agreed to remove the redundant `gc.auto=0` setting in `disable_auto_maintenance()`, simplifying the config string to `maintenance.auto=false` only.
-- **Documentation fix**: Brigham Campbell posted a one-line fix to separate conjoined bullet items in `Documentation/config/maintenance.adoc`. Kristoffer Haugsbakk raised a compatibility question about the patch’s effect across different AsciiDoc processors.
+- Paul DE TEMMERMAN reported that `git worktree add "" HEAD` on Windows deletes the entire workspace including `.git` instead of failing safely.
+- Patrick Steinhardt posted v3 of "odb: write alternates at creation time", refactoring `init_db()` into `create_repository()` and dropping the unused `odb_source_write_alternate()` callback.
+- Eli Barzilay reported that with `stash.index=true` a successfully applied merge autostash is still stored as a redundant stash entry and deleting `MERGE_AUTOSTASH` fails.
+- Patrick Steinhardt posted v2 of the ref-storage-format terminology cleanup, renaming options to `--ref-storage-format=` and accepting URIs as a payload.
+- Patrick Steinhardt proposed a fix for the `history reword` memory leak in `builtin/history.c`; Kaartic Sivaraam explained why the earlier similar patch was not merged.
+- Beat Bolli posted a three-patch `imap-send` series covering OpenSSL 4.1 preparation, ASN1_STRING NUL-termination, and RFC 6125 common-name checking.
