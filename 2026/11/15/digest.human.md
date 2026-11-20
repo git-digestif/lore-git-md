@@ -1,51 +1,42 @@
 # Git mailing list daily digest for 2026/11/15
 
+## Long threads
+
+### `git repo info` path keys series reaches v9 review
+
+*Long thread: 63 replies so far from 6 participants over 123 days; 3 messages that day.*
+
+K Jayatheerth's GSoC series extends the `git repo info` command with path keys such as `path.workingtree.absolute`/`path.workingtree.relative`, `path.superprojectworkingtree.*`, `path.index.*`, and `path.prefix`, and refactors `get_superproject_working_tree()` to operate on a `struct repository *`. Phillip Wood reviewed the v9 range-diff and said it looks good; while noting it is a shame that each test still creates a new repository when most could run in the test framework's repository, he said no one else seems to mind and he would be happy for the series to be merged as-is. K Jayatheerth apologized for missing that note, explained that he is writing a follow-up series to consolidate the overlapping logic between `repo` and `rev-parse` and plans to combine and clean up the tests there, and offered to switch this series' tests to a single repository if Phillip Wood thinks it is worth doing now. Phillip Wood replied that it is easily done and, since test cleanups are planned anyway, he is happy for the tests in this series to be cleaned up by a future series.
+
+### `credentialStore.lockTimeout` naming defended
+
+*Long thread: 42 replies so far from 5 participants over 75 days; 1 message that day.*
+
+Okhuomon Ajayi's Outreachy patch adds `credentialStore.lockTimeout` in `builtin/credential-store.c` as the preferred setting for credential lock retries, retaining `lockTimeoutMS` as a deprecated alias. Responding to a question about the unit-less name, she justified it by noting that other file-lock retry settings--`rerere.lockTimeout`, `reftable.lockTimeout`, `core.filesRefLockTimeout`, `core.packedRefsTimeout`, and `core.configLockTimeout`--are measured in milliseconds without the unit in the name, unlike `credentialStore.lockTimeoutMS`, while `credential-cache --timeout` is a different setting in seconds. She said she will resend with that reason in the commit message.
+
 ## The day in brief
-The `git repo info` path keys series received final approval and is ready for merging, while the `change-id` preservation thread saw new arguments about workflow benefits and security risks. Integer-overflow hardening patches advanced with API changes and macro removals, and a bugfix for `git apply --check` gained polish with memory-leak and error-message improvements.
+
+Phillip Wood reviewed the v9 `git repo info` path-keys series and said he would be happy for it to be merged as-is, with test consolidation deferred to a planned follow-up series. Okhuomon Ajayi defended the `lockTimeout` name for the credential-store lock-retry setting by pointing to the other millisecond-based lock timeouts and plans to resend with the rationale in the log message. Andy Koppe submitted a patch to `pretty.c` fixing colors that are lost or leaked at line breaks in custom log formats.
 
 ## Notable threads
 
-### `change-id` preservation: workflow vs. security
-The long-running discussion about preserving `change-id` headers during commit rewriting operations saw two consequential exchanges today.
+### Preserving the `change-id` header through rebase and cherry-pick
 
-Ewout ter Hoeven [2026/11/15/11-03-05] countered brian m. carlson’s privacy and utility objections with concrete use cases from GitHub’s `gh-stack` and GitLab’s `glab stack`. These tools struggle to maintain commit identity across rewrites, relying on heuristics (branch names, patch IDs) that fail in common scenarios: branch renames break tracking, rewritten commits trigger redundant replays, and patch ID mismatches cause cascading errors. Ewout cited specific GitHub and GitLab issues where users report dozens of incorrectly replayed commits, arguing that `change-id` preservation would eliminate these workarounds by making Git the authoritative source of commit identity.
+Matt Stark's patch modifies `sequencer.c` so that rebase and cherry-pick preserve a `change-id` header in whatever format it previously used, without standardizing the format. Ewout ter Hoeven proposed stacked pull/merge requests as a concrete use case, explaining that tools such as GitHub's gh-stack and GitLab's glab stack currently guess whether a rewritten commit is the same change by relying on branch names, recorded bases, and patch IDs, with documented failures including stranded stacks after a plain branch rename. brian m. carlson objected that change-id headers cannot be trusted as a source of unmodified data because users can modify them, arguing that only a server performing the rebase can have confidence the content is unchanged, and warned that a malicious user could reuse change-ids to submit a different version under an existing review.
 
-brian m. carlson [2026/11/15/16-24-24] responded with a critical trust issue: **change-id headers cannot be relied upon as stable identifiers because users can manually edit them**. This creates a security risk for automated review systems that might assume a preserved `change-id` implies an unchanged patch. A malicious actor could exploit this by reusing a reviewed `change-id` for an entirely different commit, tricking the server into accepting unvetted code. Brian’s objection reframes the problem as a **security boundary question**: any solution must either restrict `change-id` preservation to server-controlled operations or accept that the header cannot be trusted for security-sensitive decisions.
+### fmt-merge-msg config doc patch retracted
 
-The thread’s tension now centers on whether these security requirements can coexist with the workflow needs, or if the two are fundamentally incompatible.
+Yikun Wei's documentation patch would have included `config/fmt-merge-msg.adoc` in `Documentation/config.adoc` so that `merge.branchdesc`, `merge.log`, and `merge.suppressDest` appear in `git-config(1)`. Wei retracted the patch, explaining that those entries are already listed in `git-config(1)` because `config/merge.adoc` already includes `config/fmt-merge-msg.adoc` and `config.adoc` already includes `config/merge.adoc`, so the patch would duplicate them; Wei asked that the patch be dropped and will not reroll it.
 
-### `git repo info` path keys: final approval
-The `[PATCH v9]` series adding four new path-related keys (`path.working_tree`, `path.superproject_working_tree`, `path.index`, and `path.prefix`) to `git repo info` received explicit approval for merging.
+### Fix for lost and leaked colors at line breaks in `pretty.c`
 
-Phillip Wood [2026/11/15/10-33-45] confirmed the range-diff between v8 and v9 is mechanically correct and stated, *"I'd be happy if this is merged as-is."* The only remaining concern—test efficiency, specifically creating a new repository for each test—was acknowledged but not treated as a blocker. The series is now uncontroversial, with all design objections resolved, naming conventions settled, and Phillip’s explicit approval. Junio can queue it without further changes.
-
-The keys introduced are:
-- `path.working_tree.absolute`/`path.working_tree.relative`
-- `path.superproject_working_tree.absolute`/`path.superproject_working_tree.relative`
-- `path.index.absolute`/`path.index.relative`
-- `path.prefix` (relative path from the top-level working tree to the current directory, e.g., `sub/dir/`)
-
-### Integer-overflow hardening: API changes and macro removals
-Johannes Schindelin advanced the integer-overflow hardening series with three key updates today, addressing Phillip Wood’s review of the wrapper and date subsystems.
-
-In [2026/11/15/19-24-46], Johannes revised the wrapper subsystem fix to **change the API contract** rather than just add defensive checks. `write_in_full()` now returns `0` on success (eliminating overflow risk entirely), and a new `read_in_full_or_error()` helper is introduced for callers that only need success/failure status. The commit message’s original claim that "git never passes such large counts" is softened, acknowledging that future callers might inadvertently trigger the issue. This aligns with Phillip’s citation of a 2019 bugfix where `ssize_t` was narrower than `size_t` on NonStop platforms.
-
-Johannes then [2026/11/15/19-29-57] **dropped the `signed_mult_overflows` and `mult_overflows` macros entirely**, acknowledging the approach as flawed due to its GCC-only limitation and operand-width assertion concerns. This leaves the series without a portable overflow-checking mechanism for signed arithmetic.
-
-Finally, [2026/11/15/19-35-12] withdrew the original date.c hardening implementation and proposed a simpler, portable approach: capping user-supplied numbers at `INT_MAX` and guarding multiplications manually. This avoids compiler-specific overflow detection and handles both signed and unsigned `time_t` uniformly.
-
-### `git apply --check` crash fix: polish
-The two-part bugfix series for a crash in `git apply --check` when processing malformed patch headers gained final polish today.
-
-Siddharth Asthana [2026/11/15/12-39-29] identified a **memory leak** in `parse_git_diff_header()`: the function overwrites `patch->def_name` without freeing the old value, causing leaks when processing multiple `diff --git` headers. The fix is trivial—a `free()` before assignment—and both callers already zero the `patch` struct, making it safe. Asthana suggested addressing this in a **preparatory patch** to retain the test case for empty `diff --git` sections, which would improve coverage without complicating the main fix.
-
-In a separate review [2026/11/15/12-47-24], Asthana proposed rewording error messages to reference the problematic header line (`"---"` before `"new file mode"`) instead of stripped filenames, making the messages more actionable for users. The patch now rejects corrupt patch headers outright, aligning with Junio’s guidance to reject any format not generated by `git diff` or `git format-patch`.
+Andy Koppe submitted a patch to `pretty.c` fixing lost and leaked colors at line breaks in custom log formats: when color output is enabled, `repo_format_commit_message()` now scans the output for active color escape sequences and makes each line self-contained by inserting a reset before newlines where colors are active, replaying those colors at the start of the next non-empty line, and appending a reset at the end if colors remain active. This prevents colors from being lost when `--graph` or color-aware pagers reset at line breaks, and from leaking into graph markers, edges, or unrelated lines when grepping colored output.
 
 ## In brief
-- **Timeout variable naming**: Okhuomon Ajayi [2026/11/15/15-13-13] addressed Junio’s substantive objection by enumerating all existing lock-timeout variables and confirming they are uniformly measured in milliseconds, justifying the renaming of `credentialStore.lockTimeoutMS` to `credentialStore.lockTimeout`.
-- **Archive refactoring**: Srujith A Poojary [2026/11/15/04-35-27] posted v2 of the archive subsystem refactoring, focusing exclusively on the tar archiver and removing an unused `struct repository *` parameter from `init_zip_archiver()`.
-- **`struct commit` memory optimization**: Kristofer Karlsson [2026/11/15/12-47-42] posted v3 of the patch, refining comments to clarify safe casting direction, the meaning of `index`, and the source of `date`.
-- **HTTP backend cleanup**: Yusuke Hayashi [2026/11/15/09-58-29] clarified the performance rationale for removing pre-sizing logic in `get_info_packs()`, arguing that dynamic `strbuf` growth overhead is negligible compared to CGI startup and I/O costs.
-- **Documentation retraction**: Yikun Wei [2026/11/15/10-09-49] withdrew the `fmt-merge-msg` documentation patch after confirming the variables are already transitively included via `config/merge.adoc`.
-- **Test modernization**: Hardik Kumar [2026/11/15/18-15-21] replaced `!` with `test_must_fail` in four test scripts to handle edge cases like crashes or signals.
-- **Pretty colors**: Andy Koppe [2026/11/15/21-35-03] fixed lost and leaked ANSI color escape sequences in custom log formats by post-processing output to ensure each line is self-contained.
+
+- Johannes Schindelin updated his Coverity overflow series: `write_in_full()` now returns 0 on success, the GCC-only `mult_overflows` macros were dropped, and `date.c` uses manual overflow checks in the approxidate relative-time multiplication.
+- Siddharth Asthana traced the `git apply --check` crash leak to `parse_git_diff_header()` overwriting `patch->def_name` without freeing the old value, and suggested wording fixes for the "--- /dev/null" error message.
+- Srujith A Poojary posted v2 of the archive refactor, narrowed to passing an explicit `struct repository` to `init_tar_archiver()` and `init_archivers()` and removing `USE_THE_REPOSITORY_VARIABLE` from `archive-tar.c`.
+- Hardik Kumar replaced the `!` operator with `test_must_fail` in `t/t5564-http-proxy.sh`, `t/t6030-bisect-porcelain.sh`, `t/t7400-submodule-basic.sh`, and `t/t9001-send-email.sh` so that signal-killed or segfaulting commands fail the test.
+- Yusuke Hayashi posted v2 of the `http-backend` patch dropping the strbuf pre-sizing in `get_info_packs()`, with a rewritten commit message and no code changes from v1.
+- Dirk Gouders resent v3 of the `doc/gitcli` minor fixes with the proper Cc and a range-diff against v1.
