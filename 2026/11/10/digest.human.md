@@ -1,115 +1,60 @@
 # Git mailing list daily digest for 2026/11/10
 
+## Long threads
+
+### Path keys for `git repo info`
+
+*Long thread: 57 replies so far from 6 participants over 118 days; 2 messages that day.*
+
+K Jayatheerth's GSoC series adds path keys (`path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.git-prefix`, `path.cdup`) to `git repo info` and refactors `get_superproject_working_tree()` to take a `struct repository *`. Phillip Wood argued `git repo info` should be a better interface than `rev-parse`, not a port of its path options: he said `path.hooks.*` would encourage an outdated interface that ignores config-based hooks, questioned `path.cdup`'s benefit over `path.working-tree.relative`, and noted existing keys like `path.gitdir.*` use no dashes.
+
+### Worktrees rebasing or bisecting a branch
+
+*Long thread: 32 replies so far from 8 participants over 21 days; 6 messages that day.*
+
+Jasper Mayone's v4 series makes `git worktree remove` refuse a worktree mid-rebase, `git am`, bisect, or cherry-pick without `--force`, documents `%(worktreepath)`, names the rebasing worktree in `%(worktreepath)`, and stops `git branch` marking such branches with "+". Phillip Wood approved the doc patch but said `branch_checked_out_worktree()` iterates all worktrees per listed ref and a hash map should be used; for the `git branch` patch he proposed a `%(currentworktree)` specifier instead. On the remove patch he asked for self-contained list sentences; Ben Knoble disagreed.
+
+### `test-tool genbytes` to avoid slow `tr(1)` on macOS
+
+*Long thread: 26 replies so far from 5 participants over 4 days; 4 messages that day.*
+
+Kristofer Karlsson's patch adds `test-tool genbytes <char> [<count>]` so tests stop piping `genzeros` through `tr(1)`, which on macOS spends 95-123 CPU-seconds on t4205. He posted v3 taking a literal character, keeping `genzeros`, using a static buffer and `git_parse_signed()`; Junio C Hamano called the conversions trivially correct and marked the topic ready for `next`.
+
+### Detached HEAD documentation rewrite
+
+*Long thread: 25 replies so far from 4 participants over 35 days; 2 messages that day.*
+
+Julia Evans's patch rewrites the detached HEAD explanation as a standalone `gitdetached-head` guide wired into `advice.c` and the build files. Junio C Hamano reiterated that "HEAD is a branch" versus "HEAD is a commit ID" is misleading -- HEAD records one to refer to the checked-out commit -- and proposed a four-point explanation; Julia Evans called it great but objected that "record" is not a word users understand.
+
+### `git diff` EXAMPLES section rewrite
+
+*Long thread: 23 replies so far from 6 participants over 8 days; 4 messages that day.*
+
+Julia Evans retracted an accidental `--cached`->`--staged` synopsis swap from the v2 patch, saying she "will take this out" to keep the scope small. Kaartic Sivaraam explained that Junio C Hamano's queued SQUASH??? commits can be fetched from his tree and cherry-picked; Junio suggested finding them via `git log seen`.
+
 ## The day in brief
-The Git mailing list saw **141 emails** today, with key developments including:
-- **`git repo info` path keys series** stalled on `path.hooks` necessity and `path.cdup` usability concerns.
-- **Git 3.0 planning** clarified: Google’s SHA-256 talk deferred due to speaker emergency, but JGit’s pluggable backend remains production-ready.
-- **`git worktree` safety improvements** advanced with performance regression identified in `%(worktreepath)` extension.
-- **Security release** (Git 2.56.1) announced, addressing six CVEs including remote code execution via malicious submodule gitfiles.
-- **Test modernization** for `git fast-import` tests gained maintainer praise, with 20-patch series reducing `t9300` from 4000 to 1200 lines.
+Junio C Hamano announced coordinated security releases Git 2.56.1 and older maintenance tracks addressing six CVEs. Two topics -- `test-tool genbytes` and the `git-rebase` doc fix -- were marked ready for `next`, and new work arrived on configurable orphaned-commit checks and symref reflog entries.
 
 ## Notable threads
 
-### 1. `[PATCH v8]` series adding path-related keys to `git repo info`
-**What changed?**
-Phillip Wood reiterated objections to `path.hooks` necessity and `path.cdup` usability, confirming the naming convention resolution (underscores `_`) is now settled.
+### Git 2.56.1 security release announcement
 
-### Why it matters
+Junio C Hamano announced Git 2.56.1 and maintenance releases down to maint-2.43 addressing six CVEs. Todd Zullinger noted the cited GitLab work item links appear inaccessible to normal users, guessing that was not the intent, and added Patrick Steinhardt to help open them up.
 
-The series is mechanically complete but risks abandonment due to lack of reviewer engagement. The unresolved objections:
-- `path.hooks`: Phillip argues it’s unnecessary and encourages `git hook run` instead.
-- `path.cdup`: Usability concerns about script portability when run from repository root.
+### Fixing segfaults on settings given without a value
 
-### Key details
+*Long thread: 16 replies so far from 4 participants over 4 days; 10 messages that day.*
 
-- **Subsystem**: `git repo info` command
-- **Files touched**: `builtin/repo.c`, `Documentation/git-repo.adoc`, tests
-- **Status**: At risk of being dropped from `seen` unless objections are resolved
+Thomas Bachem posted v2 of a 15-patch series fixing segfaults when a setting is given without a value (`git -c foo.bar`), covering `rebase.missingCommitsCheck`, `core.alternateRefsCommand`, `fetch.bundleCreationToken`, `grep.patternType`, `remote.*.tagOpt`, `color.blame.*`, `branch.*.mergeOptions`, `remotes.*` and `safe.bareRepository`. Phillip Wood questioned patches that error on NULL while ignoring invalid values; Derrick Stolee accepted error-over-segfault for bundle URIs; Junio C Hamano disagreed on treating a missing `mergeOptions` as empty. Bachem said v3 will warn-and-ignore for `tagOpt` and `color.blame.repeatedLines` and keep errors elsewhere.
 
----
-
-### 2. Git 3.0 planning and Gerrit User Summit updates
-**What changed?**
-Daniele Sassoli clarified that Google’s SHA-256 talk was removed from the Gerrit User Summit due to a speaker emergency, not a change in priorities. Luca Milanesio’s Cassandra-based ODB backend talk remains scheduled.
-
-### Why it matters
-
-The clarification removes ambiguity about Google’s commitment to SHA-256 interoperability. Key takeaways:
-- **JGit’s pluggable backend** is production-ready (validated by Google’s internal deployments and GerritForge’s global refdb).
-- **SHA-256 support** remains resource-constrained, not technically infeasible.
-- **Summit attendance**: Junio, Luca Milanesio, and Christian Couder confirmed.
-
-### Key details
-
-- **Timeline**: Git 3.0 target remains April 2027, but stabilization may require additional 2.99.x releases.
-- **Rust portability**: Compiles successfully on Cygwin (unofficial toolchain), but NonStop remains untested.
-- **Security process**: GitLab increasing staffing for report triage; Toon Claes and Johannes Schindelin collaborating on next release.
-
----
-
-### 3. `git worktree list --merged` / `--no-merged` improvements
-**What changed?**
-Phillip Wood identified a **critical performance regression** in patch 3/4: the new `%(worktreepath)` implementation uses O(N*M) complexity (iterating over all worktrees for every ref) instead of the old O(1) hashmap-based lookup.
-
-### Why it matters
-
-The series aims to improve worktree safety and filtering but risks introducing a performance bottleneck. Key developments:
-- **Architectural alternative**: Phillip proposed adding a `%(currentworktree)` atom to `ref-filter.c` to simplify logic.
-- **Performance fix**: Suggested refactoring `branch.c` to use a hashmap for O(1) lookups.
-
-### Key details
-
-- **Subsystem**: `ref-filter.c`, `branch.c`, `builtin/worktree.c`
-- **Files touched**: 4 patches updating worktree safety and filtering
-- **Status**: Ready for review with performance issue blocking integration
-
----
-
-### 4. Security release: Git 2.56.1 and maintenance releases
-**What changed?**
-Junio C Hamano announced coordinated releases addressing six CVEs, including:
-- **CVE-2026-111760**: Remote code execution via malicious submodule gitfiles.
-- **CVE-2026-113408**: Path traversal in files ref backend.
-- **CVE-2026-114467**: Stack corruption from multi-signature commits.
-
-### Why it matters
-
-The vulnerabilities span critical areas (submodules, ref backends, merge machinery) with potential for denial-of-service or arbitrary code execution. Key details:
-- **Backported**: Fixes available for all supported maintenance tracks (2.56.1 down to maint-2.43).
-- **Contributors**: Toon Claes (protocol v2 symref validation), Karthik Nayak (multi-signature handling), Jeff King (30 patches for const-correctness and HTTP header redaction).
-- **Git for Windows**: Johannes Schindelin released v2.56.1 with identical fixes.
-
-### Key details
-
-- **Files touched**: xdiff, `remove_signature()`, files ref backend, protocol v2, `fast-import`, submodule gitfile parsing.
-- **Behavior changes**: Stricter symref validation, hardened `fast-import` features, defense-in-depth hardening (e.g., rejecting over-long cache entries).
-
----
-
-### 5. Test modernization: Splitting `t9300-fast-import.sh`
-**What changed?**
-Junio C Hamano praised Karthik Nayak’s 20-patch series refactoring `t9300-fast-import.sh`, calling it "long overdue." The series splits the 4000-line monolithic test into smaller, self-contained files.
-
-### Why it matters
-
-The refactoring improves maintainability by eliminating hidden dependencies between tests. Key achievements:
-- **Reduction**: `t9300` shrinks from ~4000 to ~1200 lines.
-- **New files**: `t9301-fast-import-notes.sh`, `t9304-fast-import-marks.sh`, etc.
-- **Setup helpers**: Introduced to replace shared state with fresh repositories.
-
-### Key details
-
-- **Files touched**: 20 patches touching only the test suite (`t/` directory) and `meson.build`.
-- **Status**: Under review; Junio requested a rebase on two in-flight topics (`cc/early-scan-options` and `tj/drop-no-parseopt`).
-
----
+### Configurable orphaned commit checks on checkout
+Wyatt Holden's three-patch series adds `checkout.orphanedCommitWarning` (default true) so checkout and switch can skip the orphaned-commit reachability check -- about 193 seconds in an internal mono-repo -- plus advice when it exceeds two seconds, and disables it in Scalar's recommended config. Derrick Stolee flagged a whitespace nit and supported the series; Junio C Hamano questioned some design choices but called it coherent.
 
 ## In brief
-- **`git mktree --batch` test coverage**: Roger Koranteng sent v2 addressing Laveesh Bansal’s feedback (verifying `stderr` error messages).
-- **Detached HEAD documentation**: Junio and Julia Evans exchanged phrasing proposals, with Junio favoring technical precision ("`HEAD` records a reference") and Julia advocating user-centric language ("`HEAD` is where Git stores the name of your current branch").
-- **HTTP retry improvements**: Ravi Mistry proposed two options for structuring the default `http.retryAfter` value (10 seconds) in v3.
-- **ODB refactoring**: Patrick Steinhardt’s series isolating the loose-object backend received surface-level reviews from Kaartic Sivaraam, focusing on header hygiene and documentation preservation.
-- **`the_repository` removal**: Junio and Patrick Steinhardt discussed architectural refinements for `unpack-trees.c`, deferring boundary vs. internal consistency checks to future work.
-- **`checkout.orphanedCommitWarning`**: Junio questioned the design, asking whether the expensive reachability check could be optimized rather than made optional.
-- **Pluralization fix**: aeron-gh sent a patch using `Q_()` for the "Split into %d hunks" message in `add-patch.c` to enable correct Polish pluralization.
-- **Early option-scanning API**: Azuama Odinaka Maximus sent an RFC series introducing a reusable API for `parse-options`, targeting `rev-list`’s hardcoded option list.
+- tsukasa inoue added `ref_transaction_resolve_new_oid()` so the files and reftable backends log a symref target's new value even when updated in the same transaction.
+- Kaartic Sivaraam reviewed the series moving loose-object logic from `object-file.c` into `odb/source-loose.c`, asking that dropped doc comments be kept above the moved functions.
+- Srujith A Poojary posted v3 of the archive `USE_THE_REPOSITORY_VARIABLE` cleanup; Junio C Hamano objected that the iteration was sent before the prior review concluded. *Long thread: 7 replies so far from 3 participants over 2 days; 8 messages that day.*
+- Derrick Stolee gave an LGTM to the v2 series removing `the_repository` from `unpack-trees.c`.
+- Justin Tobler posted a four-patch series creating the ODB transaction temp directory eagerly; `git add` of 10000 files showed about 7% overhead.
+- Junio C Hamano marked the `git-rebase` incompatible-options doc fix ready for `next`.
+- Azuama Odinaka Maximus posted an RFC adding a generic `early_scan_options()` API to parse-options and updating `rev-list`'s early scan.
