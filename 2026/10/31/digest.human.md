@@ -1,51 +1,38 @@
 # Git mailing list daily digest for 2026/10/31
 
+## Long threads
+
+### `git branch --delete-integrated` for squash- and rebase-merged branches
+
+*Long thread: 53 replies so far from 6 participants over 33 days; 2 messages that day.*
+
+Harald Nordgren's series adds a `--delete-integrated <pattern>` option to `git branch` that deletes branches whose changes landed upstream via squash or rebase merges, even when their tips are not reachable from the upstream, naming the landing commit in output like "Deleted branch topic (was 1a2b3c4, landed as 9f8e7d6)". Earlier revisions restructured the feature so `--delete-merged` again only deletes branches whose tips are reachable, and Jasper Mayone's testing of v4 against master confirmed both options behave correctly across squash merges, renames, and partial landings. Today Harald Nordgren suggested renaming a local `opt` variable to `diffopt` in `find_landed_commits()` to match the `diff_options` type, and he raised the same question Junio C Hamano had asked about `merge_keeps_upstream()`: whether the index is guaranteed to be read before `ll_merge()` is called with `the_repository->index`, since an unpopulated istate would prevent `ll_merge()` from consulting custom low-level merge attributes; he asked whether ignoring attributes is intentional and said he would take a look.
+
 ## The day in brief
 
-Git's HTTP transport gained resilience with a four-patch series adding exponential backoff, configurable retry status codes, and POST request retries. A critical bugfix series addressed 64-to-32-bit truncations in object handling on Windows, while `git stash` performance improved by eliminating redundant index operations. The `@{push}` revision suffix now aligns with `git push` behavior in triangular workflows, and `git describe` fixed commit distance calculations for skewed timestamps.
+Nakul V S posted v2 of a patch to `builtin/revert.c` and the sequencer refusing to pick or revert shallow boundary commits by default across revert, cherry-pick, and rebase. Linus Torvalds submitted a fix for `git describe` miscounting commit distance when commit dates are skewed. Elia Pinto posted two series switching object and pack size handling from `unsigned long` to `size_t` to avoid truncation of objects 4GiB and larger on platforms where `long` is 32 bits.
 
 ## Notable threads
 
-### parse-options: new sub-API for early argument scanning
-[2026/09/02/16-10-41] Christian Couder's v3 series for `early_scan_options()` received a **tested review** from Cynthia Uche. The reviewer confirmed the `EARLY_SCAN_STOP_AT_NON_OPTION` flag is critical to prevent misinterpreting non-option arguments (e.g., `extra` in `--depth 5 extra --allow-unsafe-features`). Cynthia suggested clarifying this in the comment above the `early_scan_options()` call in `fast-import.c`, noting the flag's purpose is to prevent unsafe features from being wrongly allowed before `parse_options()` can reject invalid syntax.
+### Sequencer refuses shallow boundary commits by default
 
-### sequencer: refuse to revert/cherry-pick a shallow boundary commit
-[2026/10/21/10-09-41] Nakul V S's v2 patch now consolidates shallow-boundary detection into a shared helper function (`sequencer_refuse_shallow_boundary()`) and omits the rarely-used `--allow-shallow-boundary` option from the synopsis for clarity. The author acknowledged the manual-todo-list edge case (where a boundary commit's hash is manually added) as an acceptable trade-off, noting the safeguard fails early to avoid leaving behind partial state.
+Nakul V S posted v2 of a patch to `builtin/revert.c` and the sequencer that refuses to revert, cherry-pick, or rebase commits at the shallow boundary of a shallow clone, where such a commit looks like a root that added every file at once and reverting it would empty the working tree. The check now runs when each command builds its list of commits to replay, so a refused command leaves no sequencer or rebase state behind; `--allow-shallow-boundary` overrides the check for revert and cherry-pick only, while rebase always refuses and suggests `git fetch --unshallow`. In replies, Nakul V S explained to Phillip that the escape hatch is kept out of caution and offered to drop it, and told Junio C Hamano that `git commit --amend` is left for a separate patch.
 
-### Fix 64-to-32 truncations on LLP64 platforms (Windows)
-[2026/10/21/10-16-36] Elia Pinto's v3 series addressed the last procedural feedback from Patrick Steinhardt. The revised test in `t1007-hash-object.sh` now drops the redundant size comparison and uses `git cat-file -e` to verify object existence, eliminating race-condition risks. The fourth patch's commit message was simplified to avoid overstating the overflow risk in `convert.c` counters. The series is now technically complete and awaits integration.
+### `git describe` distance counting with skewed commit dates
 
-### completion: remove NO_PARSEOPT for commands using parse-options
-[2026/10/24/05-24-49] Tanga Joris agreed to add a comment in `parse-options.h` explaining why `show_usage_with_options_if_asked()` handles completion-helper arguments before command initialization. The change clarifies the centralized refactoring in `parse-options.c` and addresses Kaartic Sivaraam's feedback on maintainability.
+Linus Torvalds submitted a patch to `builtin/describe.c` fixing `git describe` miscomputing the commit distance when commit dates are unreliable, as seen in the Linux v7.4 merge window where the reported count included commits already in the tagged release. The fix changes the priority queue ordering from `compare_commits_by_commit_date` to `compare_commits_by_gen_then_commit_date` and adds a test in `t/t6120-describe.sh` for a tag dated before its parent. Tuomas Ahola shared an alternative rewrite of the test using `test_tick` arithmetic instead of explicit dates.
 
-### redesigning signal handling in threaded Git code
-[2026/10/29/14-15-21] Phillip Wood tentatively suggested using an atomic flag in the signal handler to serialize unwinding of the `sigchain` stack for SIGPIPE. The proposal follows Oswald Buddenhagen's clarification that SIGPIPE (and four other signals) are thread-directed, complicating the original plan to block all signals during thread creation. The thread remains in the design-proposal stage, awaiting feedback from Jeff King and Junio.
+### `size_t` for streamed large blobs in pack-objects
 
-### Bug report: include directives in .git/config cause silent failures
-[2026/10/31/02-56-44] Chris Torek's proposal to ignore include directives in Git-managed config files faced pushback from brian m. carlson, who cited a real-world workflow relying on `[include]` in `.git/config`. The discussion shifted from a robustness improvement to a compatibility concern, with no clear path forward yet.
-
-### git describe: fix commit distance calculation for skewed timestamps
-[2026/10/31/06-55-03] Linus Torvalds submitted a patch correcting `git describe`'s commit distance calculation when commit dates are non-monotonic. The fix prioritizes commit generation numbers (from the commit graph) over raw commit dates, ensuring the walk follows true topological order. Tuomas Ahola offered a rewritten test setup using `test_tick` manipulation to achieve the same commit-date skew, improving test readability.
-
-### Fix truncation issues with large objects on 32-bit platforms
-[2026/10/31/11-39-34] Elia Pinto's four-patch series addressed truncation issues in the pack-receiving pipeline (`unpack-objects`, `index-pack`, `git fsck`). The patches convert critical size parameters from `unsigned long` to `size_t`, fixing crashes, false SHA-1 collision reports, and partial object checks on 32-bit platforms. The series is self-contained and merges cleanly with other in-flight work.
-
-### http: exponential backoff, configurable retry codes, POST retries
-[2026/10/31/15-57-00] Ravi Mistry's four-patch series improved Git's HTTP transport resilience. Key changes include:
-- Fixing an off-by-one retry count bug and a race in Retry-After header parsing.
-- Introducing exponential backoff (1s, 2s, 4s, ...) when Retry-After headers are absent.
-- Adding the `http.retryStatusCodes` config option to retry transient 5xx errors (opt-in).
-- Extending retries to HTTP POST requests, which handle data transfers during fetch/clone and partial clone operations.
-
-The series targets real-world pain points for users operating at scale and includes thorough test coverage.
-
-### git stash: eliminate duplicate work in stash creation
-[2026/10/31/20-01-07] Jasmeet Bhatia's patch improved `git stash` performance by reusing the already-prepared index state and untracked file list. The change adds an optional `prepared_untracked_files` parameter to `do_create_stash()`, skipping redundant `repo_read_index_preload()` and `check_changes()` calls. Performance measurements showed a 16-18% improvement for `git stash -p` and 6% for `git stash push` on the Linux kernel repository.
+Elia Pinto posted v2 of a patch to `builtin/pack-objects.c` fixing corruption of blobs 4GiB and larger on platforms where `long` is 32 bits, where the streamed path in `write_no_reuse_object()` truncated the size in the pack header and `write_large_blob_data()` could overflow the compressed-length accumulation, misaligning all subsequent objects. The patch uses `size_t` for the object size and `off_t` for the accumulated compressed length and return value, following Simon Richter's comment, with a `Helped-by` tag added.
 
 ## In brief
-- **[2026/10/31/08-25-49]** Srujith A Poojary's v3 patch fixed commit abbreviation in submodule diff headers by using the submodule's object database for uniqueness checks.
-- **[2026/10/31/10-06-42]** Thomas Bachem's patch made valueless config settings (`merge.renames`, `diff.renames`, `merge.directoryRenames`) default to `true` in merge-ort.
-- **[2026/10/31/10-45-26]** Okhuomon Ajayi removed the last uses of `the_repository` in `fsmonitor.c` as part of the ongoing `the_repository` removal effort.
-- **[2026/10/31/11-09-56]** Elia Pinto clarified that the 64-to-32 truncation series targets only in-memory buffers, with a separate patch for `off_t` conversions in streaming reads.
-- **[2026/10/31/11-14-50]** Okhuomon Ajayi removed the last uses of `the_repository` in `fsmonitor.c`.
-- **[2026/10/31/18-04-10]** Elia Pinto's v2 patch fixed a data corruption bug in `git pack-objects` by using `off_t` for compressed data length on 32-bit platforms.
+
+- Ravi Mistry posted a 4-patch series for HTTP retry handling: fixing an off-by-one retry count and `Retry-After` Trace2 timing in `http.c`, adding exponential backoff when no `Retry-After` header is present, a new `http.retryStatusCodes` config for transient 5xx codes, and retry support for POST requests in `post_rpc()` in `remote-curl.c`.
+- Thomas Bachem submitted a patch making merge-ort accept `merge.renames`, `diff.renames`, and `merge.directoryRenames` given without a value (meaning true per git-config docs) by reading them with `repo_config_get_value()` instead of `repo_config_get_string()`, with tests in `t/t6423` and `t/t6434`.
+- Cynthia Uche reported that all 118 `t0040` and 261 `t9300` tests pass on Christian Couder's early-scan-options series, suggested a comment clarifying that `EARLY_SCAN_STOP_AT_NON_OPTION` stops the scan at the first non-option, and found no other issues.
+- Harald Nordgren posted v2 making `@{push}` resolve to the push remote's same-named branch under `push.default=simple` when `remote.pushDefault` points at a fork, moving the "simple" resolution into a new `branch_get_push_simple()` helper.
+- Jasmeet (Jazz) Bhatia submitted a patch passing the already prepared untracked file list from `do_push_stash()` to `do_create_stash()` to skip redundant index work, reporting 16.7% faster `stash -p` without fsmonitor in p3904 tests.
+- Jeff King posted a patch to `t/t5702` replacing `env`-redirect-and-grep checks of `GIT_PROTOCOL` with direct `echo` output compared via `test_cmp`, because GNU coreutils 9.12 quotes values containing `=`; Junio C Hamano confirmed the patch is correct and Collin Funk explained the coreutils quoting change.
+- Elia Pinto posted a 4-patch series using `size_t` when parsing and checking objects in `object-file.c`, `fsck.c`, `commit.c`, and `tag.c` to fix truncated sizes above 4GiB on LLP64 platforms; Simon Richter noted `size_t` is 32-bit on 32-bit architectures and suggested `off_t` for piecewise reads.
+- Elia Pinto posted a 4-patch series using `size_t` when receiving and verifying packs in `unpack-objects`, `index-pack`, and `pack-check`, fixing dies, false "SHA1 COLLISION FOUND" errors, and prefix-only fsck checks for objects 4GiB and larger on 32-bit `long` platforms.
