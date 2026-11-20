@@ -1,75 +1,163 @@
-# Git Mailing List Digest (2026/09/07 -- 2026/09/13)
+## Long threads
+
+### history: add squash subcommand to fold a range
+
+*Long thread: 91 replies so far from 9 participants over 87 days.*
+
+Harald Nordgren posted v15 of the series adding `git history squash <revision-range>` to fold a range of commits in `builtin/history.c`, fixing `istarts_with()` to `starts_with()` in `squash_check_autosquash_subject()` so mixed-case hex in `fixup!` subjects is no longer accepted, correcting a `squshed` typo, and adding `squash` to the completion test. Junio C Hamano noted that with the "complete 'git history'" topic now integrated, he no longer needs an evil merge for the `t9902-completion.sh` change. The series remains under active review with the core functionality stabilizing.
+
+### receive-report hook for git-receive-pack
+
+*Long thread: 57 replies so far from 7 participants over 25 days.*
+
+Karthik Nayak's series adds a `receive-report` hook in `builtin/receive-pack.c` that runs after the reference transaction completes but before the report reaches the client; the hook reads the pkt-line encoded report on stdin, its stdout replaces the report, and a non-zero exit marks all references rejected. The series progressed from v7 through v10 during the week, fixing a `BUG()` when no report was requested, a leak in `override_cmds_error()`, and the `UNKOWN` spelling. Junio C Hamano objected to a `BUG()` in the switch default case and proposed `case REPORT_STATUS_UNKNOWN: break;` instead, while Oswald Buddenhagen suggested trimming verbose commit messages. The series appears close to convergence.
+
+### Convert build-time USE_NSEC to runtime core.useNanosec
+
+*Long thread: 46 replies so far from 6 participants over 36 days.*
+
+D. Ben Knoble's series exposes `USE_NSEC` as the runtime `core.useNanosec` config so distributed builds can use nanosecond index timestamps and avoid racy-git false positives. Knoble resent v7 differing from v6 only in a documentation typofix, and Junio C Hamano queued the three patches, noting they matched what he had already queued from v6 with the typo reworded locally. The resend was mainly a nudge about the stale What's Cooking status. The series is now queued.
+
+### Write object-database alternates at creation time
+
+*Long thread: 36 replies so far from 5 participants over 18 days.*
+
+Patrick Steinhardt's nine-patch series refactors `init_db()` into `create_repository()` and moves alternate writing into `odb_source_create_on_disk()`, removing the ad-hoc `odb_source_write_alternate()` callback. The series advanced to v5 during the week, renaming `collect_one_alternate`/`collect_alternates_data`, dropping an extra parameter, and fixing a "refernce" typo after Karthik Nayak's review. Steinhardt answered review comments on the alternates patch, noting the file-stream error indicator is sticky so per-`fprintf` checks are unnecessary, and declined to formalize backend errors for alternates since nothing would use them yet. Justin Tobler had previously called v4 good.
+
+### Add path keys to git repo info
+
+*Long thread: 34 replies so far from 5 participants over 58 days.*
+
+K Jayatheerth's GSoC series adds seven `path.*` keys to `git repo info`: toplevel, superproject-root, hooks, index, and grafts with absolute and relative suffixes, plus git-prefix and cdup as single keys. He posted v6, refactoring `get_superproject_working_tree()` to take a `struct repository *` instead of the process working directory. Junio C Hamano noted dead null checks after `repo_get_index_file()` in patch 4/7, asked what `path.cdup` returns outside the working tree, and suggested splitting patch 2/7 into a fix with tests plus the new keys.
+
+### sequencer: run auto maintenance once a sequence is done
+
+*Long thread: 27 replies so far from 5 participants over 8 days.*
+
+Thomas Bachem's series makes rebase, cherry-pick and revert run `git maintenance run --auto` exactly once when a sequence completes, from `builtin/rebase.c` and `builtin/revert.c`, while passing `maintenance.auto=false` to sequencer-spawned commands via `GIT_CONFIG_PARAMETERS` to avoid lock contention. The series reached v4 with commit messages condensed to about a third at Junio C Hamano's request, who said "Will queue". Patrick Steinhardt objected that the proposed comment for `git_config_append_parameter()` was too specific to `-c key=value`, and disputed the claim that the sequencer lacks a single exit point, arguing cherry-pick, revert, rebase, `--continue` and `--skip` all reach `pick_commits()`; he prefers calling auto maintenance there and on abort.
+
+### last-modified Bloom filter pre-filtering
+
+*Long thread: 26 replies so far from 5 participants over 56 days.*
+
+Toon Claes's series speeds up `git last-modified` by reusing the revision machinery's Bloom filter checks to pre-filter commits, with benchmarks on ziglang/zig showing about 1.95x speedup with `-t` and 3.74x without. Patrick Steinhardt reviewed v4, noting `bloom_filter_contains()` can return -1 for an empty filter while the docs cover only 0 or 1, suggesting renaming `revs_maybe_changed_in_bloom_with_parents()` to `..._with_leading_dirs()`, asking for the performance rationale, and questioning restoring `bloom_filter_settings` after `prepare_revision_walk()` clears them, proposing to store them in `struct last_modified` instead.
+
+### Git 3.0: restrict hex object IDs to lowercase only
+
+*Long thread: 26 replies so far from 6 participants over 41 days.*
+
+brian m. carlsson's series removes Git's acceptance of uppercase hex in object IDs for Git 3.0, since Git has always emitted lowercase and software assuming a unique hex form can break or be exploited by uppercase input. Phillip Wood said the object-ID-versus-ref case made more sense to him and wondered whether refnames whose last component looks like an object ID should also be forbidden. Carlsson posted v2, fixing a hex-range comment, updating commit messages, moving the t5324 fixes to a separate commit, and restoring lowercasing in `parse_oid_prefix`.
+
+### Introduce uploadpack.lazyFetchTrusted
+
+*Long thread: 25 replies so far from 3 participants over 62 days.*
+
+Christian Couder's series adds the protected `uploadpack.lazyFetchTrusted` config variable (global/system scope only) that sets `GIT_NO_LAZY_FETCH=0` in `builtin/upload-pack.c` for trusted repos, motivated by large-object promisors where a filtered clone can fail because the server cannot provide blobs in the filtered range. v3 reworks `path_allowlist_apply()` around a caller-supplied `allow_path` callback, identifies repos by git dir with absolute paths only, and adds `GIT_INTERNAL_LAZY_FETCH_DEPTH` (max 5) to stop infinite recursion when a promisor remote resolves back to the served repo. The week's exchange concerned the type of the depth counter, with Junio C Hamano noting existing callers mix casts and leaving the choice to Couder.
+
+### ref storage format terminology
+
+*Long thread: 23 replies so far from 4 participants over 6 days.*
+
+Patrick Steinhardt's 13-patch series unifies ref storage terminology: `--ref-format=` becomes `--ref-storage-format=` with old names kept as hidden aliases, alongside matching environment variables and `init.defaultRefStorageFormat`, and `--ref-storage-format=` now accepts `format://payload` URIs. He posted v3 with hidden `OPT_ALIAS()` support, correct environment variables in error messages, and renamed `GIT_TEST_DEFAULT_REF_STORAGE_FORMAT`. Kaartic Sivaraam raised payload-comparison and shared-doc concerns; Steinhardt declined `strbuf_realpath` comparison since a payload need not be a path, and kept the shared `ref-storage-format.adoc` out of the series.
+
+### http: add http.sslVerifyStatus to check stapled OCSP responses
+
+*Long thread: 21 replies so far from 4 participants over 29 days.*
+
+Grayson Gordon's patch adds the `http.sslVerifyStatus` boolean mapping to `CURLOPT_SSL_VERIFYSTATUS` in the HTTP transport, defaulting to false so servers without stapled OCSP responses are not blocked. Earlier, Patrick Steinhardt supplied OCSP test infrastructure and Junio C Hamano concluded a combined patch taking the best of both test sets is wanted. Gordon said he would assemble the combined patch and send it over.
+
+### Advice scoping for the defaultBranchName hint
+
+*Long thread: 20 replies so far from 4 participants over 5 days.*
+
+Vsevolod Myalitsin's three-patch series in `advice.c` makes the `defaultBranchName` advice recommend disabling itself in the global configuration, because the current hint writes to the local repository, which is useless since the advice appears while initializing a repository and reappears on the next `git init`. The v4 series passes the whole `advice_setting` to `vadvise()`, adds a scope hint, and sets the global scope for this advice. Junio C Hamano agreed that adding "--global" to the advice hint is acceptable since users can still cut-and-paste and tweak it, but clarified that the original intent was for users to decide the scope themselves, and suggested it may not be necessary to mark each advice individually for scope since the message could simply always say "--global".
 
 ## The period in brief
-This week saw significant progress on several long-running efforts: the `git history squash` feature reached technical completion, ODB alternates refactoring advanced toward integration, and Rust compilation in Windows CI was enabled. A critical design flaw in the `receive-report` hook was resolved, while new bugs in worktree management and ODB transactions were reported and fixed. The week was moderately busy with seven active days, featuring both foundational refactoring and user-facing feature work. Readers should not miss the `git history squash` v15 release, the ODB transaction race fix, and the Windows CI Rust enablement.
 
----
+The week of 2026/09/07 through 2026/09/13 saw heavy traffic across all seven days, with Git v2.56.0-rc0 announced mid-week and multiple long-running series reaching convergence or queueing. Readers should not miss the release candidate announcement, the fast-tracking of Rust support in Windows CI to `master`, and the continued refinement of the `receive-report` hook series toward its tenth revision.
 
 ## Key developments
 
-### `git history squash` reaches technical completion
-Harald Nordgren's v15 reroll of the `git history squash` feature is now feature-complete and ready for integration. The series enforces strict case-sensitive matching for autosquash markers (rejecting `fixup! ABCDEF` while accepting `fixup! abcdef`), aligning with Git's historical convention of emitting only lowercase hexadecimal OIDs. The implementation includes new helpers (`first_parent_tree_oid()`, `resolve_squash_range()`, `squash_check_autosquash_subject()`, `build_squash_message()`) and robust validation that rejects ranges that are empty, single-commit, contain root commits, have multiple tips, or include merges with external parents. Ref protection blocks operations if any local branch descended from the squashed range would be left dangling. The series touches `builtin/history.c`, `sequencer.c`/`sequencer.h`, `advice.c`/`advice.h`, documentation, and test scripts. Junio C Hamano's "Will replace" sign-off from v7 signals intent to queue it for the next release.
+### Git v2.56.0-rc0 and the post-2.56 version question
 
----
+Junio C Hamano announced Git v2.56.0-rc0 for testing on 2026/09/10, comprising 635 non-merge commits since v2.55.0 from 82 people including 32 new contributors. Earlier in the week, Hamano had asked whether the release after 2.56 should be 3.0, 2.99, or business as usual. Patrick Steinhardt noted a Git 2.100 is also possible after 2.99, called GitHub's missing SHA-256 support the biggest question mark for a 3.0 bump, and reported that reftable support is upstreamed in libgit2 with SHA-256 default-enabled. Emily Shaffer said GitHub SHA-256 support leaves her most concerned but noted GitOxide has initial SHA-256 support, leaning toward releasing 3.0.
 
-### ODB alternates refactoring advances toward integration
-Patrick Steinhardt's ODB alternates refactoring series reached v5, incorporating all substantive review feedback. The series introduces `create_repository()` to split repository initialization into skeleton creation, ODB setup, and refdb setup, eliminating skip flags and consolidating alternates logic into a single code path. Key changes include deferring ODB initialization in `git clone` until after URI resolution and using Git's lockfile API to write alternates atomically. The series removes the ability to write alternates after repository creation, simplifying the ODB interface and preparing for future migration of alternate handling into the "files" backend. Karthik Nayak's review identified a potential robustness issue in the alternates-writing loop, suggesting to check `ferror()` after each `fprintf()` call rather than once at the end. The series is now well-documented and ready for integration.
+### Rust integration and Windows CI
 
----
+Johannes Schindelin's series enabling Rust in Windows CI jobs reached v4, switching from `CARGO_TARGET`/`--target` to `CARGO_BUILD_TARGET`; Junio C Hamano judged v4 ready and decided to merge it in `next` and fast-track it to `master` immediately, reasoning that Windows has an unusually high ratio of binary users relative to source builders. Mike Hommey posted v4 moving the Rust `gitcore` crate into a dedicated `rust/` subdirectory so the git source can be vendored as a submodule without its Rust crate, though Hamano reported v4 still leaves the tree inconsistent per CI. Schindelin also posted v4 of the 13-patch series upstreaming Git for Windows patches needed for the UCRT64 switch, which Hamano said could be marked for `next`.
 
-### Rust compilation enabled in Windows CI
-Johannes Schindelin's two-patch series enabling Rust compilation in Git's GitHub Actions Windows CI jobs was approved and fast-tracked to `master`. The series configures the Rust toolchain to target the GCC ABI (MinGW) instead of the default MSVC ABI, ensuring Cargo produces a static library (`libgitcore.a`) compatible with Git for Windows' linker. The patches touch `.github/workflows/main.yml`, `ci/lib.sh`, `config.mak.uname`, and the `Makefile`, but do not affect core Git functionality or user-facing features. Junio C Hamano agreed to merge the series directly into `next` and fast-track it to `master`, bypassing the usual one-week cooking period due to the lower risk of Windows users building from source. This resolves a key blocker for the broader Rustification effort.
+### Push safety: --force-if-includes fix
 
----
+Tyler Cipriani posted v2 fixing `--force-if-includes` in push: `check_if_includes_upstream()` now consults the pushed ref's reflog (`ref->peer_ref`) instead of the destination-named local branch, explicitly rejects detached HEAD, and skips deletions. Patch 2/2 adds `REF_STATUS_REJECT_UNVERIFIABLE` and advice pointing to `--force-with-lease=<ref>:<expect>` or `--no-force-if-includes`. Patrick Steinhardt and Junio C Hamano reviewed the patches, questioning deletion handling and the HEAD-only check; Cipriani confirmed the reflog lookup behavior, agreed to resolve symrefs to the target branch and reject unverifiable revisions in a v4, and proposed moving a guard into `apply_push_cas`.
 
-### ODB transaction race fixed
-Justin Tobler posted a two-patch series fixing a race in the ODB transaction layer during commit when loose objects and large blobs are present with `core.fsync` batching enabled. The bug occurs when a large blob is written to a packfile in a transaction's temporary directory, but the transaction migrates to the main ODB before the packfile is finalized, leaving it unflushed and causing a "No such file or directory" error. The fix refactors `odb_maybe_flush_packfile()` to separate ODB reprepare logic from packfile flushing (patch 1/2) and adds a call to flush pending transaction packfiles before migration (patch 2/2). The series includes a new test in `t/t1050-large.sh` that reproduces the bug with a minimal repository setup. The patches are narrowly scoped to `object-file.c` and align with the ongoing ODB abstraction effort.
+### git var extensions
 
----
+Andrew Pleeter posted successive revisions (v5 through v7) teaching `git var` to expose `GIT_AUTHOR_NAME`/`EMAIL`/`DATE`, committer equivalents, `GIT_SIGNING_KEY`, multiple variables per call, and `-z`. Phillip Wood pressed for the use case for `GIT_SIGNING_KEY` and objected to a non-zero exit when one requested variable is unset; Junio C Hamano proposed modeling multi-variable output on `git var -l` var=value pairs rather than the empty-record convention and asked whether the delimiter also appears without `-z`.
 
-### `receive-report` hook design flaw resolved
-Karthik Nayak's v9 release of the `receive-report` hook series addressed a critical design flaw identified by Junio C Hamano: the `BUG()` call in the `switch` statement assumed the client's requested protocol version was always valid, but clients may omit the `report-status` or `report-status-v2` capability entirely, leaving `version` as `REPORT_STATUS_UNKNOWN`. The fix replaces the `default: BUG(...)` case with an explicit `REPORT_STATUS_UNKNOWN` case that `break`s, ensuring the code silently skips the status report when the client does not request one. The series is now feature-complete with all prior feedback incorporated and appears ready for graduation to `master`. The hook enables server administrators to filter or modify the status report sent to clients after ref updates, with GitLab's MVCC use case as the primary motivation.
+### Pluggable object-database consistency checks
 
----
+Patrick Steinhardt posted v3 of a ten-patch series moving fsck checks into the ODB sources, including loose-object verification in the loose source and reverse-index verification in the packed source. Toon Claes reviewed, suggesting each source decide on `ODB_FSCK_FULL`/`--full` itself and use early returns instead of a `ret` variable; Steinhardt agreed to move the check into the "files" backend, prepare repo settings, and drop the variable.
 
-### Worktree repair validation added
-Yoichi NAKAYAMA posted a two-patch series preventing `git worktree repair` from incorrectly modifying unrelated worktrees. The bug manifests when cross-references between a linked worktree and its administrative data are not validated before repair, risking corruption of unrelated worktrees in edge cases like manually swapped directories. The series first refactors code to reduce redundant `.git` file reads and extract the worktree ID (patch 1/2), then adds validation logic using that ID to prevent repairs on unrelated worktrees (patch 2/2). The test script `t/t2406-worktree-repair.sh` is updated with two new test cases covering the validation. The changes are confined to `worktree.c` and the test script, with no broader behavioral changes.
+### Bug fixes: pull crash, bundle bitmaps, and worktree repair
 
----
+Jiri Kuncar submitted a patch adding NULL guards for `lookup_commit_reference()` in `builtin/pull.c` to avoid a segfault when invalid merge-head references arise from parallel fetches or gc races. Taylor Blau diagnosed a bitmap bug where `git bundle create` omits a tree required by an advertised ref when the included commit shares a root tree with an excluded sibling, proposing "bundle: restrict pack haves to recorded prerequisites". Yoichi NAKAYAMA submitted a two-patch series fixing `git worktree repair` to validate cross-references between a linked working tree and its administrative data, preventing corruption when worktree directories are swapped.
+
+### Build system: precompiling git-compat-util.h
+
+SZEDER Gabor posted a 4-patch series making the Makefile precompile `git-compat-util.h`, reporting about a 35% build speedup; patch 3/4 reintroduces `REFTABLE_OBJS` so reftable sources, which mostly do not include that header, can be excluded. He supplied an optional follow-up covering the remaining files but judged its ~1% gain not worth it, and Junio C Hamano suggested reorganizing patch 3/4's commit message.
+
+### history: sign rewritten commits
+
+Souma posted v3 of a two-patch series teaching the `git history` rewrite commands to honor commit signing. The series adds a `sign_commit` field to `replay_revisions_options` in the replay API and exposes `-S`/`--gpg-sign[=<key-id>]` and `--no-gpg-sign` across `git history drop`, `fixup`, `reword`, and `split`, reading `commit.gpgSign` as the default and applying the selected key to every new commit including both halves of a split and replayed descendants.
 
 ## In brief
 
-**`git history` signing** -- Souma posted v3 of the series teaching `git history` to sign rewritten commits, addressing prior review feedback by trimming commit messages and fixing the `OPT_HISTORY_GPG_SIGN` macro formatting. The series enables signing for operations like `drop`, `fixup`, `reword`, and `split` using the same configuration and command-line options as `git commit`.
+**git pull overwrites a local directory with a symlink** -- AIKSXD ax reported that with a `.gitignore` pattern like `dataset/` and a committed symlink of the same name, `git pull` silently replaces the local directory with the symlink; brian m. carlsson explained that a trailing-slash pattern ignores everything under the directory rather than the entry itself, and recommended not keeping valuable data in untracked or ignored files.
 
-**Advice scope hint simplification** -- Junio C Hamano proposed an even simpler design for Vsevolod Myalitsin's advice scope hint series: the hint could *always* recommend `--global` without needing to mark individual advice settings for their intended scope. This would eliminate the need for the `is_global_hint` field entirely.
+**worktree lifecycle hooks** -- Domen Kožar's v2 series adds `post-worktree-add`, `post-worktree-remove` and `post-worktree-move` hooks so tools like devenv can provision per-worktree environments; Kristoffer Haugsbakk proposed instead a `--id=<string>` option on `git worktree add` recording ownership.
 
-**`uploadpack.lazyFetchTrusted`** -- Christian Couder proposed a cast from `unsigned long` to `int` for the recursion depth counter in patch 4/5, citing precedent in `builtin/pack-objects.c`. Junio confirmed that casting the result of `git_env_ulong()` to `int` is acceptable, following existing precedent in Git.
+**git worktree add "" HEAD on Windows** -- Paul DE TEMMERMAN reported that this command deletes the entire workspace including `.git` instead of failing safely.
 
-**MinGW/Windows build adjustments** -- Johannes Schindelin posted v3 of the 12-patch MinGW/Windows build adjustments series, addressing Johannes Sixt's feedback by moving compiler-definition hunks and dropping a fly-by style cleanup. The series upstream Git for Windows-specific build and runtime adjustments into the main Git codebase.
+**stash.index=true redundant stash** -- Eli Barzilay reported that with `stash.index=true` a successfully applied merge autostash is still stored as a redundant stash entry and deleting `MERGE_AUTOSTASH` fails.
 
-**Coccinelle rule discussion** -- The discussion about removing a risky Coccinelle rule (`if (!E) free(E)`) shifted toward accepting compiler warnings for correctness. René Scharfe argued that the project should tolerate compiler warnings for the sake of correctness, noting that GCC accepts `if (!E);` without warning, while Clang warns.
+**imap-send series** -- Beat Bolli posted a three-patch series covering OpenSSL 4.1 preparation, ASN1_STRING NUL-termination, and RFC 6125 common-name checking; Patrick Steinhardt questioned the `xmemdupz()` copy in the ASN1_STRING fix.
 
-**`--force-if-includes` bugfix** -- Tyler Cipriani posted v3 of the series fixing `--force-if-includes` to check the correct reflog, addressing all of Patrick Steinhardt's technical concerns. The series clarifies that `--force-if-includes` already rejects detached HEAD pushes today and improves detached HEAD advice.
+**midx-write: skip writes with no object entries** -- Pia Park posted v2 moving the empty-entries check so all write modes return silent success instead of publishing a zero-object MIDX; Taylor Blau found silent exit 0 acceptable.
 
-**`git bundle` regression fixed** -- Taylor Blau fixed a regression where `git bundle create` with bitmaps enabled omitted tree objects required by advertised refs. The fix restricts pack "haves" to only those UNINTERESTING commits marked as BOUNDARY (i.e., prerequisites recorded in the bundle header).
+**fetch-pack: trace packfile URI downloads** -- Junio C Hamano decided to queue Ted Nyman's patch adding a Trace2 region around the packfile URI download loop in `fetch-pack.c`.
 
-**Windows test fixes** -- Johannes Schindelin posted a two-patch series fixing Windows-specific test failures that surfaced during full Windows/ARM64 test runs. The patches adjust Perl environment detection and unconditionally skip UTF-8 tests on Windows due to fundamental encoding incompatibilities.
+**git init --ref-format deprecation** -- Kaartic Sivaraam asked whether the old `--ref-format=` should be deprecated or aliased to `--ref-storage-format`, and noted the "unknown ref storage format" error now prints the whole backend URI.
 
-**Documentation improvements** -- Todd Zullinger posted a three-patch series extending the AsciiDoc linting script to enforce backtick-quoting for commands in synopsis-style man pages and applying the fix to `git-pack-refs` and `git-refs` documentation.
+**range-diff-notes redesign** -- Kristoffer Haugsbakk proposed only `--no-RD-notes` and `--RD-notes=<ref>`; Junio C Hamano accepted the design.
 
-**Shell completion for `git worktree repair`** -- Yoichi NAKAYAMA added shell completion support for the `git worktree repair` subcommand, updating `contrib/completion/git-completion.bash` to include the new subcommand and extend path completion for linked worktrees.
+**Outreachy Community Application** -- Christian Couder submitted Git's application for the December 2026 cohort, offering to mentor two projects.
 
-**Prevent `git pull` segmentation fault** -- Jiri Kuncar posted a bugfix patch preventing `git pull` from crashing when encountering an invalid merge head. The patch adds NULL guards around calls to `lookup_commit_reference()` in `builtin/pull.c`, treating failed lookups as "not up to date" rather than segfaulting.
+**history reword memory leak** -- Patrick Steinhardt proposed a fix for the `history reword` memory leak in `builtin/history.c`; Kaartic Sivaraam posted v3 adding the missing `repo_unuse_commit_buffer()` call, which Jeff King reviewed as good.
 
-**Avoid unnecessary packed-refs lock** -- Ariel Keselman posted v3 of a patch avoiding unnecessary packed-refs lock acquisition when deleting root refs (like `AUTO_MERGE`, `CHERRY_PICK_HEAD`, etc.), which are never packed. The change prevents `git update-ref --no-deref -d AUTO_MERGE` from failing in linked worktrees with read-only shared metadata.
+**merge-ll temporaries** -- Michal Koutný submitted a patch cleaning up `.merge_file_*` temporaries after Ctrl+C; Jeff King suggested using the tempfile cleanup handler instead, and posted v2 doing so, with Elijah Newren flagging an LLP64 narrowing hazard.
 
-**`--matched-only` option for `git range-diff`** -- Harald Nordgren posted the final version of a feature patch adding the `--matched-only` option to `git range-diff`. The new option filters output to show only commits present in both input ranges, addressing the workflow pain point of reviewing rebases or range-diffs where users want to focus on how surviving commits changed.
+**git-blame default ignore-revs file** -- Ravi Mistry proposed making git-blame default to a `.git-blame-ignore-revs` file at the working-tree root, with opt-outs via config or `--no-ignore-revs-file`.
 
-**Outreachy December 2026 cohort** -- Christian Couder submitted Git's application for the Outreachy December 2026 cohort, listing two approved project ideas for interns.
+**NULL checks in repository config getters** -- Patrick Steinhardt argued against retaining NULL checks in repository config getters, proposing a redesign before further iteration.
 
-**Git v2.56.0-rc0** -- Junio C Hamano announced the first release candidate for Git v2.56.0, summarizing 635 non-merge commits from 82 contributors.
+**packed-refs lock for root ref deletion** -- Ariel Keselman posted v3 skipping the packed-refs lock when deleting root refs such as `AUTO_MERGE` in the files backend, fixing post-commit cleanup errors in linked worktrees with read-only shared metadata; Patrick Steinhardt suggested stronger test assertions.
 
----
+**global-config forward-slash** -- Delilah Ashley Wu proposed dropping the forward-slash patch in her global-config series and instead setting a forward-slash `XDG_CONFIG_HOME` in the tests.
+
+**bash completion for worktree repair** -- Yoichi NAKAYAMA added bash completion for the `git worktree repair` subcommand, completing paths to linked worktrees or worktrees with broken links.
+
+**documentation backtick-quoting** -- Todd Zullinger posted a three-patch series fixing inconsistent backtick-quoting in the `git-refs` and `git-pack-refs` documentation; Jean-Noël AVILA argued against extending the lint regex to commands, citing false positives, and Zullinger said he would drop the lint patch.
+
+**macOS CI gettext link** -- Harald Nordgren submitted a patch to remove `brew link --force gettext` from macOS CI, which only produced a spurious "Already linked" warning, and scoped perforce, git-lfs, and JGit presence warnings to the platforms that actually install them.
+
+**CMake UCRT64** -- Johannes Schindelin changed `contrib/buildsystems/CMakeLists.txt` so the CMake Windows x64 build defines `ENSURE_MSYSTEM_IS_SET="UCRT64"` and `MINGW_PREFIX="ucrt64"`.
+
+**Perl Windows test fixes** -- Johannes Schindelin fixed two Perl-related Windows test failures: `t9700` now checks `$ENV{MSYSTEM}` because MSYS2 Perl reports `$^O` as `cygwin`, and `t9129` skips its UTF-8 cases on `MINGW`.
+
+**coccinelle free(E) rule** -- René Scharfe questioned a coccinelle rule converting `if (!E) free(E);` into an unconditional `free(E)`, arguing it turns a no-op into a potentially damaging call; Junio C Hamano asked whether rewriting it as an explicit no-op comment would trip `-Werror`, and Scharfe noted GCC accepts `if (!E);` while Clang warns.
+
+**fetch --prune-tags tests** -- Orgad Shaneh pinged Junio C Hamano about tag content verification in the `fetch --prune-tags` tests; Hamano replied he needs to swap the old discussion back into context.
 
 ## Looking ahead
-The next week is likely to see integration of the `git history squash` feature, the ODB alternates refactoring series, and the `receive-report` hook. The ODB transaction race fix and worktree repair validation series are also strong candidates for integration. The advice scope hint discussion may converge on a minimal design, while the Coccinelle rule discussion could see further debate about compiler warnings and build hygiene. The Rustification effort will continue to progress, with downstream projects like git-cinnabar likely to adapt to the new project structure.
+
+The `receive-report` hook series appears poised to land soon after ten revisions, with remaining discussion focused on commit message verbosity and a coccinelle cleanup. The sequencer auto-maintenance series was queued by Junio C Hamano but Patrick Steinhardt's objection about the call site may prompt a follow-up. The post-2.56 version discussion will likely continue as GitHub's SHA-256 support and libgit2's next release clarify the path toward Git 3.0.
