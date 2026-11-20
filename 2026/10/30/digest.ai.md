@@ -1,125 +1,67 @@
 # Git mailing list daily digest for 2026/10/30
 
-## The day in brief
-The Git mailing list saw **133 emails** today, with key developments in **security fixes**, **performance optimizations**, and **governance discussions**. Notable threads include a **security fix for SSH signing verification**, a **performance regression in `git log --follow`**, and **substantive progress on the community voting process** for contentious decisions. Several **bugfix series** advanced toward integration, while **design discussions** on worktree handling and signal safety continued.
+## Long threads
 
----
+### fetch: avoid fetching every branch of a new remote in a shallow repo
+
+*Long thread (root 2026/09/19/14-47-26): 66 replies so far from 5 participants over 42 days; 2 messages that day.*
+
+Harald Nordgren posted v13 of the series that keeps a shallow repository from fetching every branch of a newly added remote, built around the `remote.<name>.fetchRefmap` configuration. The new sixth commit, "remote: resolve @{push} through remote.<name>.fetchRefmap", gives `tracking_for_push_dest()` the same fallback to `remote.<name>.fetchRefmap` that `get_ref_map()` uses on the fetch side, so `@{push}` resolves for a `--limited-fetch` remote; the first commit adds a regression test confirming that an explicit-destination `remote.<name>.fetch` entry is stored both at that destination and through the refmap. Earlier, Phillip Wood and Junio C Hamano had pressed on the interaction between `remote.<name>.fetch` and the refmap, and Harald had confirmed the two-location behavior with a test.
+
+### branch: --delete-integrated for squash- and rebase-merged branches
+
+*Long thread (root 2026/09/29/07-30-30): 51 replies so far from 6 participants over 32 days; 3 messages that day.*
+
+Harald Nordgren posted v5 of the series adding `git branch --delete-integrated <pattern>`, which deletes branches whose changes landed upstream via squash or rebase merges, including after upstream changed the same files, and names the landing commit in output like "landed as 9f8e7d6". The v5 changes are that `git branch -h` usage lines list `--delete-integrated` and that combining it with `--delete-merged` dies with a short "cannot be used together" message. Junio C Hamano reviewed patches 3/4 and 4/4, suggesting a `diffopt` rename nit and questioning whether the index has been read before `ll_merge()` is called in `merge_keeps_upstream()`.
+
+### doc: replace gittutorial with a new beginner tutorial
+
+*Long thread (root 2026/10/06/19-37-00): 38 replies so far from 6 participants over 25 days; 6 messages that day.*
+
+Julia Evans posted v5 of the two-patch series that removes the old `gittutorial` and adds a new beginner tutorial; v5 replaces "it" with "GCM" in the commit message and removes trailing whitespace. Junio C Hamano squashed fixups into the series commenting out `gittutorial` in `Documentation/Makefile` and `command-list.txt` so each patch builds, then supplied a fuller fixup removing remaining references from `git.adoc`, `gitcore-tutorial.adoc`, `gitcvs-migration.adoc`, `gitglossary.adoc`, `gittutorial-2.adoc`, `gitworkflows.adoc`, and the build files, suggesting the two patches be squashed into one once contents settle. Julia Evans also reported testing the Windows Git Credential Manager login flow and explained she left old `gittutorial` references in place to avoid merge conflicts.
+
+### Documentation: community voting process
+
+*Long thread (root 2026/10/06/18-05-36): 29 replies so far from 13 participants over 25 days; 8 messages that day.*
+
+Discussion of Emily Shaffer's proposed `CommunityVoting.adoc` continued. Toon Claes argued eligible voters should be able to abstain and that voting should be reserved for spread opinions; Emily Shaffer summarized reroll changes (subject "Specify...", an explicit secret-vote requirement, and votes referencing the proposal's Message-ID after Junio C Hamano asked for Message-ID rather than commit object name) and said she cannot respond until around November 12th-13th. Jeff King clarified his concern was scaling voter-roll management, proposing a human-input exception where Junio or the PLC could designate additional voters; Jonathan Corbet reported using CIVS for TAB elections.
+
+### loose: fix migrating "loose-object-idx" with batch fsync
+
+*Long thread (root 2026/10/22/23-40-07): 22 replies so far from 4 participants over 9 days; 9 messages that day.*
+
+Justin Tobler's v3 series fixes ODB transactions failing on commit under a compatibility hash by merging the temporary-directory "loose-object-idx" mapping into the main one and writing it atomically. Patrick Steinhardt reviewed v3 and said the changes look exactly as expected and he is happy with the version. Karthik Nayak reviewed the patches, suggesting renames (`loose_object_map_insert()`, `loose_object_map_merge()`) and an error-message tweak; Justin Tobler declined the renames as not worth a reroll and plans to leave the series as-is.
+
+## The day in brief
+Harald Nordgren posted v13 of the shallow-repo fetch series with a new `@{push}` resolution commit, and v5 of the `--delete-integrated` branch series. Julia Evans's new-tutorial series reached v5 with Junio C Hamano supplying fixups for dangling `gittutorial` references. Elia Pinto posted two size_t-hardening series covering loose objects, notes, diff, and tree parsing on LLP64 platforms.
 
 ## Notable threads
 
-### SSH signing verification flaws
-**Thread root**: 2026/09/29/18-51-22
+### builtin/grep: read submodule trees via their repository
+Patrick Steinhardt posted a three-patch series fixing `git grep --recurse-submodules` failing with "fatal: unable to read tree" on nested submodule trees, based on v2.56.0 for backporting. The first patch makes `grep_tree()` read nested submodule trees via `opt->repo` instead of `the_repository`; the other two read sparse directory entries and `.gitmodules` via the passed-in repository. Toon Claes reviewed, asking whether it should be noted as a 2.56 regression and suggesting `test_when_finished` cleanup, and said all changes look good.
 
-**What changed?**
-- A **v3 documentation patch** clarifies that Git checks SSH key lifetimes (`valid-before`/`valid-after`) against the **committer or tagger date** (not the signature timestamp) and warns that this provides no security guarantees because the signer controls the timestamp.
-- Junio identified a **latent correctness issue** in `merge_keeps_upstream()`: the index state passed to `ll_merge()` may not be populated, causing `.gitattributes`-driven merge behavior to be silently ignored.
+### loose object size checks and LLP64 size truncations
+Elia Pinto posted a six-patch series from a search for truncated sizes on LLP64 (64-bit Windows): uninitialized memory exposure from short loose-object zlib streams, missing size checks in the streaming loose-object reader, out-of-bounds writes in `git cat-file --batch` for 2-4GiB objects, heap overflow concatenating 4GiB+ notes, and out-of-bounds reads diffing 2-4GiB text files. The patches switch the loose-object reading path, `combine_notes_concatenate()`, and `count_trailing_blank()` to `size_t`.
 
-**Why it matters**
-The patch addresses a **time-of-signature confusion** flaw in SSH signing verification, where backdated commits could bypass key expiration checks. The latent issue in `ll_merge()` could lead to **false negatives or positives** in squash-detection when upstream modifications are present.
+### log: speed up --follow following renames for non-linear history
+Miklos Vajna posted v4 of the series speeding up `git log --follow` across renames in non-linear history. The `-m --follow` fix is now a separate patch (3/6) so the simplify patch no longer changes behavior -- both bugs shared one cause, the followed path not being restored between merge parents -- and patch 6/6 fixes lost history when one merge side renamed the path while the dropped side edited the old name, keeping the linux.git case at about 37s.
 
-**Key details**
-- **Files touched**: `Documentation/config/gpg.adoc`, `builtin/branch.c` (latent issue).
-- **Subsystem**: SSH signing verification, `ll_merge()` machinery.
-- **Impact**: Improves clarity for users and fixes a potential correctness bug in squash-detection logic.
+### notes: do not drop notes written by a concurrent process
+Farid Zakaria's patch makes `git notes` commands remember the commit they read and use it as the expected old ref value, so a concurrent update fails with "cannot lock ref" instead of silently losing notes. Kristoffer Haugsbakk argued against a three-way merge resolution for concurrent note updates. Farid Zakaria also stated the thread should be considered his GenAI disclosure and asked where the disclosure requirement is documented.
 
----
-
-### `git log --follow` performance regression
-**Thread root**: 2026/10/30/20-07-00
-
-**What changed?**
-Miklos Vajna posted **v4 of a 6-patch series** fixing bugs and optimizing `git log --follow` for merges. The series:
-1. Fixes a regression where `-m --follow` lost history from non-first parents.
-2. Optimizes rename-detection to reduce runtime from ~3 minutes to ~37 seconds for a real-world linux.git case.
-3. Fixes an edge case where edits on the dropped side of a merge were missed.
-
-**Why it matters**
-`git log --follow` is a critical tool for tracking file history across renames, and the performance regression (introduced in Git 2.56.0) made it unusable for large repositories. The optimization is **targeted and well-tested**, with new test coverage for merge scenarios.
-
-**Key details**
-- **Files touched**: `log-tree.c`, `t/t4214-log-follow-merge.sh`.
-- **New helpers**: `follow_parent_changed_dropped_file`, `follow_has_rename_source`.
-- **Performance**: 5× speedup for a real-world case (linux.git).
-- **Behavior change**: `--first-parent` now disables rename detection after the first parent but still walks all parents for history coverage.
-
----
-
-### Community voting process refinements
-**Thread root**: 2026/10/06/18-05-36
-
-**What changed?**
-- **Voting platform**: Jonathan Corbet provided a **tested review of CIVS**, confirming its practicality for occasional polls but highlighting a **usability hurdle**: voters must proactively sign up on the platform.
-- **Eligibility**: Jeff King proposed a **hybrid model** combining an algorithmic threshold (e.g., "X commits in Y years") with a **human-curated list** for edge cases (e.g., former maintainers).
-- **Procedural**: Junio clarified that votes must reference **Message-IDs** (not commit IDs) for stability across requeues.
-
-**Why it matters**
-The community voting process is critical for resolving contentious decisions (e.g., AI contribution policy). The hybrid eligibility model addresses concerns about **inclusivity vs. practicality**, while CIVS’s usability hurdle may influence the final platform choice.
-
-**Key details**
-- **Files**: `Documentation/CommunityVoting.adoc`, `Documentation/DecisionMaking.adoc`.
-- **Open questions**:
-  - Should `for-each-ref --merged` exclude mid-rebase worktrees by default?
-  - How to operationalize non-code contributions (e.g., reviews, mentorship) in the human-curated list?
-- **Next steps**: Emily Shaffer will reroll the patch after November 12, incorporating consensus on the platform and eligibility rules.
-
----
-
-### Worktree handling improvements
-**Thread root**: 2026/10/21/17-33-36
-
-**What changed?**
-Jasper Mayone posted a **two-patch series** addressing two issues:
-1. `git worktree remove` now refuses to delete worktrees in the middle of a rebase, bisect, or other in-progress operation unless `--force` is given.
-2. `%(worktreepath)` in `ref-filter.c` now reports the worktree path for branches being rebased or bisected.
-
-**Why it matters**
-The changes **improve safety** by preventing accidental data loss and **align behavior** across Git commands (e.g., `git worktree add`, `git branch -d`). The series is **well-tested** and addresses feedback from prior RFC discussions.
-
-**Key details**
-- **Files touched**: `builtin/worktree.c`, `ref-filter.c`, `Documentation/`.
-- **Behavior change**: `--force` is now required to delete in-progress worktrees.
-- **Backward incompatibility**: Scripts relying on `%(worktreepath)` being empty for rebasing/bisecting branches may break.
-
----
-
-### `git grep --recurse-submodules` regression
-**Thread root**: 2026/10/29/19-52-07
-
-**What changed?**
-Patrick Steinhardt posted a **3-patch series** fixing a regression where `git grep --recurse-submodules` failed when grepping nested submodule trees. The fix ensures objects are read from the **submodule’s repository instance** rather than the superproject’s.
-
-**Why it matters**
-The regression (introduced in Git 2.56.0) broke a critical workflow for users of submodules. The fix is **minimal and defensive**, with new test coverage for nested submodule trees.
-
-**Key details**
-- **Files touched**: `builtin/grep.c`, `t/t7814-grep-recurse-submodules.sh`.
-- **Behavior change**: Objects are now read from the correct repository instance.
-- **Test coverage**: New test for nested submodule trees.
-
----
+### tree-walk: use size_t for tree buffer sizes
+Elia Pinto posted a two-patch series fixing truncation of tree objects of 4GiB or more: `struct tree_desc`'s `unsigned int` size field truncates on all platforms, silently dropping the rest of a tree when the cut falls between entries, affecting `git ls-tree` and `fsck_tree()`. Patch 1/2 moves `tree_desc` and its helpers to `size_t`; patch 2/2 does the same for `struct tree` and `parse_tree_buffer()` on Windows.
 
 ## In brief
-
-### Bugfixes and refactoring
-- **SSH signing**: Christian Noé Ramos López posted a **v3 documentation patch** clarifying key lifetime checks.
-- **Loose object handling**: Elia Pinto posted a **6-patch series** fixing 64-to-32 truncations on LLP64 platforms (Windows).
-- **Tree-walk**: Elia Pinto posted a **2-patch series** fixing silent truncation of trees >4 GiB.
-- **`git imap-send`**: Junio C Hamano identified a **latent bug** in `has_required_headers()` where CRLF line endings are not handled correctly.
-- **`git diff-files`**: Wasswa Edson posted **v5** of a patch refactoring option parsing to use `parse-options`.
-
-### Documentation
-- **Security boundary**: Johannes Schindelin introduced `gitsecurityboundary(7)` to define Git’s security guarantees.
-- **`.gitignore`**: Junio C Hamano proposed a patch clarifying that `*` matches zero or more characters (including empty strings).
-
-### Outreachy and microprojects
-- **Worktree regression tests**: Immaculate Mecha proposed writing regression tests for `GIT_DIR` inheritance in linked worktrees as an Outreachy microproject.
-- **`test-chmtime`**: Shashank S posted **v2** of a patch modernizing command-line parsing in `t/helper/test-chmtime.c`.
-
-### Governance and process
-- **AI disclosure**: Kristoffer Haugsbakk flagged a lack of AI assistance disclosure in a patch review, prompting a discussion about policy clarity.
-- **Voting process**: Emily Shaffer narrowed the voting platform choice to **CIVS or devotee** and summarized eligibility criteria.
-
----
-
-## Absolute rules compliance
-All factual statements in this digest are directly traceable to the relevant thread’s `THREAD CONTEXT` or `VERIFIED THREAD DELTAS`. No background, predictions, or status were inferred from memory or general Git knowledge. Contributor names and attributions are preserved exactly as written in the email headers.
+- Kristofer Karlsson reported a preliminary v2 deducing the real object directory as the parent of the quarantine directory; Jeff King explained `GIT_QUARANTINE_PATH` is a path to support uses like GitHub's large-object rejection.
+- Emily Shaffer clarified the voting process envisions N competing proposals with ranked-choice systems like CIVS, agreed votes should be secret, and accepted that eligibility rules might exclude her.
+- Johannes Schindelin posted `Documentation/gitsecurityboundary.adoc` defining Git's security boundary around unexpected execution of attacker-controlled code, wired into `git.adoc`, `SECURITY.md`, and `command-list.txt`.
+- Kaartic Sivaraam reviewed v3 of Christian Couder's early-scan parse-options series, leaving minor comments on `lookup_long_opt()` and `early_scan_options()` and calling the series much improved.
+- Junio C Hamano identified a flaw in v4 2/4 of the imap-send header fix: `has_required_headers` detects end-of-headers by two consecutive LFs, but IMAP uses CRLF.
+- Elia Pinto posted v2 of the size_t series for object and buffer sizes; Patrick Steinhardt reviewed the new 5GiB write test and patch 4, asking for a human touch in the commit message.
+- Matt Hunter suggested folding a new helper into `get_follow_remote_head()`; Junio C Hamano questioned the reasoning, noting another topic wants the logic twice.
+- Jasper Mayone posted the worktree series making `git worktree remove` refuse mid-rebase/bisect worktrees and `%(worktreepath)` name them; Junio C Hamano asked it be labeled v3, and Jasper agreed the next round will be v4.
+- Stanislav Aleksandrov confirmed `^/` submodule URL semantics: absolute from the server root for a submodule that stays put when the superproject is forked.
+- Harald Nordgren reported the ccache `pch_defines,time_macros` change merged into Meson and left Meson out of his patch.
+- Christian Noé Ramos López posted v3 of the gpg doc clarifying SSH key lifetimes are checked against the committer/tagger timestamp; Patrick Steinhardt said it looks good.
+- Omri Sarig posted v5 of the git-rebase doc fixing INCOMPATIBLE OPTIONS links; Tuomas Ahola noted a new typo and otherwise approved.
