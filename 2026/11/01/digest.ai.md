@@ -1,51 +1,54 @@
 # Git mailing list daily digest for 2026/11/01
 
+## Long threads
+
+### branch: let --delete-integrated find branches merged onto changed files
+
+*Long thread (root 2026/09/29/07-30-30): 53 replies so far from 6 participants over 34 days; 1 message that day.*
+
+Harald Nordgren posted v6 of his series adding a `--delete-integrated <pattern>` option to `git branch` in `builtin/branch.c`. The feature treats a branch as merged when some upstream commit contains all of its changes, covering GitHub "Squash and merge" and "Rebase and merge" branches whose tips are not reachable from the upstream and therefore survive `git branch --delete-merged`; the output names the landing commit ("Deleted branch topic (was 1a2b3c4, landed as 9f8e7d6)"). Changes in v6 read the index before file merges so `.gitattributes` present only in the index are honored, and rename the `diff_options` variables from `opt` to `diffopt`. Patch 4/4 extends the check to branches squash-merged onto files that upstream also changed, by merging the branch's version into the upstream version and treating the change as landed when the upstream version is unchanged; this reads file contents and may download blobs in a partial clone. Earlier, v4 had restructured the feature so `--delete-merged` again deletes only reachable tips, Jasper Mayone had tested v4 against master and reported it deletes squash and rebase merges while keeping partly-landed and never-merged branches, and Junio C Hamano had questioned whether the index is read before `ll_merge()` consults gitattributes.
+
+### add more path keys to git repo info
+
+*Long thread (root 2026/07/16/01-21-31): 39 replies so far from 5 participants over 109 days; 2 messages that day.*
+
+K Jayatheerth's GSoC series adds `path.*` keys to `git repo info` exposing paths of repository components: `path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.grafts`, `path.git-prefix`, and `path.cdup`, each with absolute and relative suffix formatting. Previously, v7 made the `get_superproject_working_tree()` fix its own commit so the superproject is determined from the repository being inspected rather than the current working directory, removed dead code around `repo_get_index_file()`, and made `path.cdup` work when the worktree is outside the current working directory. Today, Junio C Hamano stated that the v7 series has seen no interest or review for a full month and that he will discard the topic from his tree unless volunteers give it a final review in a few weeks; Justin Tobler said he will take a look at the topic.
+
 ## The day in brief
-The Git mailing list saw significant activity around bugfixes for large-file handling, CI compatibility fixes, and documentation updates. Key developments include Junio C Hamano's warning that the `git repo info` path-keys series will be dropped without reviewer engagement, multiple bugfix series addressing 4GiB+ file truncation issues, and a credential-cache daemon race condition fix. Several documentation cleanups and CI fixes also progressed toward integration.
+
+Junio C Hamano reviewed Harald Nordgren's `@{push}` fix for `push.default=simple` when pushing to another remote, said it looks good, and will queue it; he set a review deadline for K Jayatheerth's month-unreviewed `git repo info` path-keys series, which Justin Tobler volunteered to examine. Harald Nordgren posted v6 of `--delete-integrated` for `git branch` and v5 of the `imap-send` header fix, while Farid Zakaria detailed two startup races in `credential-cache--daemon`.
 
 ## Notable threads
 
-### Rust reorganization at risk of being dropped
-The v5 patch series to reorganize Git's Rust infrastructure from `src/` to a dedicated `rust/` subdirectory remains at risk of being dropped. Junio C Hamano explicitly stated that Mike Hommey's reaffirmation of personal interest is not sufficient justification to retain the patch, citing lack of broader project enthusiasm and unresolved forward-compatibility concerns around Git 3.0's mandatory Rust components. The patch is technically complete and applies cleanly on Git 2.56-rc1, but without additional advocacy, it may be abandoned.
+### remote: resolve "simple" @{push} when pushing to another remote
 
-### `git repo info` path-keys series at risk
-Junio C Hamano issued a final call for reviewers on the v7 patch series adding eight new path-related keys to `git repo info`. The series, which introduces keys like `path.toplevel`, `path.superproject-root`, and `path.cdup`, is mechanically complete and correctness-fixed but has received no substantive technical review in the past month. Without reviewer engagement in the coming weeks, Junio warned the topic will be dropped from his integration branches (`seen`). Justin Tobler committed to reviewing the series within the next day.
+Harald Nordgren's two-patch v2 series in `remote.c` makes `@{push}` resolve to where `git push` goes when `push.default=simple` and `remote.pushDefault` point at a fork, instead of failing with "cannot resolve 'simple' push to a single destination", so `git status` can compare the branch with its push destination. The v2 changes move the "simple" resolution out of `branch_get_push_1()` into its own helper in a preparatory commit. Today, Junio C Hamano reviewed the series, said it looks good, and stated he will queue it.
 
-### `git branch --delete-integrated` series progresses
-Harald Nordgren posted v6 of the four-patch series extending `git branch --delete-merged` with a new `--delete-integrated` flag. The series now addresses all prior feedback, including a critical `get_superproject_working_tree()` bug and proper `.gitattributes` support in the squash-detection logic. The first two patches (preparatory refactoring and landing-message helper) are explicitly marked as uncontroversial and ready for integration. The CLI design is finalized, with `--delete-merged` retaining its strict tip-reachability behavior and `--delete-integrated` opting in to change-based detection for rebased and squashed branches.
+### credential-cache--daemon: do not take over a running daemon's socket
 
-### Credential-cache daemon race condition fix
-Farid Zakaria posted a two-patch series fixing a race condition in the Git credential-cache daemon where concurrent `git credential-cache store` commands could cause one daemon to unlink another's socket. The issue, discovered using Rewind (a deterministic VM for uncovering race conditions), leads to lost credentials and orphaned daemons during parallel submodule fetches. The patches make the daemon ignore `EEXIST` from `mkdir()` and use `unix_ss_create()` to safely handle concurrent socket creation. New tests in `t/t0301-credential-cache.sh` exercise both the `mkdir()` race and the socket hijacking race.
+Farid Zakaria posted a two-patch series fixing races in `builtin/credential-cache--daemon.c` when two `git credential-cache store` commands run simultaneously and each tries to start a daemon: the second daemon unlinks the first's socket and binds its own, losing the first's stored credential, leaving `git credential-cache exit` to stop only the second daemon, and causing the first daemon's tempfile handler to remove the second's socket on exit. He found the issue with Rewind, a deterministic VM he is building. The first patch ignores `EEXIST` from `mkdir()` and stats the directory to verify permissions, and the second uses `unix_ss_create()` instead of `unix_stream_listen()` so a second daemon prints "ok" and exits while its client talks to the running daemon, registering the socket for removal only after binding succeeds.
 
-### Large-file handling bugfixes
-Elia Pinto posted multiple bugfix series addressing silent truncation of files ≥4GiB on platforms where `long` is 32-bit but `size_t` is 64-bit (notably 64-bit Windows). The patches target:
-- `git grep` and `git diff` (two-patch series)
-- `git archive` (tar/zip formats) and `git apply` (two-patch series)
-- `hashwrite()`, `count_lines()`, and `hash_chars()` (three-patch series)
-- Binary patch hunk parsing in `git apply` (single patch)
+### imap-send: fix with reordered message headers
 
-Each series widens function signatures from 32-bit types to `size_t` to prevent truncation, with the `git diff` series opting to die with a clear error for files ≥4GiB rather than risk generating misleading patches. The fixes are well-motivated and include verification via simulated truncation at 16 bits, though no tests are included due to the impracticality of generating multi-gigabyte inputs.
+Harald Nordgren posted v5 of his four-patch `imap-send` series, which stops rejecting patches sent with `git send-email` (which write Subject before Date) by accepting From, Date and Subject headers in any order within each message's header block. The new v5 change ends the header block at an empty line in CRLF mboxes as well, so headers in the body or later messages no longer count, with a test added. The series also makes `imap-send` wait for the tunnel command to finish when `imap.tunnel` is set, drops the special case for "From git-send-email" lines, and matches header names case-insensitively per RFC 5322.
 
-### CI fixes for Ubuntu 26.04 compatibility
-Harald Nordgren posted a three-patch series restoring four failing CI jobs after GitHub Actions updated `ubuntu-latest` to Ubuntu 26.04. The patches:
-1. Switch from `apt` to `apt-get` in the `linux32` job to silence CLI interface warnings
-2. Run `ln` with `sudo` to work around a permission issue when replacing `/usr/bin/dirname`
-3. Pin the `linux32` job to Ubuntu 24.04 to bypass a temporary Docker networking issue
+### sequencer: refuse to pick or revert shallow boundary commits
 
-The fixes are minimal and pragmatic, addressing immediate breakage rather than redesigning the CI infrastructure. The series references prior work by Johannes Schindelin in Git for Windows as tested precedent.
+Nakul V S's patch makes `revert`, `cherry-pick` and `rebase` refuse shallow boundary commits -- commits at the edge of a shallow clone's history whose parents are hidden, which look like root commits and would empty or refill the working tree when replayed. `revert` and `cherry-pick` gain `--allow-shallow-boundary` to override, remembered across `--continue`, while `rebase` always refuses and suggests `git fetch --unshallow`. Today, Junio C Hamano questioned whether rebasing onto current master was necessary, asked about a vision for later supporting `git commit --amend` and hand-typed todo lines, questioned the use of `git_config_bool_or_int()` for `options.allow-shallow-boundary`, and suggested checking conflicts with `next` and `seen` and reusing the `is_shallow_boundary_commit()` function from Harald Nordgren's stagnant object-name topic.
 
-### Documentation updates
-Several documentation threads saw progress:
-- Andy Koppe posted v2 of a five-patch series aligning Git's terminology around "pseudorefs" (FETCH_HEAD, MERGE_HEAD) and "root refs" (HEAD, ORIG_HEAD) with the 2024 redefinition. The series updates the glossary, man pages, code comments, and tests, incorporating Julia Evans's proposal to expand `gitdatamodel.adoc`.
-- Omri Sarig posted v6 of a patch updating the `git-rebase` man page to correct outdated references in the "INCOMPATIBLE OPTIONS" section.
-- Tuomas Ahola posted a patch updating `Documentation/CodingGuidelines` to reflect the bump in Git's minimum required Perl version from 5.8.1 to 5.26.0.
+### move rust gitcore crate to a different subdirectory
+
+Mike Hommey's v5 patch moves all Rust-specific files (`Cargo.toml`, `build.rs`, `src/*.rs`) into a dedicated `rust/` subdirectory, because a top-level `Cargo.toml` implies `cargo build` works standalone (it does not) and prevents including the git source as a submodule of a Rust project. Today, Junio C Hamano wrote that the reason given was "not a strong enough reason to keep this one" as he tries to keep the number of topics in flight low, and added "... down."
 
 ## In brief
-- **[2026/10/18/23-55-07]** Matt Hunter proposed an alternative implementation for the `remote.<name>.followRemoteHEAD` lazy-validation series, folding the new logic into `get_follow_remote_head()` instead of introducing a standalone helper.
-- **[2026/10/31/06-55-03]** Junio C Hamano signaled intent to integrate Linus Torvalds's patch fixing `git describe`'s commit distance calculation when commit timestamps are non-monotonic.
-- **[2026/10/31/08-25-49]** Junio noted a test could be made hash-agnostic but signaled "Will queue" the patch fixing commit abbreviation in submodule diff headers.
-- **[2026/10/31/10-06-42]** Junio reviewed a bugfix for valueless configuration handling in merge-ort, calling it "nicely done" and signaling approval.
-- **[2026/11/01/06-39-51]** Okhuomon Ajayi posted a patch removing implicit use of `the_repository` in `wt-status.c` as part of the ongoing `the_repository` removal effort.
-- **[2026/11/01/10-59-00]** Pushkar Singh posted a patch adding a Trace2 event for `git maintenance run --auto` skips due to lock, improving observability of silent skips.
-- **[2026/11/01/18-58-46]** Tuomas Ahola posted a patch updating `CodingGuidelines` to reflect the recent bump in Git's minimum required Perl version.
-- **[2026/11/01/21-06-23]** Cynthia Uche posted an Outreachy proposal draft to extend the `early_scan_options()` API to additional Git commands like `git column`, `git bisect`, and `git check-ref-format`.
+
+- Junio C Hamano decided to pick up Linus Torvalds's `git describe` skewed-commit-dates fix and move it forward after objecting to Tuomas Ahola's test rewrite, which registered a clean-up action from inside a subshell.
+- Junio C Hamano judged Srujith A Poojary's submodule commit-abbreviation patch "quite straightforward" and said he will queue it.
+- Elia Pinto posted a two-patch series so grep uses `size_t` for search buffers and diff dies with a clear error instead of truncating files of 4GiB or more on 64-bit Windows.
+- Elia Pinto posted a two-patch series using `size_t` in archive tar/zip writers and `git apply` so files of 4GiB or more are not written truncated or corrupt on 64-bit Windows.
+- Harald Nordgren submitted a three-patch CI series fixing jobs failing on Ubuntu 26.04, including pinning linux32 to ubuntu-24.04 to restore networking.
+- Andy Koppe posted v2 of the "root refs vs pseudorefs" documentation series, adding root refs and pseudorefs to ref types in `gitdatamodel(7)`.
+- Junio C Hamano acknowledged Jeff King's correction about the fetch test and queued the t5702 env-quoting resilience patch.
+- Junio C Hamano gave a positive verdict on Thomas Bachem's merge-ort patch accepting valueless rename settings.
+- Elia Pinto posted a patch making `parse_binary_hunk()` reject binary hunks whose declared size exceeds `INT_MAX` as corrupt.
+- Pushkar Singh submitted a patch emitting a Trace2 data event when `git maintenance run --auto` skips due to an existing lock.
