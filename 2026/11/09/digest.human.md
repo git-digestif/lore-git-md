@@ -1,80 +1,55 @@
 # Git mailing list daily digest for 2026/11/09
 
+## Long threads
+
+### Path keys for `git repo info`
+
+*Long thread: 55 replies so far from 6 participants over 117 days; 2 messages that day.*
+
+The GSoC series adds path keys to `git repo info` (`path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.git-prefix`, `path.cdup`) and refactors `get_superproject_working_tree()` onto a `struct repository *`. After Phillip Wood earlier suggested renames, K Jayatheerth today agreed "superproject-working-tree" is the better superproject key name, agreed to change `path.git-prefix`, and defended keeping `path.hooks` because scripts still query it via `git rev-parse --git-path hooks`. He also contrasted `path.cdup`'s slash-counting `../` output with relative path formatting. Junio C Hamano noted Git generally avoids `-` in configuration variable names.
+
+### Community voting process
+
+*Long thread: 31 replies so far from 14 participants over 35 days; 1 message that day.*
+
+Following Contributor's Summit notes and earlier debate over voter eligibility and platforms, Stéphane Glondu today proposed Belenios as the voting platform: it supports Condorcet voting, an instance already runs at vote.debian.net for anyone with a Debian Salsa account, and a new instance could be deployed elsewhere.
+
+### Worktrees rebasing or bisecting a branch
+
+*Long thread: 26 replies so far from 8 participants over 20 days; 4 messages that day.*
+
+Jasper Mayone's v4 series makes `git worktree remove` refuse a worktree mid-operation without `--force`, documents reading `%(worktreepath)` safely, makes `%(worktreepath)` name the worktree rebasing or bisecting a branch, and stops `git branch` marking it with `+`. Today D. Ben Knoble questioned the claim that only one worktree is shown for a multiply-checked-out branch; Phillip Wood answered this is possible via `git worktree add --force`, `git checkout --ignore-other-worktrees`, or `git symbolic-ref`, and Ben Knoble retracted his impression as faulty memory. Junio C Hamano objected to the "possible races" rationale: with `main` checked out in two worktrees, a commit in one makes `git status` in the other report the change as reverted.
+
+### `test-tool genbytes` for slow `tr(1)` on macOS
+
+*Long thread: 23 replies so far from 4 participants over 3 days; 8 messages that day.*
+
+Kristofer Karlsson's v2 adds `test-tool genbytes <hex-byte> [<count>]` to replace slow `genzeros | tr` calls in tests such as t4205 on macOS, and removes `genzeros`. Today Junio C Hamano suggested a `static` buffer to avoid the 256kB stack allocation and said a "not thread-safe" comment is unwarranted for throw-away test tooling. Patrick Steinhardt proposed `git_parse_signed()` for the count; Kristofer Karlsson weighed buffer options and leaned toward keeping `genzeros` plus a plain-character `genbytes`. Johannes Sixt reported a `printf` alternative passes CI with caveats.
+
+### Detached HEAD documentation rewrite
+
+*Long thread: 23 replies so far from 4 participants over 34 days; 1 message that day.*
+
+Julia Evans's v4 rewrites the detached HEAD explanation as a standalone `gitdetached-head` guide wired into `advice.c` and `command-list.txt`. After earlier debate over describing HEAD in users' own words, Julia Evans today proposed text explaining what the two HEAD states share -- `HEAD` always refers to the current commit, either as a branch or as a commit ID -- and pushed back on the objection to "useful for `HEAD` to be a commit ID," asking whether it misleads users.
+
 ## The day in brief
 
-The Git mailing list saw significant progress on several key initiatives today. The `git repo info` path keys series reached a design consensus on naming conventions, with maintainer guidance on hyphen usage in configuration variables. The fsmonitor untracked cache fix was marked ready for integration after final review. A new voting platform option (Belenios) was proposed for the community voting process. Several performance optimizations for GitLab CI were reviewed and approved. The `the_repository` removal effort continued with multiple refactoring series making progress.
+The `git repo info` path-keys series incorporated rename feedback, with one key name defended on script-compatibility grounds. A 15-patch series fixing segfaults on valueless settings drew positive reviews with one behavioral tweak agreed for v2. The fsmonitor untracked-cache fix was re-queued on its original base after a `next` merge was reverted.
 
 ## Notable threads
 
-### Git repo info path keys naming consensus
+### Segfaults on valueless settings
+Thomas Bachem's 15-patch series fixes segfaults when settings such as `rebase.missingCommitsCheck` or `fetch.bundleCreationToken` are given without a value. Today Derrick Stolee reviewed several patches positively, Phillip Wood suggested a missing `rebase.missingCommitsCheck` value warn and fall back to "ignore" like an invalid value, Junio C Hamano agreed, and Thomas Bachem confirmed v2 will change only that patch.
 
-The long-running `[PATCH v8]` series adding path-related keys to `git repo info` reached a turning point today. After substantive discussion between K Jayatheerth and Phillip Wood on naming conventions, Junio C Hamano clarified a key project-wide style rule: Git configuration variables should avoid hyphens (`-`) in favor of dots (`.`) or underscores (`_`).
+### fsmonitor untracked cache after a trivial response
+Ilia K's patch stops the untracked cache being saved with stale valid bits after the fsmonitor daemon sends a trivial response. Today Ilia K posted v2, invalidating the whole cache when the worktree cannot be determined; Derrick Stolee said it LGTM, and Junio C Hamano reverted the merge to `next`, queued v2 on the original base, and said he will mark the topic ready for `next` again after a few days.
 
-Key decisions:
-- `path.toplevel` → `path.working_tree`
-- `path.superproject-root` → `path.superproject_working_tree` (but must use underscores: `path.superproject_working_tree`)
-- `path.git-prefix` → `path.prefix`
-
-The author agreed to implement these changes in the next version, resolving the most straightforward design objections. The `path.hooks` debate remains open, with Jayatheerth arguing for its necessity to maintain compatibility with existing scripts using `git rev-parse --git-path hooks`.
-
-**[2026/11/09/16-52-33 by K Jayatheerth]** and **[2026/11/09/19-53-25 by Junio C Hamano]**
-
-### Fsmonitor untracked cache fix ready for integration
-
-The fsmonitor untracked cache fix, which addresses stale cache entries after trivial fsmonitor responses, was marked ready for integration after final review. The patch introduces `untracked_cache_invalidate_stale_dirs()` to recursively check cached directories against their on-disk stat data, ensuring stale entries are invalidated when the fsmonitor daemon sends a trivial response.
-
-Junio C Hamano resolved the remaining implementation questions about recursion safety and error handling, leaving the patch technically complete. The fix is narrowly scoped to the edge case of trivial fsmonitor responses and avoids overhead for commands that don't write the index.
-
-**[2026/11/09/18-59-10 by Ilia K]**
-
-### Community voting process gains new platform option
-
-Stéphane Glondu proposed Belenios as a third voting platform option for the Git community voting process, alongside the previously discussed CIVS and devotee. Belenios is already used by Debian (`vote.debian.net`), supports Condorcet voting, and can be self-hosted, addressing concerns about third-party dependencies and neutrality.
-
-This proposal expands the options for the community voting process, which aims to resolve contentious decisions when consensus cannot be reached through normal discussion. The voting platform choice remains one of the seven open questions in the process design.
-
-**[2026/11/09/15-21-25 by Stéphane Glondu]**
-
-### GitLab CI speedups approved
-
-Junio C Hamano signaled approval for Patrick Steinhardt's seven-patch series optimizing GitLab CI performance. The series addresses specific bottlenecks in test execution, SDK installation, and build configuration, demonstrating measurable speedups across macOS, Fedora, and Windows runners.
-
-Key optimizations include:
-- Replacing `Expand-Archive` with `tar(1)` for SDK extraction (3m → 10s)
-- Optimizing repository state resets in `t0027-auto-crlf.sh` (20% reduction)
-- Using reftable backend in `t5551-http-fetch-smart.sh` (10x speedup on macOS)
-- Using `-Doptimize=debug` for Meson builds (50% reduction in Fedora job time)
-
-The series is now ready for the `next` integration branch.
-
-**[2026/11/09/20-31-06 by Junio C Hamano]**
-
-### The_repository removal continues
-
-Several refactoring series targeting the `the_repository` removal effort made progress today:
-
-1. Junio C Hamano's series removing `USE_THE_REPOSITORY` from `unpack-trees.c` received positive reviews and was resent as v2 with minor whitespace fixes.
-
-2. Srujith A Poojary's series removing `USE_THE_REPOSITORY_VARIABLE` from archival modules was posted, with Junio raising a concern about an inconsistency in `builtin/archive.c`.
-
-3. Okhuomon Ajayi's Outreachy proposal to reduce Git's global state was updated to v3, incorporating all prior feedback and expanding the scope to include `builtin/` refactoring.
-
-**[2026/11/09/20-54-35 by Junio C Hamano]** and **[2026/11/09/05-39-20 by Okhuomon Ajayi]**
+### Default hash algorithm in `setup.c`
+brian m. carlsson's patch defaults the hash algorithm to `GIT_HASH_DEFAULT` (SHA-256 in breaking-changes mode) instead of SHA-1. Today Junio C Hamano diagnosed a regression and a latent bug in `repository_format_configure()` where `init.defaultObjectFormat` can corrupt an existing repository on re-init, and Patrick Steinhardt confirmed `git init` does not migrate formats, proposing the hash block be restructured like the ref-storage checks.
 
 ## In brief
-
-- **Git apply --check crash fix**: The series fixing a crash in `git apply --check` when processing malformed patch headers converged on strict validation, with Junio endorsing the approach of rejecting any patch header format not generated by `git diff` or `git format-patch`. **[2026/11/09/19-56-22 by Junio C Hamano]**
-
-- **Config segfault fixes**: A 15-patch series fixing segfaults from unvalued config keys reached consensus on treating missing values for `rebase.missingCommitsCheck` as invalid rather than rejecting them, aligning with existing behavior for explicitly invalid values. **[2026/11/09/19-45-06 by Junio C Hamano]**
-
-- **Parse-options documentation**: Karthik Nayak's patch documenting all previously undocumented flags and macros in the `parse-options` API was merged to `master`. **[2026/11/09/18-59-39 by Junio C Hamano]**
-
-- **Git diff examples rewrite**: Junio queued squashable fix-ups for Julia Evans's rewrite of the `git diff` EXAMPLES section, adopting the compatible anchor syntax to resolve build toolchain compatibility issues. **[2026/11/09/22-20-06 by Junio C Hamano]**
-
-- **Git history reword --verbose**: The discussion about adding diff display to `git history reword` expanded to include four distinct positions on whether the feature should be opt-in or opt-out, with Phillip Wood now preferring to make it the default behavior. **[2026/11/09/14-14-09 by Phillip Wood]**
-
-- **Reflog expire refactoring**: Junio endorsed Patrick Steinhardt's suggestion to deduplicate refs in the unified loop for `git reflog expire`, calling the current behavior (processing the same ref twice) a bug. **[2026/11/09/20-04-29 by Junio C Hamano]**
-
-- **New tutorial for beginners**: Julia Evans posted a new tutorial (`gittutorial-branches`) aimed at Git beginners, explaining branches in a conversational, example-driven style. Junio raised a meta-concern about review bandwidth. **[2026/11/09/21-33-10 by Julia Evans via GitGitGadget]**
-
-- **APFS/mmap compatibility**: Harold Hunt reported a platform compatibility bug on macOS/APFS where Git incorrectly reports no changes to files modified via mmap without calling `msync()`. Brian M. Carlson clarified that this doesn't affect Git's own operations. **[2026/11/09/22-05-55 by Harold Hunt]**
+- 井上司 corrected his reftable HEAD reflog report: the files backend behaves the same, and he proposed a `refs.c` helper returning the new oid of a ref updated in the same transaction.
+- Miklos Vajna posted v5 speeding up `log --follow` on non-linear history, now also following copies and renames across parents with no merge base.
+- Tanga Joris and reviewers agreed `git apply` should reject corrupt `diff --git` headers with an error instead of silently applying them.
+- Junio C Hamano posted v2 of the `unpack-trees.c` the_repository removal and explained the paranoid repository-match checks in `unpack_repo()`.
+- Reviewers agreed the `git diff` EXAMPLES rewrite should use anchors working in both Asciidoctor and AsciiDoc; Junio C Hamano will queue squash fixes.
