@@ -1,84 +1,53 @@
 # Git mailing list daily digest for 2026/11/13
 
+## Long threads
+
+### fetch: avoid fetching every branch of a new remote in a shallow repo
+
+*Long thread: 77 replies so far from 6 participants over 56 days; 1 message that day.*
+
+The v13 series separates which refs to fetch from where they are stored via `remote.<name>.fetchRefmap`, and resolves `@{push}` through the refmap for `--limited-fetch` remotes. Phillip Wood argued that when `remote.<name>.fetchRefmap` maps fetched names without `remote.<name>.fetch` setting a default set, a command-line refspec with an explicit destination such as `feature:wip/feature` should not also update the refmap destination, and agreed any tweak to that long-standing double-store behavior should be a separate preliminary cleanup. He also stated that patch 3 should be dropped and the combination of `.fetchRefmap` and `.fetch` used instead to set default behavior when no refspecs are on the command line.
+
+### doc: rewrite detached HEAD state explanation
+
+*Long thread: 42 replies so far from 5 participants over 38 days; 8 messages that day.*
+
+Julia Evans's series rewrites the detached HEAD explanation into a standalone guide referenceable as `git help detached-head` from advice messages. Today's exchange centered on how much detail to include about commits made in detached HEAD state not landing on a branch: Junio C Hamano argued that not clobbering branches when making a temporary commit is the most important user-impacting consequence and that deliberately avoiding it is a disservice, while Evans proposed adding "You can also use this to make experimental commits without being on a branch." to the examples. Evans identified the underlying conflict as writing for two audiences -- users accidentally detached versus advanced users exploring -- and offered to drop the `git-checkout.adoc` changes and reframe the series around confused users; Hamano countered that a manual page must cater to both.
+
+### worktree: treat a branch being rebased or bisected as checked out
+
+*Long thread: 38 replies so far from 8 participants over 24 days; 5 messages that day.*
+
+Jasper Mayone's v5 series makes `git worktree remove` refuse a worktree mid-operation without `--force`, documents reading `%(worktreepath)` safely, names the rebasing or bisecting worktree in `%(worktreepath)`, adds `%(currentworktree)`, and stops `git branch` marking the rebased branch with `+`. Junio C Hamano praised the central `check_no_operation_in_progress()` design as very good and extensible, called patch 3 a "nice loss of duplicated logic", and said patch 2 looks good; he questioned a phrase in patch 4 and said he is "a bit negative" on patch 5, suggesting the series might stop at 3/5 if 4/5 exists only to support it.
+
+### builtin/rerere: convert to use subcommands
+
+*Long thread: 27 replies so far from 6 participants over 18 days; 5 messages that day.*
+
+Patrick Steinhardt's v4 series modernizes `git rerere`'s custom subcommand parsing with `OPT_SUBCOMMAND()`. Today Steinhardt accepted Karthik Nayak's capitalization nit but declined to resend just for it, asking Junio to fix it up. Junio C Hamano applied the fixup with `git commit --fixup` plus `git rebase --autosquash` and asked whether the steps could be simplified; Tuomas Ahola suggested a `git rev-list`-based one-liner and Phillip Wood suggested `--keep-base`, but Hamano rejected the upstream-based approach and wished for a single `git fixup HEAD~10` command.
+
 ## The day in brief
-The Git mailing list saw significant progress on several key topics today. A critical bugfix for `git cat-file --batch` with invalid reflog references was necroposted, addressing a long-standing regression. The `git ls-remote` promisor-remote crash fix sparked a design discussion about repository context handling. Documentation improvements for detached HEAD state continued to evolve, with a proposed minimal wording change to address maintainer concerns. Several performance optimizations and refactoring efforts made progress, including memory usage improvements in the commit subsystem and optimizations for `git repo structure`.
+
+Phillip Wood pushed the shallow-repo fetch series toward dropping its third patch in favor of combining `.fetchRefmap` with `.fetch`, while the detached HEAD documentation rewrite grappled with serving both confused and advanced users. New series were posted for making `cat-file` survive out-of-range reflog selectors, fixing hash algorithm detection on re-init, and writing repack-filtered objects directly as loose objects.
 
 ## Notable threads
 
-### Bugfix for `git cat-file --batch` with invalid reflog references
-**What changed:** Caspar Duregger necroposted a four-patch series that systematically applies `GET_OID_GENTLY` to make `git cat-file --batch` error handling uniform for invalid reflog references, addressing a regression introduced by commit 393bbb21.
+### cat-file: report out-of-range reflog entries as missing
+Caspar Duregger's four-patch series makes `git cat-file --batch-check` report out-of-range reflog selectors as missing instead of dying: fixing peel-suffix misparsing in `object-name.c`, scoping `GET_OID_GENTLY` to only failing lookups, failing gently on an empty reflog in `read_ref_at()`, and passing the flag in cat-file batch modes.
 
-**Problem/goal:** The regression caused `git cat-file --batch` to fatally error on out-of-bounds reflog entries (e.g., `branch@{20}` when only 5 exist), while other invalid references were handled gracefully.
+### setup: fix hash algorithm detection
+brian m. carlsson's v2 reworks hash selection so a command-line choice takes precedence, environment, config, and default are consulted only for new or hash-less repositories, and reinitializing an existing repository with a different hash algorithm is refused, with tests covering each case.
 
-**Subsystem:** Object name lookup machinery (`object-name.c`, `refs.c`, `builtin/cat-file.c`)
-
-**Kind of work:** Bugfix with test coverage
-
-**Impact:** This fix restores consistent error handling behavior across reference lookups, preventing crashes in batch processing scenarios. The series also addresses related edge cases like parsing ambiguities and empty reflogs.
-
-**Today's development:** The author posted the complete series with thorough commit messages and test coverage. The patches are well-structured, addressing both the immediate regression and related inconsistencies in the object-name lookup machinery.
-
-### `git ls-remote` promisor-remote crash fix
-**What changed:** Christian Couder posted a patch to fix a crash in `git ls-remote` when invoked outside any Git repository with promisor-remote configuration enabled.
-
-**Problem/goal:** The crash occurs because `filter_promisor_remote()` dereferences `repo->gitdir` without checking for NULL, a regression introduced in 2026.
-
-**Subsystem:** Promisor-remote subsystem
-
-**Kind of work:** Bugfix
-
-**Impact:** This fix prevents a segmentation fault that could occur when running `git ls-remote` outside a repository with certain promisor-remote configuration options enabled.
-
-**Today's development:** Junio C Hamano proposed an alternative approach that makes `promisor_remote_reply()` a no-op when no repository is present. The discussion now centers on which approach is preferable: the minimal fix at the crash site or the higher-level no-op. Both solutions prevent the crash, but Junio's alternative avoids calling `filter_promisor_remote()` entirely when outside a repository.
-
-### Detached HEAD documentation improvements
-**What changed:** Julia Evans proposed several documentation improvements for the detached HEAD state explanation.
-
-**Problem/goal:** The documentation needed to better explain the practical consequences of detached HEAD, particularly its utility for making experimental commits without affecting any branch.
-
-**Subsystem:** Documentation
-
-**Kind of work:** Documentation improvement
-
-**Impact:** These changes will help users understand when and why to use detached HEAD, particularly for temporary experimental work.
-
-**Today's development:** Julia proposed a minimal wording change - "You can also use this to make experimental commits without being on a branch." - to address Junio's concern that the documentation omitted the most important consequence of detached HEAD. She also proposed reframing the series as a standalone guide (`git help detached-head`) specifically aimed at users confused by detached HEAD, rather than trying to serve both the `git-checkout` manual page and a beginner-friendly guide simultaneously.
-
-### Memory optimization for `struct commit`
-**What changed:** Kristofer Karlsson's patch to reduce memory usage in the commit subsystem by reordering fields in `struct commit` received final maintainer approval.
-
-**Problem/goal:** Eliminate padding in `struct commit` on 64-bit platforms to reduce memory usage by 10% (from 80 to 72 bytes).
-
-**Subsystem:** Commit subsystem
-
-**Kind of work:** Performance optimization
-
-**Impact:** This change reduces memory usage for repositories with many commits, with a measured 32 MiB reduction in peak RSS for `git rev-list --all` on a 4.5-million-commit monorepo.
-
-**Today's development:** Junio C Hamano gave the final "Will queue" approval, indicating the patch is ready for integration. The patch has been thoroughly reviewed and all feedback incorporated, including explanatory comments for the `index` and `date` fields and clarification of casting directions.
-
-### `git repo structure` performance improvements
-**What changed:** Patrick Steinhardt posted a two-patch series improving performance and reducing memory usage of `git repo structure`.
-
-**Problem/goal:** The current implementation parses every object it encounters, which is prohibitively expensive in repositories with tens of billions of tree entries.
-
-**Subsystem:** `git-repo` built-in
-
-**Kind of work:** Performance optimization
-
-**Impact:** The patches achieve an 80% memory reduction (5.1× less memory) and 20% wall-time improvement by delaying parsing until necessary and skipping full tree parsing when only the object type is required.
-
-**Today's development:** Kristofer Karlsson provided substantive review, endorsing both patches and noting the significant performance improvements. The review confirmed that the optimization aligns with prior work on incremental connectivity checks.
+### repack: write filtered-out objects as loose objects
+Adithya Chakilam's two-patch series adds `--filter-to-loose=dir` to `git repack`, streaming the filtered pack into `unpack-objects` to write filtered-out objects directly as loose objects in a destination object directory, with the second patch extending coverage to loose objects excluded by the filter.
 
 ## In brief
+- Christian Couder fixed a crash when `git ls-remote` runs outside a repository with promisor config that writes to config, returning early from `filter_promisor_remote()` when `repo->gitdir` is NULL.
+- **for-each-ref --no-format patch**: aeron-gh proposed moving default format assignment after parsing to fix the segfault.
 
-- **[`git fetch` refspec override semantics]**: Phillip Wood explicitly confirmed that command-line refspecs must override `remote.<name>.fetchRefmap` entirely, resolving the ambiguity that blocked the v13 series.
-- **[`git worktree list` improvements]**: Junio questioned the value of suppressing `+` markers and paths in `git branch` output for rebasing/bisecting branches, suggesting the series might be better off stopping at patch 3/5.
-- **[`git rerere` subcommand handling]**: Post-merge discussion continued about workflow improvements, with Phillip Wood providing a tip for Junio's rebase workflow using `--keep-base`.
-- **[`promisor.fetchOrder` design discussion]**: Christian Couder argued that the current patch's static client-side order cannot handle multi-remote scenarios where different remotes advertise different sets of promisor remotes.
-- **[`--show-object-format` for `git ls-remote`]**: Patrick Steinhardt approved the v2 patch, signaling readiness for queueing.
-- **[Git v3 default object format]**: brian m. carlson posted a revised patch that ensures `git init` correctly defaults to SHA-256 when Git is built with `WITH_BREAKING_CHANGES=1`.
-- **[`git-config` documentation]**: YikunWei added the `fmt-merge-msg` configuration section to the main `git-config(1)` man page to improve discoverability.
-- **[`for-each-ref --no-format` bugfix]**: Junio leaned toward making `--no-format` consistently restore the default format across all ref-listing commands.
-- **[`git repack --filter-to-loose`]**: Adithya Chakilam posted a two-patch series introducing a new option to improve interoperability with key-value object stores.
-- **[Loose object database cache invalidation]**: Junio confirmed integration of the fix for stale cache entries that were causing existence check failures in partial clones.
+- Kristofer Karlsson's patch removes padding from `struct commit` on 64-bit platforms, shrinking it from 80 to 72 bytes; reviewers refined the cast-direction and date comments.
+- Patrick Steinhardt sped up `git repo structure` in huge repositories by only parsing objects as needed and not fully parsing trees.
+- Philippe Blain discussed `git replay` support for 2-parent merges, noting `--ancestry-path` covers replaying a merge with only one parent changed.
+- Tatchou Yopa Nelly's `promisor.fetchOrder` patch stays an RFC prototype pending Outreachy selections.
+- 井上司's patch fixes the reflog of a symref whose target is updated in the same transaction.
+- Christian Couder's series fixes the missing promisor-remote reply in fetch protocol v2.
