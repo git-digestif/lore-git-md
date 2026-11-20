@@ -1,98 +1,68 @@
 # Git mailing list daily digest for 2026/11/07
 
+## Long threads
+
+### fetch refmap and limited-fetch remotes in shallow repositories
+
+*Long thread (root 2026/09/19/14-47-26): 66 replies so far from 5 participants over 50 days; 1 message that day.*
+
+Harald Nordgren's series avoids fetching every branch of a new remote in a shallow repository by adding `remote.<name>.fetchRefmap`, a `--limited-fetch` option to `git remote add`, and defaulting to limited fetch in shallow clones, with `@{push}` resolved through the refmap. Today D. Ben Knoble described his local notes workflow -- `core.notesRef` and `notes.rewriteRef` set to `refs/notes/benknoble/commits`, `notes.displayRef` set to `refs/notes/origin/amlog`, and a negative refspec excluding amlog notes from pushes -- and argued that a `pushRefmap` would let him separate default push selection (`push.default`) from ref mapping for specific pushes such as notes, while cautioning that force-push commands must not forcibly overwrite remote notes.
+
+### path keys for `git repo info`
+
+*Long thread (root 2026/07/16/01-21-31): 53 replies so far from 6 participants over 115 days; 2 messages that day.*
+
+K Jayatheerth's GSoC series exposes repository paths and metadata through `git repo info`, adding keys such as `path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.git-prefix`, and `path.cdup`, and refactoring `get_superproject_working_tree()` to take a `struct repository *`. Today Jayatheerth posted v8 of the 7-patch series, dropping `path.grafts`, moving the `--git-dir` test to `t/t1500-rev-parse.sh`, and special-casing `/dev/null` in `path.hooks` so it is printed directly. Phillip Wood reviewed the series, suggesting `path.working-tree.*` instead of `path.toplevel.*`, `path.superproject-working-tree.*` instead of `path.superproject-root.*`, and `path.prefix` instead of `path.git-prefix`, questioning whether `path.hooks` is needed given config-based hooks, and asking how `path.cdup` differs from `path.working-tree.relative`.
+
+### `%gb` placeholder naming the branch of each reflog entry
+
+*Long thread (root 2026/10/15/13-13-55): 34 replies so far from 6 participants over 24 days; 2 messages that day.*
+
+Harald Nordgren's series adds a `%gb` placeholder to `git log -g --format` that names the branch `HEAD` was on when each reflog entry was recorded, showing "detached at <commit>" when detached, implemented in `reflog-walk.c` and `pretty.c`. Today Nordgren posted v5: "detached at <commit>" now names the commit `HEAD` was detached at (or the commit a detached rebase ended on), `git rebase <upstream> <rev>` counts `<rev>` as a branch only if `refs/heads/<rev>` exists, a commit whose subject starts with "checkout" is no longer mistaken for a rebase checkout, and tests were added for a detached rebase that fast-forwards and one that is aborted.
+
+### detached HEAD documentation rewrite
+
+*Long thread (root 2026/10/07/14-52-01): 21 replies so far from 4 participants over 32 days; 1 message that day.*
+
+Julia Evans's patch rewrites the detached HEAD explanation into a standalone `git help detached-head` guide wired into `advice.c` and `command-list.txt`, addressing why detached HEAD is useful, why users end up there accidentally, and `git switch`'s harder-to-detach behavior. Today D. Ben Knoble reiterated interest in landing the manual, naming two remaining blockers -- a reroll with the SQUASH??? commit applied and resolution of how to describe `HEAD` -- proposed merging v4's second paragraph with Junio C Hamano's points about not clobbering branches, and concluded the thread is approaching a finish.
+
 ## The day in brief
-The Git mailing list saw significant activity today, with **design objections** raised on the `git repo info` path keys series, a **UI/UX refinement proposal** for `git format-rev`, and **critical bugfixes** for `git apply --check` crashes and `split-index`/`skipHash` corruption. Several patches were marked ready for `next`, including fixes for sideband control-character parsing and `the_repository` removal in `merge-blobs`. A 15-patch series addressing segfaults on unvalued config keys was posted, covering 17 crash sites across multiple commands.
+
+Thomas Bachem submitted a 15-patch series fixing segfaults from valueless config settings across rebase, fetch, grep, blame, merge, and config listing. Tanga Joris diagnosed a split-index plus skipHash corruption where the shared index is named after a zeroed checksum. Harald Nordgren posted v5 of the reflog `%gb` series, and K Jayatheerth posted v8 of the `git repo info` path-keys series.
 
 ## Notable threads
 
-### [PATCH v8] git repo info: path-related keys
-**What changed**: Phillip Wood raised **high-weight design objections** to the naming and necessity of several new path-related keys in `git repo info`. The objections target:
-- Naming: `path.toplevel` (→ `path.working-tree`), `path.superproject-root` (→ `path.superproject-working-tree`), and `path.git-prefix` (→ `path.prefix`).
-- Necessity: `path.hooks` is argued to be unnecessary, as scripts should use `git hook run` or config-based hooks.
-- Behavioral consistency: `path.cdup` may unexpectedly dump users in their home directory when run from the repository root, mirroring `git rev-parse --cdup`.
+### segfaults on settings given without a value
 
-**Why it matters**: The series is mechanically complete and ready for merging, but these objections could require significant revisions or maintainer arbitration. The risk of abandonment due to lack of reviewer engagement remains critical.
+Thomas Bachem submitted a 15-patch series fixing crashes when a setting is given without a value (e.g. `git -c foo.bar`), covering `rebase.missingCommitsCheck`, `core.alternateRefs*`, interactive patch color slots, `fetch.bundleCreationToken`, `grep.patternType`, `remote.*.tagOpt`, `color.blame.*`, `branch.*.mergeOptions`, `remotes.*`, `safe.bareRepository`, `bitmapPseudoMerge.*.pattern`, `scalar.repo`, `remote.*.url` in hasconfig includes, bundle list keys, and `git config list --type=color`/`--type=expiry-date` (a regression from 2.54.0).
 
-**Subsystem**: `git repo info` (scripting interface).
-**Kind of change**: Feature (GSoC project).
-**Impact**: High (design decisions may affect usability and long-term maintainability).
+### splitIndex with skipHash corrupts the index
 
----
+With `core.splitIndex` and `index.skipHash` both enabled, index entries are lost and `git status` crashes. Today Tanga Joris reproduced both cases on master and diagnosed the cause: `write_shared_index()` names the file after the zeroed trailing checksum (`sharedindex.0000...`), and the null base makes `read_index_from()` treat the shared index as absent. He said he is working on a fix; Andy Koppe confirmed he had not started one.
 
-### [PATCH 0/5] format-rev: add --abbrev, --color, --date options
-**What changed**: D. Ben Knoble proposed a **UI/UX refinement** to split `git format-rev` into two commands:
-- Move `--stdin-mode=revs` (formatting revision ranges) to `git diff-tree` (which would need to learn NUL-terminated output).
-- Retain `git format-rev` exclusively for `--stdin-mode=text` (turning hashes into references in arbitrary input text).
+### `git merge --no-overwrite-ignore` for real merges
 
-**Why it matters**: The proposal aims to simplify invocation (e.g., for editor integration) and reduce the command’s scope. The `--stdin-mode=text` mode’s unique functionality justifies its existence, but the `--stdin-mode=revs` mode’s necessity remains debated. This could influence the series’ future direction or motivate a follow-up effort to modify `git diff-tree`.
+Aniket Gupta submitted a patch adding a `preserve_ignored` bit to `struct merge_options` so `git merge --no-overwrite-ignore` aborts instead of overwriting ignored files during real merges -- previously honored only for fast-forwards -- wiring the option through the trivial-merge path in `builtin/merge.c` and merge-ort's checkout, with tests for a plain merge and a directory rename.
 
-**Subsystem**: `git format-rev` (experimental command).
-**Kind of change**: UI/UX refinement (conceptual).
-**Impact**: Medium (could reshape the command’s design and adoption).
+### `git apply --check` crash on malformed diff headers
 
----
+Tanga Joris posted an Outreachy two-patch series fixing the `check_preimage` assertion crash in `git apply --check`: the first frees names from an unused `diff --git` line when a non-git-header line follows, and the second rejects new and deleted files that carry both names.
 
-### [PATCH] merge-ort: fix --no-overwrite-ignore regression
-**What changed**: Aniket Gupta posted a **bugfix** for the `--no-overwrite-ignore` regression in `merge-ort`, where ignored files were overwritten during directory rename detection. The fix introduces a `preserve_ignored` bit in `struct merge_options` and updates `check_preimage()` to reject ignored files.
+### sideband allowControlCharacters keyword loop
 
-**Why it matters**: The regression violates the documented contract of `--no-overwrite-ignore` and risks data loss for users relying on it to protect local configuration, credentials, or build artifacts. The fix is minimal and well-motivated, addressing a high-impact issue in the `merge-ort` strategy.
-
-**Subsystem**: `merge-ort` (merge strategy).
-**Kind of change**: Bugfix (regression).
-**Impact**: High (data loss prevention).
-
----
-
-### [PATCH 1/2] unpack-trees: remove USE_THE_REPOSITORY macro
-**What changed**: Junio C Hamano posted a **refactoring series** removing the `USE_THE_REPOSITORY` macro from `unpack-trees.c` as part of the ongoing `the_repository` removal effort. The series introduces a new `unpack_repo()` helper and standardizes variable naming.
-
-**Why it matters**: This is a mechanical step in the project-wide effort to eliminate implicit repository references, improving code clarity and maintainability. The series is uncontroversial and ready for integration.
-
-**Subsystem**: `unpack-trees.c` (index handling).
-**Kind of change**: Refactoring.
-**Impact**: Low (internal cleanup).
-
----
-
-### [PATCH 0/15] Fix segfaults on unvalued config keys
-**What changed**: Thomas Bachem posted a **15-patch bugfix series** addressing segfaults when config settings are given without values (e.g., `git -c foo.bar`). The series audits config callbacks and `repo_config_get_value()` callers, fixing 17 crash sites across commands like `git rebase -i`, `git fetch`, `git add -p`, and `git clone --bundle-uri`.
-
-**Why it matters**: The series systematically eliminates a class of latent crashes, improving Git’s robustness. One patch (15/15) fixes a regression introduced in Git 2.54.0. The audit’s completeness suggests it is likely to catch most remaining instances of this bug class.
-
-**Subsystem**: Config parsing (multiple commands).
-**Kind of change**: Bugfix (systemic).
-**Impact**: High (crash prevention).
-
----
-
-### split-index: fix corruption with skipHash and splitIndex enabled
-**What changed**: Tanga Joris **diagnosed the root cause** of a critical bug in the index subsystem: `write_shared_index()` names the shared index file after its trailing checksum, which is written as zeros when `index.skipHash` is enabled. This causes a null base OID, leading to silent data loss and crashes in `git status`.
-
-**Why it matters**: The bug affects users of `core.splitIndex` and `index.skipHash` (e.g., large repositories with `feature.manyFiles`), causing index corruption and crashes. The diagnosis enables a targeted fix, which Tanga is actively working on.
-
-**Subsystem**: Index handling (`split-index.c`, `wt-status.c`).
-**Kind of change**: Bugfix (critical).
-**Impact**: High (data loss and crashes).
-
----
-
-### [PATCH 0/2] git history: add --verbose support for reword
-**What changed**: D. Ben Knoble **questioned the choice of `--verbose`** for `git history reword`, suggesting alternatives like `--commit-verbose` or `--diff-in-editor` to avoid overloading the term in the context of `git history`. The author, Jelle van der Waa, proposed the feature to show the full diff while editing the commit message, mirroring `git commit --amend --verbose`.
-
-**Why it matters**: The feedback highlights a potential usability issue: "verbose" in `git history` could imply a broader range of behaviors (e.g., post-execution summary of rewritten commits). The discussion may prompt a reconsideration of the flag name before the feature solidifies.
-
-**Subsystem**: `git history` (new built-in command).
-**Kind of change**: Feature (UI/UX).
-**Impact**: Medium (user interface clarity).
-
----
+Thomas Bachem's patch makes the `sideband.allowControlCharacters` parser advance past an unrecognized keyword after warning, instead of warning forever on every fetch, push, clone, and ls-remote. Junio C Hamano reviewed it, judged the change reasonable, endorsed the testing method, and marked the topic ready for `next`.
 
 ## In brief
-- **[PATCH] sideband: fix infinite loop in control-character config parser**: Junio C Hamano marked the fix as ready for `next`. The patch advances the parser to the next comma-separated entry after warning about an unrecognized keyword, preventing infinite loops on malformed configurations.
-- **[PATCH] merge-blobs: remove implicit dependency on the_repository**: Junio C Hamano marked the refactoring patch as ready for `next`, removing the `USE_THE_REPOSITORY` macro from `merge-blobs.c`.
-- **[PATCH 1/2] git apply --check: fix crash on malformed patches**: Tanga Joris posted a two-part fix for crashes in `git apply --check` when processing patches with stale `old_name`/`new_name` values or inconsistent header ordering.
-- **[PATCH] apply: fix regression in pure-rename patch series**: Aniket Gupta confirmed the regression scenario (pure rename followed by edit) is valid input produced by `git format-patch`, resolving Junio C Hamano’s technical concerns.
-- **[PATCH 0/5] http: exponential backoff, configurable retry codes, POST retries**: Junio C Hamano questioned the two-phase default value introduction for `http.retryAfter` (patches 1–4 assume 0, patch 5 sets 10s) and solicited brian m. carlson’s input on maintainability.
-- **[PATCH] hash: prevent panic when formatting ObjectID with invalid algorithm**: Tanga Joris requested the patch author incorporate brian m. carlson’s commit to make the `algo` field non-public, preventing invalid states.
-- **[PATCH] partial-clone: clarify fetch ordering for promisor remotes**: Junio C Hamano asked whether the documented behavior is long-standing or fills a gap left by commit `8808e61fd3`, and requested Christian Couder’s input on coordination of recent promisor-remote patches.
-- **[PATCH 0/3] test-tool genbytes: replace slow tr(1) invocations**: Junio C Hamano proposed a hexadecimal byte-specifier interface for `genbytes` (e.g., `00` for NUL) instead of accepting "NUL" as a string, and suggested squashing patches 1 and 2 to avoid breaking tests mid-series.
+
+- Junio C Hamano noted `checkout_fast_forward()` still calls `unpack_trees()`, which depends on `the_repository`, and attached an RFC making `unpack-trees.c` compile without `USE_THE_REPOSITORY`; he marked Okhuomon Ajayi's merge.c cleanup ready for `next`.
+- Junio C Hamano reported the Coverity overflow series has been waiting for response since mid-October and will expire from his tree without further activity.
+- Ravi Mistry posted v3 of the HTTP retry series defaulting `http.retryAfter` to 10 seconds; Junio C Hamano questioned implementing 0-second waits first and changing the default in the final patch.
+- Junio C Hamano posted a two-patch series removing `USE_THE_REPOSITORY` from `unpack-trees.c` via an `unpack_repo()` helper, plus a consistency rename of the `index` parameter to `istate`.
+- D. Ben Knoble proposed making `git diff-tree` handle format-rev's "revs" mode and restricting format-rev to "text" mode.
+- Aniket Gupta confirmed Hannes's report -- a pure rename followed by an edit fails under `core.fileMode=false` in a single `git apply` -- is valid format-patch input that worked before 0482c32c33.
+- Junio C Hamano retracted his readiness mark on the describe `--debug` patch after noting `prio_names[]` is still wrapped in `_()`.
+- Kristofer Karlsson posted a series adding `test-tool genbytes` to avoid slow `tr(1)` on macOS; Junio C Hamano suggested squashing the rename patch and using hex byte values.
+- Junio C Hamano marked Okhuomon Ajayi's merge-blobs cleanup ready for `next`.
+- Jelle van der Waa posted an RFC adding `--verbose` to `git history reword`; D. Ben Knoble suggested a different name such as `--commit-verbose`.
+- Tanga Joris suggested shrimech pick up a commit making `ObjectID` members private for the invalid-algorithm formatting fix.
+- Hussain Sitamouwala documented promisor remote fetch ordering in `partial-clone.adoc`; Junio C Hamano asked whether it documents long-standing behavior.
