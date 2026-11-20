@@ -1,100 +1,157 @@
-# The Git Project -- Weekly Digest for 2026/11/02 -- 2026/11/08
+## Long threads
+
+### fetch: avoid fetching every branch of a new remote in a shallow repo
+*Long thread: 66 replies so far from 5 participants over 50 days.*
+Harald Nordgren's series adds `remote.<name>.fetchRefmap` so shallow repositories fetch only selected branches of a new remote instead of every branch. D. Ben Knoble described his notes workflow and argued a `pushRefmap` would let him separate default push selection from ref mapping for notes pushes.
+
+### repo: add path keys to `git repo info`
+*Long thread: 53 replies so far from 6 participants over 115 days.*
+K Jayatheerth's GSoC series exposes repository paths via `git repo info` with keys like `path.toplevel`, `path.superproject-root`, and `path.hooks`. After a month without review, Justin Tobler reviewed several patches and Jayatheerth posted v8 dropping `path.grafts` and special-casing `/dev/null`; Phillip Wood then suggested renaming keys. Junio C Hamano had warned the series would be discarded without review.
+
+### reflog: add `%gb` format placeholder
+*Long thread: 34 replies so far from 6 participants over 24 days.*
+Harald Nordgren's series adds a `%gb` placeholder naming the branch HEAD was on when each reflog entry was recorded, showing "detached at <commit>" when detached. Phillip Wood found edge cases where the detached label showed the wrong commit and rebase checkouts were misparsed; v5 fixes these and handles commit subjects starting with "checkout".
+
+### Removing gittutorial-2 from the documentation
+*Long thread: 32 replies so far from 4 participants over 39 days.*
+Julia Evans's series deletes `Documentation/gittutorial-2.adoc` and redirects readers to `gitdatamodel` and `gitcore-tutorial`. The removal graduated to `master`, and Tuomas Ahola asked Junio to pick up his rerolled lint topic, though an unanswered review comment from Evans remains.
+
+### Reference-transaction hooks reporting old values
+*Long thread: 31 replies so far from 5 participants over 45 days.*
+Maciej Ciemborowicz's v6 patch resolves old object IDs in the common transaction hook layer so the reference-transaction hook reports real old values for unconditional deletions. Junio C Hamano said he will discard the topic unless volunteers review it within a few weeks.
+
+### repack: corner cases for cruft-less MIDXs
+*Long thread: 31 replies so far from 5 participants over 36 days.*
+Taylor Blau's series fixes cases where bitmap generation could fail when geometric repacks omit cruft packs from the MIDX with `repack.midxMustContainCruft=false`. Junio C Hamano re-read the patches and found himself confused by the same points Jeff King had flagged.
+
+### Community voting process proposal
+*Long thread: 30 replies so far from 13 participants over 28 days.*
+Emily Shaffer's document proposes a community voting process for decisions where consensus cannot be reached. Patrick Steinhardt argued that excluding long-inactive people is not unexpected since an informed vote requires community context, and insisted any human-override process must be fully transparent.
+
+### Git 3.0 lowercase-only hex object IDs
+*Long thread: 28 replies so far from 7 participants over 97 days.*
+brian m. carlsson's v2 series removes acceptance of uppercase hex in object IDs in breaking-changes mode. Junio C Hamano noted the series had received no reactions and asked for review to confirm alignment with earlier discussion; Patrick Steinhardt added it to his todo list.
+
+### root refs vs pseudorefs documentation
+*Long thread: 27 replies so far from 4 participants over 16 days.*
+Andy Koppe's series reworks the glossary to distinguish root refs like `ORIG_HEAD` from pseudorefs like `FETCH_HEAD` and `MERGE_HEAD`. Junio C Hamano reviewed v3, calling the pseudoref rewording "very very good" while flagging that non-root paths outside `refs/` are still treated as refs.
+
+### Clarifying ejected topics can return
+*Long thread: 23 replies so far from 5 participants over 103 days.*
+Junio C Hamano proposed new [Discarded] heading text stating removed topics "can be resubmit if they gained enough interest and showed good fit to the system in the future," agreeing with Phillip Wood that ejection is not a permanent rejection.
+
+### Hint for `<rev>~N` failures in shallow clones
+*Long thread: 23 replies so far from 6 participants over 47 days.*
+Harald Nordgren's patch adds a hint explaining why `<rev>~N` fails in a shallow clone when the walk stops at a recorded shallow boundary, suggesting the exact `--deepen` needed. Junio C Hamano observed that after a few days nobody had expressed support for the hint.
+
+### migrating `loose-object-idx` with batch fsync
+*Long thread: 23 replies so far from 4 participants over 13 days.*
+Justin Tobler's series fixes an ODB transaction failure on commit when a compatibility hash is configured, because the temporary-directory migration code did not handle the loose object index file. Karthik Nayak agreed the series is already in good shape.
+
+### worktree remove refuses rebasing/bisecting worktrees
+*Long thread: 22 replies so far from 7 participants over 13 days.*
+Jasper Mayone's v4 treats a branch being rebased or bisected as checked out: `worktree remove` refuses such worktrees without `--force`, `%(worktreepath)` names the rebasing worktree, and `git branch` drops the `+` marker there.
+
+### Detached HEAD guide rewrite in the documentation
+*Long thread: 22 replies so far from 4 participants over 33 days.*
+Julia Evans's series rewrites the detached HEAD explanation into a standalone `gitdetached-head` guide wired into `advice.c` and `command-list.txt`. D. Ben Knoble named two blockers -- a reroll with the SQUASH??? commit applied and resolution of the HEAD-description discussion -- and concluded the thread is approaching a finish; Junio C Hamano objected to phrasing calling it useful for HEAD "to be a commit ID".
+
+### Alternate refs during receive-pack quarantine
+*Long thread: 21 replies so far from 5 participants over 9 days.*
+Kristofer Karlsson's v3 patch fixes `rev-list --alternate-refs` so it no longer lists the repository's own refs during receive-pack's quarantine connectivity check, with a perf test showing a push into a repo with ~200,000 hidden refs improving from 0.29s to 0.10s. Jeff King reviewed it as looking good and Junio marked the topic ready for `next`.
+
+### range-diff: add `--matched-only`
+*Long thread: 20 replies so far from 5 participants over 55 days.*
+Harald Nordgren's patch adds `git range-diff --matched-only` to show only commits that correspond on both sides. Kristoffer Haugsbakk and Ben Knoble noted the three-revision form `git range-diff base old new` already selects the same commits.
+
+### standardizing early option scanning
+*Long thread: 20 replies so far from 4 participants over 63 days.*
+Christian Couder's v4 series introduces an "early-scan" sub-API in parse-options so commands can safely skip option values during hand-rolled early scans. Kaartic Sivaraam reviewed it as looking good and Junio C Hamano marked the topic for `next`.
+
+### config: read both home and XDG files for `--global`
+*Long thread: 20 replies so far from 5 participants over 393 days.*
+Delilah Ashley Wu's series makes `git config --global` read both `$HOME/.gitconfig` and `$XDG_CONFIG_HOME/git/config` via `do_git_config_sequence()`. Junio C Hamano affirmed the t1300 test patch and asked about XDG path assumptions.
+
+### stash creation: avoid unnecessary index loads and refreshes
+*Long thread: 20 replies so far from 2 participants over 33 days.*
+Phillip Wood's seven-patch series removes duplicate index loads in `git stash push` and `git stash create`, cutting `lstat()` calls per changed path by four for create and eight for push. Junio C Hamano called the last two patches sensible and an obvious simplification.
+
+### `test-tool genbytes` to speed up macOS CI tests
+*Long thread: 15 replies so far from 3 participants over 2 days.*
+Kristofer Karlsson's series adds a `test-tool genbytes` helper to replace `genzeros | tr` in expensive tests like t4205. Johannes Sixt's `printf` alternatives failed on macOS; Karlsson posted v2 adding `genbytes` and converting remaining callers.
+
+### HTTP exponential-backoff and retry
+*Long thread: 8 replies so far from 2 participants over 4 days.*
+Ravi Mistry posted v3 of the HTTP retry series defaulting `http.retryAfter` to 10 seconds. Junio C Hamano questioned the topic structure of first implementing 0-second waits.
+
+### Moving `assume_unchanged` into repository configuration
+*Long thread: 6 replies so far from 2 participants over 1 day.*
+Hussain Sitamouwala posted a patch moving the global `assume_unchanged` flag in `environment.c` into repository-specific configuration with a `repo_assume_unchanged()` getter.
 
 ## The period in brief
-
-The week of 2026/11/02--2026/11/08 saw **heavy, eventful traffic** across seven active days. The mailing list grappled with **stalled patch series at risk of abandonment**, **critical regressions in promisor remote lazy-fetch and commit-graph maintenance**, and **design debates over `git repo info` path keys and HTTP retry logic**. Three developments stand out: the **`git repo info` path keys series reached critical design decisions** but faces abandonment due to lack of reviewer engagement; **Junio C Hamano formalized a new `seen` branch ejection policy** to balance reviewer productivity with quality control; and **a 15-patch series fixed segfaults on unvalued config keys** across 17 crash sites, hardening Git’s config parsing.
-
----
+The week of 2026/11/02 through 2026/11/08 saw heavy traffic across seven active days, dominated by a partial-clone regression that broke Kubernetes CI and a maintainer push to eject unreviewed topics from `seen`. Readers should not miss Patrick Steinhardt's fix for the stale loose-object cache, Andy Koppe's root-refs documentation rework reaching v3, and Julia Evans's detached HEAD guide approaching completion.
 
 ## Key developments
 
-### `git repo info` path keys series at risk of abandonment
-The v7--v8 series adding seven new path-related keys (`path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.git-prefix`, `path.cdup`) to `git repo info` saw **key design resolutions** but remains stalled due to persistent lack of reviewer engagement. K Jayatheerth and Justin Tobler agreed to special-case `/dev/null` handling for `path.hooks.absolute` and `path.hooks.relative`, returning `/dev/null` verbatim when `core.hooksPath` is set to that value. However, **Phillip Wood raised high-weight design objections** to the v8 series, questioning the necessity of `path.hooks` (arguing scripts should use `git hook run` or config-based hooks instead) and the behavioral consistency of `path.cdup` at repository root. The series is now at **critical risk of abandonment** unless reviewers step up, despite being mechanically complete and addressing all prior feedback.
+### Partial-clone lazy fetch regression breaks Kubernetes CI
+Patrick Ohly reported that `git merge` in blobless partial clones fails with "not our ref" since commit 5946a564, breaking Kubernetes CI PR merges. Kristofer Karlsson traced the root cause to a stale loose-object cache: writing a loose object does not update the cache, so existence checks wrongly report newly written objects missing, triggering a spurious promisor fetch. Patrick Steinhardt posted a two-patch fix adding `loose_cache_mark_seen()` to update the cache on each loose write, with a regression test verified by Karlsson; Jeff King noted the fix leaves related stale-cache cases such as objects moved into a pack.
 
-The series targets the `git repo info` command (a GSoC project) and aims to expose filesystem locations of repository components in a scriptable format. The practical stakes are **script portability and usability**: the keys would allow scripts to reliably locate repository components without fragile path manipulation. The unresolved design objections—particularly around `path.hooks` and `path.cdup`—must be addressed before merging, as they affect core functionality and script behavior.
+### Ejecting unreviewed topics from `seen`
+Junio C Hamano proposed ejecting topics unreviewed for N weeks from `seen`, with notices for those lingering over a month, and sent discard warnings for stalled series including the `git repo info` path keys and the reference-transaction hook fix. Patrick Steinhardt called the rule reasonable, noting evicted topics can be re-added, and suggested the bar for `seen` be at least one somewhat favorable human review. Phillip Wood proposed clarifying that ejected topics can return, and Junio agreed to new [Discarded] heading text stating removed topics can be resubmitted if they gained interest.
 
----
+### Root refs vs pseudorefs documentation
+Andy Koppe's series reworks the glossary and `gitdatamodel(7)` to distinguish root refs like `ORIG_HEAD` from pseudorefs like `FETCH_HEAD` and `MERGE_HEAD`, replacing outdated "pseudoref" uses across docs, code and tests. Patrick Steinhardt proposed an alternative pseudoref definition emphasizing additional semantics, which Junio C Hamano preferred with minor wording tweaks; Koppe posted v3 incorporating the feedback, which Hamano reviewed as "very very good" while flagging that non-root paths outside `refs/` are still treated as refs.
 
-### Integration pipeline policy update: `seen` branch ejection formalized
-Junio C Hamano adopted **Phillip Wood’s suggestion** to explicitly frame ejection from the `seen` branch as a **reversible, routine event** rather than a final rejection. The new policy, announced in "What's cooking" reports, states that topics ejected from `seen` can be resubmitted if they gain enough interest and demonstrate good fit. The change addresses **contributor anxiety** by signaling that ejection is temporary and contingent on renewed engagement, rather than a permanent rejection.
+### Detached HEAD guide rewrite
+Julia Evans's series rewrites the detached HEAD explanation into a standalone `gitdetached-head` guide wired into `advice.c` and `command-list.txt`. D. Ben Knoble identified two blockers -- applying the SQUASH??? commit and resolving the HEAD-description discussion -- and proposed merging paragraphs; Junio C Hamano objected to phrasing calling it useful for HEAD "to be a commit ID", suggesting instead "directly referring to a commit", and said the thread is approaching a finish.
 
-The policy targets the **integration pipeline** and aims to balance **reviewer productivity** with **quality control**. The practical stakes are **contributor morale and patch throughput**: the new wording reduces the stigma of ejection and encourages resubmission of stalled topics. The decision is technically important because it formalizes a long-standing informal practice, making the integration process more transparent and predictable.
+### Geometric maintenance prunes commits without updating commit-graph
+Christoph Weiss reported that after Forgejo switched to Git 2.54, changing the default maintenance strategy to `geometric` caused repository health checks to fail because geometric maintenance prunes commits without updating the commit-graph. He provided a reproduction script using `git maintenance run --auto` on a bare repository with `core.commitGraph` enabled.
 
----
+### Reftable HEAD reflog records stale value
+井上司 reported that with the reftable backend, a transaction updating a branch and pointing HEAD at it records the branch's old value in the HEAD reflog, or writes no entry when the branch is created in the same transaction. Karthik Nayak agreed the diagnosis is plausible and suggested moving reflog logic into the generic `refs.c` layer, while welcoming the specific fix.
 
-### Segfaults on unvalued config keys fixed across 17 crash sites
-Thomas Bachem posted a **15-patch series** fixing segfaults when config settings are given without values (e.g., `git -c foo.bar` or bare `bar` under `[foo]`), covering 17 crash sites across commands like `git rebase -i`, `git fetch`, `git add -p`, and `git clone --bundle-uri`. The series **systematically eliminates crashes** triggered by unvalued config keys, hardening Git’s config parsing against NULL dereferences. Most fixes reject missing values with `config_error_nonbool()`, following the precedent set by ba176db511 (2023-12-07). Three exceptions handle the absence gracefully: `fetch.bundleCreationToken` defaults to 0, remote URLs skip `includeIf` matching, and `git config list` omits the key entirely.
+### Default hash algorithm for Git 3.0
+brian m. carlsson posted a patch defaulting the repository hash algorithm to `GIT_HASH_DEFAULT` so breaking-changes mode picks SHA-256, fixing `git init` with `WITH_BREAKING_CHANGES=1` which still defaulted to sha1. Junio C Hamano raised a concern that the patch would clobber the object format when `git init` reinitializes an existing repository, asking what happens with the reference storage format.
 
-The series targets **config parsing** (`config.c`, `repo_config_get_value()` callers) and addresses a **systemic issue** affecting 17 distinct crash sites. The practical stakes are **stability and security**: the fixes prevent crashes in common workflows and eliminate a server-triggered crash via bundle lists (patch 14/15). The series is based on `master` and merges cleanly, though it conflicts with two topics in `seen` due to overlapping test additions. No reviews have been posted yet, but the patches are **mechanically sound** and follow established patterns.
-
----
-
-### Promisor remote lazy-fetch regression fixed
-Patrick Steinhardt posted a **two-patch series** fixing a critical regression in promisor remote lazy-fetch that was causing `git merge` to fail with "not our ref" errors. The issue stemmed from **stale loose object cache entries** not being updated when new objects were written during merges, a regression introduced during ODB abstraction work. The fix ensures the loose object cache is properly invalidated after writing merged blobs, addressing a blocker for CI workflows in projects like Kubernetes that rely on blobless partial clones.
-
-The series targets the **ODB abstraction layer**, **promisor remote lazy-fetch mechanism**, and **loose object cache**. The practical stakes are **high for users of partial clones**: the regression manifested only when merging an object whose first two hex characters matched those of a newly written object in the same subdirectory, causing unnecessary and failing backfill fetches. The fix is **minimal and targeted**, updating the loose object cache’s oidtree after writing objects to listed subdirectories. Junio Hamano endorsed landing the current patch as a **targeted regression fix** while documenting broader `QUICK` flag limitations via a `NEEDSWORK` comment in `odb.h`.
-
----
-
-### Commit-graph corruption in Git 2.54’s geometric maintenance strategy
-Christoph Weiss reported a **critical bug** in Git 2.54’s geometric maintenance strategy where `git maintenance run --auto` prunes unreachable commits but fails to update the commit-graph, leaving it in an inconsistent state. The bug affects operations that rely on the commit-graph, such as `git log --graph` and `git merge-base`. The reproduction script is self-contained and demonstrates the corruption via `git fsck`.
-
-The bug targets the **commit-graph** and **maintenance** subsystems and is a **regression** introduced by the geometric maintenance strategy (now the default). The practical stakes are **high for users upgrading to Git 2.54**: the corruption affects core functionality and could impact performance and correctness. The root cause is that the `geometric` strategy prunes unreachable commits without updating the commit-graph, violating the invariant that the commit-graph must reflect the current state of the object database. No fix has been posted yet, but the report is **actionable** and includes a minimal reproduction script.
-
----
-
-### HTTP retry logic configuration debate
-Brian M. Carlson and Ravi Mistry debated the **default behavior of Git’s HTTP retry logic**, with Carlson arguing that even 429 responses should trigger a non-zero initial delay to avoid overwhelming rate-limited servers. The discussion settled on a **10-second default delay** (`http.retryAfter=10`) with exponential backoff (10s, 20s, 40s, ...), striking a balance between server protection and interactive usability. The series adds exponential backoff for HTTP retries, makes retryable status codes configurable, and extends retries to HTTP POST requests.
-
-The series targets the **HTTP transport** (`http.c`, `remote-curl.c`) and addresses a **measurable performance issue** (tight retry loops) while extending retry logic to POST requests, which carry the bulk of Git’s data transfer. The practical stakes are **resilience and server protection**: the 10-second default protects rate-limited hosting backends while maintaining usability. Junio C Hamano raised a **procedural concern** about the two-phase default value introduction (patches 1–4 assume 0, patch 5 sets 10s), questioning whether it is the right way to structure the series for maintainability. The v3 series is **technically complete** and awaits Junio’s final review.
-
----
-
-### `git describe` regression fix converges on opt-out `--exact` flag
-Linus Torvalds’ patch fixing `git describe`’s commit distance calculation when commit timestamps are non-monotonic gained consensus on its user-facing design. The discussion settled on an **opt-out `--exact` flag** (defaulting to on) with a warning mechanism when the commit graph is unavailable. The patch addresses a **real-world regression** in the Linux kernel’s version reporting during the v7.4 merge window, where `git describe` incorrectly reported commit distances due to skewed commit dates caused by GitLab’s Marge-bot workflow.
-
-The patch targets the **commit graph** and **revision walking** subsystems and is a **regression fix** for repositories with non-monotonic commit dates. The practical stakes are **high for users of `git describe`**: the regression affects version reporting in scripts and CI workflows. The opt-out `--exact` flag ensures backward compatibility while warning users when the commit graph is unavailable. The patch is now **queued for integration**, addressing a long-standing issue in Git’s version reporting.
-
----
+### splitIndex with skipHash corrupts index
+Tanga Joris diagnosed that with `core.splitIndex` and `index.skipHash` both enabled, `write_shared_index()` names the file after the zeroed checksum, causing `read_index_from()` to treat the shared index as absent and crash `git status`. He posted a fix ensuring the shared index is never written with a zeroed checksum, adding tests to `t/t1700-split-index.sh`.
 
 ## In brief
-
-**`parse-options` early scanning API** -- Christian Couder’s series introducing a minimal, reusable `parse-options` sub-API (`early_scan_options()`) was marked for `next` after addressing all prior feedback, including validation checks, ephemeral `option` pointer documentation, and test coverage for the `git fast-import` bugfix. The series replaces fragile hand-rolled early argument scans with a robust, reusable API.
-
-**`git grep --recurse-submodules` fix** -- Patrick Steinhardt’s three-patch series fixing `git grep --recurse-submodules` for nested submodule trees was marked for `next` after addressing all review feedback. The fix targets a regression introduced in Git v2.56.0 and is explicitly intended for backporting to stable branches.
-
-**`git annotate` completion fix** -- Tanga Joris’s patch fixing command-line completion for `git annotate` was approved by Junio C Hamano and marked ready for `next`. The fix removes redundant `-c` prepending in `cmd_annotate()`, ensuring `git annotate --<TAB>` offers the correct options.
-
-**`git apply` crash regression fix** -- Aniket Gupta’s fix for a crash in `git apply` when `core.fileMode=false` addressed a regression where patch series containing a pure rename followed by an edit failed with `error: renamed: wrong type`. The fix prevents tracking a start point that has no ref and ensures consistent behavior across workflows.
-
-**`git unpack-objects` type mismatch fix** -- Kristofer Karlsson’s fix for a type mismatch in `unpack-objects` addressed a regression where blob sizes larger than 4GB were truncated on 32-bit platforms (notably Windows). The fix changes `stream_blob()` to accept `size_t`, ensuring correct handling of large objects.
-
-**`git rev-list` option parsing fix** -- Azuama Odinaka Maximus’s fix for `git rev-list`’s `--grep` and related option parsing expanded to cover all 18 `parse_long_opt()`-style options, ensuring consistent argument parsing when followed by another option-like string.
-
-**`git rerere` subcommand modernization** -- Patrick Steinhardt’s 12-patch series converting `git rerere` to use `OPT_SUBCOMMAND()` received surface-level review, with Karthik Nayak suggesting minor improvements to enum documentation and code structure.
-
-**`git log --follow` performance regression** -- Patrick Steinhardt identified a potential regression in Miklos Vajna’s performance series, where `follow_needs_renames()` disables rename detection for commits with unrelated histories, contradicting the intent of commit 304812ed33.
-
-**`git maintenance` lock-handling consistency** -- Patrick Steinhardt’s series improving `git maintenance` lock-handling agreed to split into two patches (behavioral change and Trace2 event) after review, ensuring consistent error-message formatting and simplifying the Trace2 event’s `reason` field.
-
-**`git credential-cache` daemon race condition fix** -- Farid Zakaria’s fix for a race condition in the Git credential-cache daemon acknowledged Junio’s architectural concern about mixing `unix_ss_*` and `tempfile` APIs, but did not engage with the concern, making a v3 or maintainer intervention likely.
-
-**`git bundle-uri` URI handling regression fix** -- Ravi Mistry’s patch fixing a crash in `git bundle-uri` when processing relative URIs with excessive `../` components addressed Patrick Steinhardt’s review feedback and was marked ready for `next`.
-
-**`git reflog expire` refactoring** -- Laveesh Bansal’s patch refactoring `git reflog expire` to consolidate two loops into one addressed Junio’s suggestion from d1536ac3e2, improving code clarity and maintainability.
-
-**`git column` argument parsing** -- Fien Dora proposed refactoring `git column` to use `early_scan_options()`, seeking maintainer input on whether to preserve current restrictions or expand to full `parse_options()` flexibility.
-
-**Git v3 compatibility** -- Adam Dinwoodie reported that `git init` incorrectly defaults to SHA-1 even when Git is built with `WITH_BREAKING_CHANGES=1`. brian m. carlson confirmed the bug and is preparing a fix, which must handle reinitialization safely to avoid silently overwriting object formats.
-
-**Reftable backend HEAD reflog bug** -- 井上司 reported a correctness regression in the reftable backend where HEAD reflog entries are either written with the wrong OID or omitted entirely when HEAD is updated in the same transaction as its target branch. The bug affects reflog auditing and recovery, and a targeted fix is in progress.
-
-**Outreachy proposals** -- Cynthia Uche and Tanga Joris posted strong technical proposals for Outreachy, focusing on **Git command argument scanning** and **global state reduction in pathspec skip-worktree matching logic**. Both proposals demonstrated thorough preparation and clear technical goals.
-
-**CI optimizations** -- Patrick Steinhardt’s seven-patch series targeting GitLab CI bottlenecks received maintainer acknowledgment, with Junio finding all patches "interesting" and "fully made sense." The series aims to improve CI performance and reliability.
-
----
+- **Connectivity check ignoring replace refs**: Kristofer Karlsson's patch makes rev-list's `--connectivity-check` call `disable_replace_refs()`, endorsed by Junio C Hamano as absolutely the right thing to do.
+- **`git describe` distance with skewed commit dates**: Linus Torvalds' patch uses commit generation numbers to fix miscounting; Patrick Steinhardt and Derrick Stolee agreed `ensure_generations_valid()` should be called in `describe_commit()`.
+- **fsmonitor/untracked-cache bug**: Derrick Stolee fixed a bug since 2017 where failed fsmonitor responses could leave untracked cache entries marked valid, causing `git status` to miss new files; Junio queued it as a "blunt instrument" but correct.
+- **Path-walk regression**: Derrick Stolee fixed a regression from Git 2.55.0 that dropped blobs from tagged trees at already-visited paths.
+- **Config NULL values segfaults**: Thomas Bachem's 15-patch series fixes segfaults from valueless config settings across rebase, fetch, grep, blame, merge and more.
+- **Merge honoring --no-overwrite-ignore**: Aniket Gupta's patch adds a `preserve_ignored` bit so `git merge --no-overwrite-ignore` aborts instead of overwriting ignored files during real merges.
+- **Replaying 2-parent merges**: Philippe Blain reported that replaying a merge whose first parent was amended incorrectly maps the second parent, causing conflicts, while calling the series a massive time saver.
+- **Freezing `repo_config_values`**: Junio C Hamano proposed freezing the structure against new members; Patrick Steinhardt approved, wanting to prevent newcomers from wasting time.
+- **CI test-variable consolidation**: Patrick Steinhardt's v2 was reviewed by Phillip Wood as ready for `next`.
+- **`git repo structure` degree-of-concern**: Mark C. Chu-Carroll posted v5 adding concern reporting with configurable thresholds.
+- **HTTP retry series**: Ravi Mistry posted v3 defaulting `http.retryAfter` to 10 seconds.
+- **Stash index optimization**: Phillip Wood's series cuts `lstat()` calls in `git stash push` and `create`.
+- **Config --global XDG**: Delilah Ashley Wu's series reads both home and XDG config files.
+- **Documentation/Governance.adoc**: Antonin Delpeuch submitted a patch describing project governance; Junio asked for line-wrapping and clarifications.
+- **Bare --force-with-lease**: Patrick Peroša reported the flag is ignored on remote groups.
+- **`git log --graph` indentation**: herr.kaste fixed visual roots with columns to their right being indented.
+- **size_t for large blobs**: Elia Pinto's v3 fixes truncation of blobs over 4GB on 32-bit `long` platforms.
+- **WWW-Authenticate headers**: Jeff King reviewed the v2 patch preserving headers across HTTP redirects as OK.
+- **Sequencer shallow boundary**: Phillip Wood called the v2 patch refusing shallow boundary commits "definitely moving in the right direction".
+- **send-pack series**: Marc Strapetz revived the series inspecting the old tip's tree to avoid resending unchanged blobs.
+- **`git log --follow` regression**: b.murauer reported a regression bisected to 304812ed33; Patrick Steinhardt noted patches are in review.
+- **notes_tree repository storage**: Okhuomon Ajayi posted a series storing the repository in `struct notes_tree`.
+- **GIT_TEST_DEFAULT_OBJECT_STORAGE_FORMAT**: Patrick Steinhardt posted a series to run tests with non-default object storage.
+- **promisor.fetchOrder**: Yopa Nelly posted v2 with parsed list per-repository; Junio asked how it meshes with server-side work.
+- **unpack-trees cleanups**: Junio C Hamano posted patches dropping `USE_THE_REPOSITORY` and renaming parameters.
+- **Sideband fix**: Junio marked Thomas Bachem's fix skipping unrecognized `allowControlCharacters` keywords ready for `next`.
+- **Outreachy patches**: Tanga Joris posted fixes for `git apply` crashes; Cynthia Uche posted a proposal draft targeting `git bisect`.
+- **credential-cache daemon race**: Farid Zakaria's fix drew questions from Junio about existing arrangements.
+- **t0027 optimization**: Torsten Bögershausen reported cutting runtime from 71 to 54 seconds on older macOS.
+- **builtin/reflog expire**: Laveesh Bansal posted a patch expiring `--all` and named refs in a single loop.
+- **diff EXAMPLES anchors**: Jeff King flagged that `[[name_only]]` anchors work with Asciidoctor but not python AsciiDoc.
+- **followRemoteHEAD validation**: Colin Hinton will adopt Matt Hunter's cleaner approach in his next re-roll.
+- **All-or-none switch/checkout**: 井上司 proposed writing tracking config before worktree update and removing it on failure.
+- **assume_unchanged repo config**: Hussain Sitamouwala posted a patch moving the flag into repository configuration.
 
 ## Looking ahead
-
-The next week is likely to see **progress on stalled patch series**, particularly the `git repo info` path keys series and the HTTP retry logic configuration. The **commit-graph corruption bug** in Git 2.54’s geometric maintenance strategy will likely see a fix, given its high impact and clear reproduction. **Outreachy proposals** will continue to generate discussion, with several focusing on **global state reduction** and **promisor remote improvements**. The **reftable backend HEAD reflog bug** is also likely to see a fix, given its impact on reflog auditing and recovery. Finally, **Junio C Hamano’s integration pipeline policy** will continue to shape how stalled topics are handled, with the new `seen` branch ejection wording likely to appear in upcoming "What's cooking" reports.
+The `git repo info` path keys series remains under review pressure after Junio C Hamano's repeated warnings, with v8 posted but Phillip Wood's renaming suggestions still unaddressed. The shallow-clone `<rev>~N` hint still lacks expressed support and may be discarded, as may the reference-transaction hooks topic unless volunteers review it soon.
