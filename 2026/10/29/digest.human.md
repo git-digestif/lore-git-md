@@ -1,112 +1,57 @@
 # Git mailing list daily digest for 2026/10/29
 
-## The day in brief
-A regression in `git grep --recurse-submodules` was reported and bisected, the `fetch: introduce +: refspec` series inched closer to resolution with a maintainer-approved design pivot, and Junio C Hamano queued over a dozen patches for integration after Patrick Steinhardt’s blanket approvals. The notes subsystem’s concurrency model sparked a lively debate about retry mechanisms, while a new bugfix for shallow fetches with tags was merged to `seen`.
+## Long threads
 
----
+### fetch refmap configuration for shallow repos
+
+*Long thread: 65 replies so far from 5 participants over 41 days; 5 messages that day.*
+
+The series "fetch: avoid fetching every branch of a new remote in a shallow repo" adds a `remote.<name>.fetchRefmap` config (renamed from `remote.<name>.refmap` in v12) that remaps fetched refs while `remote.<name>.fetch` still decides what is fetched. Today Phillip Wood said he was surprised that a colon-bearing command-line refspec does not override the refmap, called it problematic that `fetchRefmap` cannot be overridden without `--refmap`, and leaned toward treating `fetch` values as command-line refspecs so an explicit destination updates only itself. Junio C Hamano explained that the command-line refmap was meant mainly for specifying "what to fetch" without a colon, and said he had not planned `--refmap` support on the push side. Ben Knoble agreed to a future `pushRefmap` on top of `fetchRefmap`, saying it would ease his work with notes.
+
+### branch --delete-integrated for squash- and rebase-merged branches
+
+*Long thread: 49 replies so far from 6 participants over 31 days; 2 messages that day.*
+
+Harald Nordgren's v4 keeps `git branch --delete-merged` deleting only branches whose tips are reachable from their upstream, and adds `--delete-integrated <pattern>`, which also deletes branches that were rebase- or squash-merged upstream, naming the landing commit as "landed as ...". Today Jasper Mayone reported testing v4 against master: `--delete-merged` now matches master on every case, and `--delete-integrated` deletes squash merges, GitHub-style squashes, rebase merges, renames, a reverted squash, and a squash that landed after upstream changed another line of the same file, while keeping partly landed, differently resolved, and never-merged branches. He also flagged that `git branch -h` omits the new option from the usage lines and that combining both options dies with the full usage text; Harald Nordgren acknowledged both and said he will fix the error message.
+
+### repack corner cases for cruft-less MIDXs
+
+*Long thread: 30 replies so far from 5 participants over 30 days; 1 message that day.*
+
+Taylor Blau's series fixes cases where geometric repacks with `repack.midxMustContainCruft=false` can omit packs needed for bitmap generation, adding tree and tag roots and including required packs in ordinary and incremental MIDX writes. Earlier he stated the topic should be ready to go as-is; today Junio C Hamano remarked that his earlier question about the topic's viability was not meant to be answered by the series author.
+
+### fetch: advertise fetched refs when backfilling tags
+
+*Long thread: 24 replies so far from 4 participants over 22 days; 4 messages that day.*
+
+Karthik Nayak's series fixes a regression in which shallow-repository fetches could resend objects during tag backfill because the already-fetched refs were not advertised as haves; the fix appends the fetched tips to the transport's `negotiation_include_tips` instead of committing the first transaction. Today Karthik Nayak posted v6, reordering the upstream-info test commit to the front and updating commit messages, and Patrick Steinhardt reviewed it and stated he is happy with the changes.
+
+### loose-object-idx migration with batch fsync
+
+*Long thread: 13 replies so far from 3 participants over 8 days; 11 messages that day.*
+
+Justin Tobler's series fixes ODB transaction commit failures when a compatibility hash is configured, because tmp-objdir migration did not merge the "loose-object-idx" mapping file. Today he posted v3, reading the source mapping file before acquiring the lock to shrink the critical section and adding a comment to `loose_object_idx_merge()`. Junio C Hamano noted that merging to `seen` drops `repo_write_loose_object_map()` while the new `loose_object_map_write()` helper remains; Justin Tobler confirmed that and observed the old declaration is still left in `loose.h`.
+
+## The day in brief
+
+Karthik Nayak's v6 of the shallow-fetch tag-backfill fix drew a happy review from Patrick Steinhardt, and Pia Park's MIDX empty-write fix will be queued by Junio C Hamano after Taylor Blau's approval. A new bug report traced `git grep --recurse-submodules <tree>` failures on submodule directories to commit 93cd344e34, and Farid Zakaria's notes fix turned silent note loss into a loud "cannot lock ref" failure.
 
 ## Notable threads
 
-### Regression in `git grep --recurse-submodules` when searching tree objects
-**What changed?**
-A regression in `git grep --recurse-submodules` causes the command to fail with `fatal: unable to read tree` when it encounters a directory inside a submodule. The issue was introduced in Git 2.56.0 by commit `93cd344e34` ("builtin/grep: stop registering submodule ODB as source"), which removed submodule ODB registration but did not update `grep_tree()` to read from the correct repository context.
+### midx-write: skip writes with no object entries
+Pia Park's patch stops `git multi-pack-index write` from publishing a zero-object MIDX without a reverse index when a write finds packs but no new objects, a failure mode that appeared when incremental bitmap writes began loading reverse indexes from prior layers. Today she posted v3 with simplified tests and an updated commit message; Taylor Blau said it looks good, and Junio C Hamano said he will queue the series.
 
-### Why it matters
+### git grep --recurse-submodules <tree> dies on a directory inside a submodule
+Root reported that since Git 2.56.0, `git grep --recurse-submodules <pattern> <tree>` dies with "fatal: unable to read tree" when it reaches a directory inside a submodule, while the working-tree form is unaffected. He identified commit 93cd344e34 (builtin/grep: stop registering submodule ODB as source) as the cause: `grep_tree()` reads subdirectory trees from the superproject's object database while `grep_submodule()` switches to the submodule, and noted `grep_cache()` performs the same lookup for sparse-directory index entries.
 
-The regression breaks recursive searches of submodule trees, a workflow used in CI environments and large monorepos. The working-tree form of the command remains unaffected, but the tree-object form is now unusable for submodules containing directories.
-
-### Today’s exchange
-
-Root reported the regression, provided a minimal reproduction script, and bisected it to the problematic commit. The proposed workaround—reading from `repo->objects` instead of `the_repository->objects`—restores expected behavior but has not been tested against the full test suite. No maintainer response yet, but the bisect and reproduction steps make this a high-priority fix.
-
----
-
-### `fetch: introduce +: refspec` series: override semantics confirmed
-**What changed?**
-The series, which introduces `remote.<name>.fetchRefmap` to decouple fetch selection from namespace mapping, is now aligned on **override semantics**: command-line refspecs (or colon-separated `remote.<name>.fetch` entries) must override `fetchRefmap` entirely, not coexist with it. This resolves the ambiguity raised by Phillip Wood and aligns with Junio C Hamano’s latest feedback.
-
-### Why it matters
-
-The design pivot ensures backward compatibility and avoids silent behavior changes for users migrating from older configurations. The resolution clears the last technical blocker for the series, which is now poised for integration.
-
-### Today’s exchange
-
-- **Junio C Hamano** acknowledged the ambiguity in the current design but left the door open for Phillip’s override semantics, stating it “could be ‘refrain from what the refmap alone would do and do something else’.”
-- **Phillip Wood** insisted that command-line refspecs must override `fetchRefmap`, providing the concrete example:
-  ```sh
-  git -c remote.cabal.fetchRefmap=... fetch cabal refs/heads/master:refs/remotes/origin/master
-  ```
-  This should update only `origin/master`, not `cabal/master`. The thread now awaits a revised patch from Harald Nordgren to implement the agreed-upon behavior.
-
----
-
-### Notes subsystem: retry mechanism debated
-**What changed?**
-A patch fixing a race condition in `git notes add` (where concurrent updates could silently overwrite each other) sparked a debate about the notes subsystem’s concurrency model. The current patch fails on *any* concurrent update, but Junio C Hamano and Kristoffer Haugsbakk proposed a **retry mechanism** using Git’s existing merge/rebase machinery to allow non-conflicting updates to proceed.
-
-### Why it matters
-
-The notes subsystem is used in workflows like Gerrit and GitHub for code review metadata, where concurrent updates are common. The current patch’s strict failure-on-concurrency behavior is overly restrictive for non-conflicting updates (e.g., two processes adding notes to unrelated commits).
-
-### Today’s exchange
-
-- **Kristoffer Haugsbakk** argued that the current patch is overly strict and proposed a retry mechanism that only fails if updates target the same commit.
-- **Junio C Hamano** sketched a concrete alternative: losing processes could merge/rebase their attempted note commits on top of the winning process’s commit, leveraging Git’s existing merge machinery.
-- **Farid Zakaria** deferred implementing the retry mechanism, positioning the current patch as a “net-positive” interim fix. He also teased two additional race-condition bugs in `credential-cache` and `fsmonitor`, hinting at broader concurrency issues in Git.
-
----
-
-### Shallow fetch with tags: bugfix merged to `seen`
-**What changed?**
-A bugfix for shallow fetches with tags, which caused clients to report no ‘have’ references during negotiation (forcing servers to send all objects), was merged to Junio’s `seen` branch. The fix exposes pending transaction state via the transport’s `negotiation_include_tips` field, restoring correct ‘have’ reporting while preserving atomicity for `--atomic` fetches.
-
-### Why it matters
-
-The regression, introduced by commit `0e358de64a` ("fetch: use batched reference updates"), degraded performance for shallow fetches with tags. The fix is a high-priority correction for users of the compatibility-hash feature.
-
-### Today’s exchange
-
-- **Junio C Hamano** merged the v3 series to `seen`, noting a minor integration hiccup: the original `repo_write_loose_object_map()` function loses all callers and will disappear, while the new helper `loose_object_map_write()` survives.
-- **Justin Tobler** posted v3, incorporating a locking-scope optimization (reading the source loose-object-idx file outside the lock) and a clarifying comment for `loose_object_idx_merge()`.
-
----
-
-### `git worktree list` filtering: design pivot to `for-each-ref`
-**What changed?**
-The discussion about adding filtering to `git worktree list` pivoted from a `--branch` option to extending `git for-each-ref`’s `%(worktreepath)` atom to report worktree paths even during rebase/bisect. This narrower change avoids introducing new CLI options but introduces new concerns about safety and composability.
-
-### Why it matters
-
-The pivot simplifies the design but raises questions about whether `for-each-ref` is the right tool for filtering worktrees. Key limitations include:
-- No NUL-terminated output, complicating parsing of worktree paths with newlines.
-- Inability to distinguish the main worktree from linked worktrees, risking main repository deletion.
-- Risk of surfacing worktrees in transient, high-risk states (e.g., mid-rebase), which could lead to data loss if used with `git worktree remove`.
-
-### Today’s exchange
-
-- **Jasper Mayone** proposed the pivot, framing it as a bug fix to align `%(worktreepath)` with existing Git behavior.
-- **Eric Sunshine** highlighted a latent design tension: filtering worktrees breaks the invariant that the main worktree appears first in output, creating a risk for scripts that rely on this ordering.
-- **Phillip Wood** identified three key limitations of `for-each-ref` as a filtering mechanism and endorsed the behavior change as a bug fix.
-- **Ben Knoble** raised a critical edge case: whether filtering worktrees by branch state (e.g., `--merged=origin`) should include worktrees that are mid-rebase, and whether `git worktree remove` should allow deletion of such worktrees.
-
----
+### notes: do not drop notes written by a concurrent process
+Farid Zakaria's patch makes commands that modify notes fail with "cannot lock ref" instead of silently dropping notes written by a concurrent process, by using the commit the notes were read from as both the parent of the new notes commit and the expected old value of the ref update. Kristoffer Haugsbakk called the find "really nice" and judged the change a pure improvement, proposing an ideal-world retry; Junio C Hamano offered a merge-or-rebase alternative; Farid Zakaria clarified he agreed the patch is a positive change as it stands.
 
 ## In brief
-- **`midx: avoid publishing empty incremental layers`**: Junio C Hamano queued Pia Park’s v3 patch, which prevents MIDX writes from publishing empty layers (zero objects) without a reverse index. The patch is unchanged from v2 except for test refinements.
-- **`doc: sync command-list.txt`**: Tuomas Ahola’s v3 series, which keeps `command-list.txt` synchronized with non-command manual pages, exempts the obsoleted `gittutorial-2(7)` manual page from the linter check.
-- **`branch --delete-merged: detect squash-merged and rebase-merged branches`**: Jasper Mayone’s tested review confirmed the v4 series behaves as documented: `--delete-merged` preserves strict tip-reachability, while `--delete-integrated` correctly deletes squash merges, GitHub-style squashes, rebase merges, and upstream-modification cases.
-- **`completion: add --graph-indent`**: Pablo Sabater questioned whether `--graph-indent` and `--no-graph-indent` belong in `__git_log_common_options` and proposed adding `--graph-lane-limit`. He also flagged a UX concern: both options require `--graph` to be present, and autocompleting them without `--graph` will produce an error.
-- **`sigchain: repair signal handler chain`**: Phillip Wood offered two optimizations for the thread-level fix: block signals once before thread-creation loops (e.g., `preload_index()`) and unblock after, and mask at least SIGINT/SIGHUP/SIGTERM/SIGQUIT during handler execution.
-- **`test modernization in t5300-pack-object.sh`**: Junio C Hamano queued Ogundipe Sola Taiwo’s patch, which replaces five legacy file-check idioms with modern helpers (`test_path_is_file`, `test_path_is_missing`).
-- **`Add degree-of-concern reporting to git repo structure`**: Junio C Hamano identified a copy-paste error in the v4 series: the concern level for the largest tree size is incorrectly computed using `objects->largest.commit_size.value` instead of `objects->largest.tree_size.value`.
-- **`completion: remove NO_PARSEOPT`**: Tanga Joris posted v3 of their series, implementing Junio’s proposed refactoring to centralize `--git-completion-helper` handling in `parse-options.c`.
-- **`oss-fuzz: fix loose-object-idx migration`**: Patrick Steinhardt endorsed Sami Jawhar’s one-line fix, which sets a placeholder `.git` gitdir in the fuzzer’s repository to avoid a BUG in `prepare_repo_settings()`.
-- **`reflog: fix dry-run output inconsistency`**: Patrick Steinhardt’s surface-level review approved Laveesh Bansal’s patch, noting the bug was only a messaging issue (no functional regression).
-- **`What's cooking in git.git` (October 2026 #10)**: Junio’s report advanced 13 topics to `next`-ready status after Patrick Steinhardt’s blanket approvals. Key graduations:
-  - `hn/imap-send-header-fix`: Approved for `next` after Patrick’s substantive review.
-  - `kn/fetch-tag-backfill-batch-fix`: Queued for `next` after Karthik Nayak’s final reroll.
-  - `mc/refs-rename-transaction`: Evicted due to AI-heavy implementation and unclear author understanding.
-- **`notes: fix race condition in concurrent note additions`**: Junio C Hamano requested rephrasing of Farid Zakaria’s ambiguous statement about AI-assisted review. Farid clarified that he was expressing confidence in his own understanding of the patch.
-- **`redesigning signal handling in threaded Git code`**: ian4hu revised the design to block `SIGINT`, `SIGHUP`, `SIGTERM`, `SIGQUIT`, and `SIGPIPE` during thread creation using a guard pattern, preserving `SIGPIPE` for the main thread.
-- **`t0410: use test_path_exists`**: Junio C Hamano queued Tilak Kumar’s patch, which replaces a raw `test -e` check with `test_path_exists` in `t/t0410-partial-clone.sh`.
-- **`git check-ref-format` refactoring**: Junio C Hamano identified four issues in Husain Sitamuwala’s patch: confusing usage-string names, `--print` not marked hidden, silent acceptance of negated options, and retention of `show_usage_if_asked()` that defeats `parse-options` help generation.
+- Jasper Mayone withdrew the `git worktree list --branch` option and instead proposed making `%(worktreepath)` in `git for-each-ref` name the worktree of a branch being rebased or bisected; Phillip Wood called it a useful improvement, and Ben Knoble questioned whether `git worktree remove` should then refuse such worktrees.
+- Mark C. Chu-Carroll posted v4 of degree-of-concern reporting for `git repo structure`; Junio C Hamano spotted a copy-and-paste error computing the largest tree's concern level from the commit size, which Mark acknowledged and will fix.
+- Tanga Joris posted v3 dropping `NO_PARSEOPT` from patch-id, diff-pairs, fast-import and var, moving completion-helper handling into `show_usage_with_options_if_asked()` in parse-options.c as Junio C Hamano suggested.
+- Patrick Steinhardt agreed that the "odb/files: reload alternates on retry" series should be ready to go.
+- Harald Nordgren posted v2 of the Makefile change exporting `CCACHE_SLOPPINESS += pch_defines,time_macros` so ccache caches objects built with the precompiled header.
+- Justin Tobler analyzed the quarantine alternate-refs issue as child processes having no concept of an ODB transaction; Junio C Hamano asked whether a `GIT_QUARANTINE_OBJECT_DIRECTORY` variable could identify the real object directory.
+- ian4hu plans to block SIGINT, SIGHUP, SIGTERM and SIGQUIT around spawn loops in a replacement sigchain series, leaving SIGPIPE out, and will wait for Peff and Junio to comment before sending v2.
