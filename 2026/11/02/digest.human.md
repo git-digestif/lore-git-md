@@ -1,149 +1,58 @@
 # Git mailing list daily digest for 2026/11/02
 
+## Long threads
+
+### `git repo info` path keys series under review pressure
+
+*Long thread: 45 replies so far from 5 participants over 110 days; 6 messages that day.*
+
+K Jayatheerth's GSoC series adds `path.*` keys to `git repo info` (`path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.grafts`, `path.git-prefix`, `path.cdup`), with a fix to `get_superproject_working_tree()` so it takes a repository parameter instead of relying on the cwd. Earlier, Junio C Hamano warned the v7 series would be discarded without review. Today he repeated that warning, and Justin Tobler reviewed several patches: he agreed patch 2/8 makes sense passing the repository to `get_superproject_working_tree()`, suggested exercising the existing `rev-parse --show-superproject-working-tree` caller in t1500 instead, simplified patch 3/8's early returns, objected to relative output like `../../../../dev/null` for `path.hooks` when `core.hooksPath=/dev/null`, questioned whether the deprecated `path.grafts` patch should be dropped, and flagged a missing subshell in the `path.cdup` test.
+
+### Reference-transaction hooks reporting old values
+
+*Long thread: 31 replies so far from 5 participants over 45 days; 2 messages that day.*
+
+Maciej Ciemborowicz's v6 patch resolves old object IDs in the common transaction hook layer so the reference-transaction hook reports real old values for unconditional deletions, keeping them separate from caller-supplied values. Earlier, Patrick Steinhardt endorsed the common-layer approach. Today Junio C Hamano said he will discard the topic from his tree unless volunteers review it within a few weeks, and Maciej Ciemborowicz acknowledged, thanking him and hoping someone else will review it.
+
+### Community voting process proposal
+
+*Long thread: 30 replies so far from 13 participants over 28 days; 1 message that day.*
+
+Emily Shaffer's document proposes a community voting process for decisions where consensus cannot be reached, with eligibility thresholds debated earlier (commit counts, activity windows, human-override exceptions). Today Patrick Steinhardt argued that excluding long-inactive people is not necessarily unexpected, since an informed vote requires community context, and said that any human-override process (Junio or the PLC adding specific voters) must be fully transparent--who added whom, with reasoning, published well ahead of time.
+
+### Git 3.0 lowercase-only hex object IDs
+
+*Long thread: 28 replies so far from 7 participants over 97 days; 2 messages that day.*
+
+brian m. carlson's v2 series removes acceptance of uppercase hex in object IDs in breaking-changes mode, addressing security issues where downstream software assumes a unique lowercase hex form. Today Junio C Hamano noted the series had received no reactions and asked for review to confirm it aligns with earlier discussion so it can be marked for `next`; Patrick Steinhardt added it to his todo list for the week.
+
+### Shallow-clone hint for `<rev>~N` failures
+
+*Long thread: 22 replies so far from 6 participants over 44 days; 17 messages that day.*
+
+Harald Nordgren's v3 patch adds a `shallowHistory` advice when `<rev>~N` or `<rev>^N` resolution stops at a recorded shallow boundary, suggesting the exact `--deepen` needed and naming the remote and branch via refspec reverse-mapping. Today the discussion turned to review capacity: Harald Nordgren asked whether the review process itself needs to change, proposed more automated mechanical checks, and offered to trade reviews; Patrick Steinhardt argued automation cannot replace human review of conceptual direction and welcomed tools like Sashiko; Phillip Wood urged self-review and floated requiring review contributions; Junio C Hamano replied that acceptability is shown only by positive reviews and that he now bases `next` decisions heavily on human review after past AI-review reverts.
+
 ## The day in brief
 
-The Git mailing list saw significant activity around stalled patch series, with maintainers issuing warnings about imminent removals from integration branches due to lack of review. Key developments included substantive reviews of the `parse-options` early scanning API, the `git range-diff --matched-only` feature, and the reference-transaction hook regression fix. Process discussions about review bottlenecks and AI-assisted contributions gained traction, with maintainers emphasizing the need for human judgment in conceptual reviews.
+Junio C Hamano proposed ejecting topics unreviewed for N weeks from `seen`, with notices for those lingering over a month, and sent discard warnings for stalled series including the `git repo info` path keys and the reference-transaction hook fix. Justin Tobler delivered a detailed review of the path-keys patches, and Kristofer Karlsson's fix making the rev-list connectivity check ignore replace refs was endorsed by Junio C Hamano as absolutely the right thing to do.
 
 ## Notable threads
 
-### [PATCH 0/7] line-log: support range-scoped diff stat, whitespace check, and -G pickaxe
-**What changed:** Junio C Hamano warned that the v3 series will be dropped from `seen` unless reviewers step up within the next few weeks.
+### Ejecting unreviewed topics from `seen`
+Junio C Hamano proposed a rule that topics unreviewed for N weeks are ejected from `seen`, announcing notices for every topic lingering unreviewed for more than a month. Patrick Steinhardt called the rule reasonable, noting evicted topics can be re-added if interest returns, and flagged the confusing "Will merge to `next`?" state; Junio explained the trailing question mark means "I plan to do this unless someone stops me," and Phillip Wood suggested clarifying that ejected topics can return to lessen contributor worry.
 
-**Problem/goal:** Extend `git log -L` to support range-scoped diff stat formats, whitespace checking, and the `-G` pickaxe.
+### `git describe` distance with skewed commit dates
+Linus Torvalds' patch fixes `git describe` miscounting distance when commit dates are unreliable by using commit generation numbers. Today Patrick Steinhardt and Derrick Stolee agreed `ensure_generations_valid()` should be called in `describe_commit()`, accepting the cost without a commit graph is better than a wrong answer; Junio C Hamano asked whether the cost could be amortized by writing a commit-graph, and Linus Torvalds argued consistently wrong numbers are worse and suggested a flag to force exact computation.
 
-**Subsystem:** Line-log (`-L` option)
-
-**Impact:** The series is at risk of abandonment despite being technically complete and addressing all prior feedback. The lack of reviewer engagement threatens to derail this enhancement to Git's line-range filtering capabilities.
-
----
-
-### [PATCH v5] sequencer: handle fixup/squash commits that become empty
-**What changed:** Phillip Wood provided a substantive review of v5, identifying additional improvements for clarity, error handling, edge cases, and correctness.
-
-**Problem/goal:** Fix a long-standing edge case where `fixup!`/`squash!` commits that cancel out their target commit are not handled according to the `--empty` option.
-
-**Subsystem:** Sequencer (`--autosquash` logic)
-
-**Impact:** The review is actionable and emphasizes that changes to `commit_staged_changes()` are necessary for correctness. The patch remains ready for merging once the requested changes are addressed.
-
----
-
-### [PATCH v7] git repo info: add path-related keys
-**What changed:** Junio C Hamano issued a final warning that the v7 series will be dropped from `seen` unless reviewers engage. Justin Tobler identified a test correctness issue in patch 2/8 and provided surface-level reviews of patches 3/8, 4/8, 6/8, and 8/8.
-
-**Problem/goal:** Expose filesystem locations of repository components via `git repo info`.
-
-**Subsystem:** Repository information command
-
-**Impact:** The series is at critical risk of abandonment despite being mechanically complete and correctness-fixed. The test correctness issue in patch 2/8 must be addressed before the series can progress.
-
----
-
-### What's cooking in git.git (Jul 2026, #12)
-**What changed:** Junio C Hamano proposed a mechanical policy to eject unreviewed topics from `seen` after four weeks. Patrick Steinhardt endorsed the policy, and Phillip Wood proposed explicitly stating that ejected topics can be re-queued if interest later resurfaces.
-
-**Problem/goal:** Address the backlog of unreviewed topics in the `seen` integration branch.
-
-**Subsystem:** Integration pipeline
-
-**Impact:** The new policy aims to balance reviewer productivity with quality control. The discussion highlights systemic challenges in Git's review process, including the tension between contributor volume and reviewer bandwidth.
-
----
-
-### [PATCH v2] hex-ll: restrict hex object IDs to lowercase only
-**What changed:** Junio C Hamano requested final review to confirm the v2 RFC series aligns with prior discussion.
-
-**Problem/goal:** Enforce lowercase-only parsing of hex object IDs in Git 3.0 to address security and compatibility issues.
-
-**Subsystem:** Object ID parsing
-
-**Impact:** The series is ready for integration into `next` if no new issues are raised. The breaking change targets Git 3.0 and remains gated behind `WITH_BREAKING_CHANGES`.
-
----
-
-### [PATCH v2] contrib/credential/libsecret: avoid crash and silent data loss
-**What changed:** Junio C Hamano warned that the topic may be dropped from `seen` without further feedback.
-
-**Problem/goal:** Fix a crash and silent data loss in the `contrib/credential/libsecret` credential helper.
-
-**Subsystem:** Credential helpers
-
-**Impact:** The patch addresses a real issue but remains stalled due to lack of review participation. The procedural blocker threatens to delay the fix despite its clear value.
-
----
-
-### [PATCH v6] parse-options: new sub-API for early argument scanning
-**What changed:** Christian Couder posted v4 of the series, addressing all prior feedback including validation checks, ephemeral `option` pointer documentation, and test coverage for the `git fast-import` bugfix.
-
-**Problem/goal:** Introduce a minimal, reusable `parse-options` sub-API (`early_scan_options()`) to replace fragile hand-rolled early argument scans.
-
-**Subsystem:** Argument parsing
-
-**Impact:** The series is ready for `next`, with the `git fast-import` bugfix and preparatory refactorings now uncontroversial. The core API includes validation checks, clearer documentation, and thorough test coverage.
-
----
-
-### [PATCH v3 0/2] doc: sync command-list.txt with non-command manual pages
-**What changed:** Julia Evans identified a design inconsistency in `lint-manpages.sh`'s variable extraction, suggesting consolidation to `Documentation/Makefile` for clarity.
-
-**Problem/goal:** Ensure `command-list.txt` stays in sync with non-command manual pages.
-
-**Subsystem:** Documentation
-
-**Impact:** The review targets a potential source of future bugs and proposes a cleaner architectural approach. The patch author has not yet responded, so the discussion remains open.
-
----
-
-### [PATCH v3] git-p4: prevent shell injection from user-supplied commit ID
-**What changed:** Junio C Hamano warned that the patch will be dropped from `seen` unless reviewers step up.
-
-**Problem/goal:** Fix a shell injection vulnerability in `git-p4.py`'s `applyCommit()` function.
-
-**Subsystem:** `git-p4` (Git-Perforce bridge)
-
-**Impact:** The patch is well-motivated and addresses a real security issue but remains stalled due to lack of review participation.
-
----
-
-### [PATCH] rev-list: ignore replacements during connectivity check
-**What changed:** Kristofer Karlsson posted the patch, and Junio C Hamano endorsed the core idea but suggested an alternative approach: checking connectivity for both original and replacement objects.
-
-**Problem/goal:** Align `git rev-list`'s connectivity check with other commands by ignoring replacement refs.
-
-**Subsystem:** Connectivity checks
-
-**Impact:** The patch addresses an inconsistency that can cause packs to pass connectivity checks but later fail `fsck`. The discussion centers on design intent rather than implementation.
-
----
+### Connectivity check ignoring replace refs
+Kristofer Karlsson's patch makes rev-list's `--connectivity-check` call `disable_replace_refs()` and drop `OBJECT_INFO_LOOKUP_REPLACE` from `tree-verify.c`, so it verifies the same original objects that fsck, prune, pack-objects and upload-pack read. Junio C Hamano endorsed it as absolutely the right thing to do, noting replacement objects being backed by reachable objects could be addressed separately.
 
 ## In brief
-
-- **[PATCH 0/2] fetch: configurable submodule fetch errors:** Junio C Hamano issued a second call for reviewers, warning that the topic will be discarded from `seen` unless reviewers engage.
-- **[PATCH v2] submodule: fix crash and error handling in branch --recurse-submodules:** Junio C Hamano warned that the series will be dropped from integration branches unless reviewers step up.
-- **[PATCH v2] git-svn: quiet migration noise and make build optional:** Junio C Hamano warned that the series will be dropped from `seen` unless reviewers step up.
-- **[PATCH] gitremote-helpers: document `option pushcert` "if-asked" value:** Junio C Hamano reviewed the patch and marked it ready for `next`.
-- **[PATCH 0/6] parse-options: new sub-API for early argument scanning:** Christian Couder posted v4 of the series, addressing all prior feedback.
-- **[PATCH v3 0/2] doc: sync command-list.txt with non-command manual pages:** Julia Evans identified a design inconsistency in `lint-manpages.sh`.
-- **[PATCH] add -i: make init/clear_add_i_state() static:** No noteworthy new developments.
-- **[PATCH] read-cache: make refresh_cache_entry() static again:** No noteworthy new developments.
-- **[Outreachy] GIT_DIR inherited by shell aliases in linked worktrees:** Priestess (Cynthia) confirmed the issue and identified `GIT_DIR` inheritance as the root cause.
-- **[PATCH] git-svn: prevent shell injection from user-supplied commit ID:** Junio C Hamano warned that the patch will be dropped from `seen` unless reviewers step up.
-- **[PATCH 0/2] submodule: fix crash and error handling in branch --recurse-submodules:** Junio C Hamano warned that the topic will be dropped unless reviews materialize.
-- **[PATCH 0/8] ci: consolidate test environment variables:** Phillip Wood explicitly stated the series is "ready for `next`" following his approval.
-- **[PATCH] odb.c: skip self-referential alternates during quarantine:** Kristofer Karlsson posted v2 of the patch, repurposing `GIT_QUARANTINE_ENVIRONMENT` to avoid fragile path comparisons.
-- **[PATCH] add -i: make init/clear_add_i_state() static:** No noteworthy new developments.
-- **[PATCH] read-cache: make refresh_cache_entry() static again:** Junio C Hamano confirmed the final version of the patch will adopt Patrick Steinhardt's suggested reordering of functions.
-- **[Outreachy] GIT_DIR inherited by shell aliases in linked worktrees:** No noteworthy new developments.
-- **[PATCH] diff-files: convert to parse-options API:** The author withdrew the patch after Junio C Hamano raised concerns about the value of the refactoring for a plumbing command.
-- **[Outreachy] environment variable handling in Git worktrees:** No noteworthy new developments.
-- **[PATCH] notes-utils: pass repository parameter explicitly:** Patrick Steinhardt warned that the patch still reads as AI-generated and threatened to ignore future patches unless the commit message is genuinely rewritten.
-- **[PATCH 0/6] stash: improve performance by eliminating duplicate work:** Phillip Wood pointed to an overlapping series in `seen` and invited the author to review it.
-- **[PATCH 0/2] maintenance: Trace2 event + lock-handling consistency:** Patrick Steinhardt requested mechanical refinements: splitting the patch into two, deduplicating error-message formatting, and simplifying the Trace2 event's `reason` field.
-- **[PATCH] doc: sync minimum Perl version with code:** Junio C Hamano requested a wording correction to align the documentation with the code's use of `require v5.26`.
-- **[PATCH] diff-auto_refresh_index: migrate to repo_config_values:** Ebele Lynda Okolo posted the first iteration of the patch, migrating the `diff_auto_refresh_index` global variable into the `repo_config_values` struct.
-- **[PATCH 0/6] odb: move loose object backend into its own source file:** Patrick Steinhardt posted v1 of the series, moving loose-object backend logic from `object-file.c` into `odb/source-loose.c`.
-- **[Outreachy] libifying pathspec handling in find_pathspecs_matching_skip_worktree():** Srujith Poojary proposed two approaches to eliminate a `the_repository` global access in the pathspec subsystem.
-- **[PATCH] Documentation/Governance.adoc:** Antonin Delpeuch posted the initial draft, and Junio C Hamano requested line-wrapping improvements and provided clarifications on governance details.
-- **[PATCH] rev-list: ignore replacements during connectivity check:** Kristofer Karlsson posted the patch, and Junio C Hamano endorsed the core idea but suggested an alternative approach.
-- **[Git Rev News #140]:** Christian Couder announced the publication of *Git Rev News* edition #140.
-- **[.cirrus.yml]:** Tuomas Ahola asked whether the `.cirrus.yml` file is still in use, given that Cirrus CI appears defunct.
+- Kristofer Karlsson posted v2 of a fix so `--alternate-refs` no longer lists the repository's own refs (including hidden ones) during quarantine connectivity checks, with a perf test showing a push into a repo with ~200,000 hidden refs improving from 0.31s to 0.09s.
+- Phillip Wood reviewed Farid Zakaria's v5 patch making `git rebase --autosquash` honor `--empty` when a fixup empties its target, calling it pretty good but requesting comment restructuring and a rebase onto master.
+- Jasper Mayone posted v4 treating a branch being rebased or bisected as checked out: `worktree remove` refuses such worktrees without `--force`, `%(worktreepath)` names the rebasing worktree, and `git branch` drops the `+` marker there. *Long thread: 22 replies so far from 7 participants over 13 days; 5 messages that day.*
+- Christian Couder posted v4 standardizing early option scanning with a new `early_scan_options()` sub-API in parse-options, converting `git fast-import`'s `--allow-unsafe-features` handling.
+- Mark C. Chu-Carroll posted v5 adding degree-of-concern reporting to `git repo structure`, with thresholds configurable via `repo.concern.*` keys.
+- Patrick Steinhardt posted v2 of the CI test-variable consolidation series; Phillip Wood reviewed it as ready for `next`.
+- Junio C Hamano proposed freezing the `repo_config_values` structure against new members in `environment.h`.
+- Antonin Delpeuch submitted a patch adding `Documentation/Governance.adoc` describing current project governance; Junio C Hamano asked for line-wrapping and clarifications on several points.
