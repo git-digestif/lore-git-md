@@ -1,87 +1,66 @@
 # Git mailing list daily digest for 2026/11/16
 
+## Long threads
+
+### `git repo info` path keys (GSoC series v9)
+
+*Long thread (root 2026/07/16/01-21-31): 64 replies so far from 6 participants over 124 days; 1 message that day.*
+
+This GSoC series exposes repository paths and metadata via the `git repo info` command, adding keys such as `path.workingtree.absolute`/`path.workingtree.relative`, `path.superprojectworkingtree.*`, `path.index.*`, and `path.prefix`, and refactoring `get_superproject_working_tree()` to operate on a `struct repository *`. Earlier revisions renamed `path.toplevel.*` to `path.workingtree.*`, dropped `path.hooks` after reviewers argued it encouraged an outdated interface, and dropped `path.cdup` as redundant with `path.working-tree.relative`. Today K Jayatheerth stated that the easiest approach would be to directly combine the tests and optimize them in the follow-up series he is already planning to consolidate overlapping logic between `repo` and `rev-parse`.
+
+### `git branch --delete-integrated` for squash-merged branches
+
+*Long thread (root 2026/09/29/07-30-30): 58 replies so far from 7 participants over 49 days; 1 message that day.*
+
+This series adds `--delete-integrated` to `git branch`, which deletes a branch when some upstream commit since the fork point contains all of its changes--covering GitHub "Squash and merge" and "Rebase and merge" cases whose tips are unreachable--and names that commit in the output. Earlier revisions moved the index read out of the per-file loop in `find_landed_commits()` and added a test that a branch whose changes did not land is kept. Today Jasper Mayone confirmed the new v7 test covers the same three cases he had proposed tests for, reported building v7 and running t3200 with his four extra tests on top with all 209 tests passing, confirmed v7 addresses his three earlier points, and added a `Tested-by:` trailer.
+
+### New detached HEAD state guide
+
+*Long thread (root 2026/10/07/14-52-01): 46 replies so far from 5 participants over 41 days; 2 messages that day.*
+
+Julia Evans is adding a new `git help detached-head` guide to help users who accidentally end up in detached HEAD state, dual-purpose with the DETACHED HEAD section of `git-checkout.adoc`, fixing issues like not explaining why detached HEAD is useful or why it happens accidentally. Earlier discussion settled wording around how `HEAD` stores a branch or commit ID and the quote style in the `advice.c` message. Today Julia Evans posted v7, adding the sentence "You can also use this to make experimental commits without being on a branch" and updating the commit message to explain the dual purpose. Junio C Hamano said the v7 commit message makes the change clearer but asked for someone else to give a hopefully final pass with fresh eyes before merging it down to `next`.
+
+### `credentialStore.lockTimeout` config option
+
+*Long thread (root 2026/09/02/08-31-37): 43 replies so far from 5 participants over 76 days; 2 messages that day.*
+
+This Outreachy patch adds `credentialStore.lockTimeout` as the preferred name for the credential storage lock retry timeout, matching other file-lock retry settings (`rerere.lockTimeout`, `reftable.lockTimeout`, `core.filesRefLockTimeout`, `core.packedRefsTimeout`, `core.configLockTimeout`) that are measured in milliseconds without the unit in the name, while keeping `lockTimeoutMS` as a deprecated synonym. Earlier review consolidated the zero-timeout tests into a loop over both names and dropped a test that never held the lock. Today Okhuomon Ajayi resent the v3 patch with that justification in the message, and Junio C Hamano reviewed it, said it looks good, and marked the topic ready for `next`.
+
+### Worktrees rebasing or bisecting a branch
+
+*Long thread (root 2026/10/21/17-33-36): 41 replies so far from 8 participants over 27 days; 3 messages that day.*
+
+This series makes Git treat a branch being rebased or bisected in a worktree as checked out: `git worktree remove` refuses such a worktree without `--force`, `%(worktreepath)` names the worktree, and a map in `branch.c` makes the lookup a single hash lookup. Today Jasper Mayone answered Junio C Hamano's question about how the new `check_no_operation_in_progress()` interacts with the existing checked-out-branch protection--the two checks answer different questions and should stay separate--and agreed with Junio's objection to the final patch, accepting dropping patches 4/5 and `%(currentworktree)` and stopping the series at 3/5. Phillip Wood separately responded on `%(currentworktree)`, suggesting the name `%(currentworktreepath)` if a path is printed and noting a hashmap is unnecessary for a single entry.
+
 ## The day in brief
-Today's Git mailing list activity focused on finalizing several long-running patch series, addressing performance regressions, and fixing bugs across various subsystems. Key developments include the final approval of the `git repo info` path-related keys series, progress on the `git branch --delete-integrated` feature, and resolution of several crash bugs in the ODB layer and submodule handling. Performance optimizations for `git repo structure` and `git log --follow` were also prominent.
+Junio C Hamano marked two topics ready for `next`: the `credentialStore.lockTimeout` rename and the `log --follow` optionality change. Patrick Steinhardt posted a 12-patch series making commit graphs pluggable across object database backends, and two partial-clone lazy-fetch bug reports were filed, one of which already has a fix verified in flight.
 
 ## Notable threads
 
-### [PATCH v9] series adding path-related keys to `git repo info`
-**What changed**: The series adding seven new path-related keys to `git repo info` (`path.working_tree`, `path.superproject_working_tree`, `path.index`, and `path.prefix`) received final confirmation and is now fully approved for merging.
+### Pluggable commit graphs
+Patrick Steinhardt posted a 12-patch series introducing pluggable commit graphs so that an object database backend is in full control over where the commit graph is read from and written to, moving all storage path derivation logic from `commit-graph.c` into the "files" backend in `odb/source-files.c` and adding `read_commit_graph`/`write_commit_graph` callbacks to `odb_source`. The series also refactors chain linking, split merge strategy, and write paths ahead of the pluggability change. Junio C Hamano reviewed PATCH 01/12, calling the simplification nice and questioning whether `cur_g->oid` becomes write-only now that the OID array comparison was removed.
 
-**Problem/goal**: Expose filesystem locations of repository components in a user-facing, scriptable format via `git repo info`.
+### index-pack lazy-fetches in-pack REF_DELTA bases
+לירון עדן filed a bug report: in a blobless partial clone fetching a thin pack whose in-pack delta bases arrive as REF_DELTA (no ofs-delta negotiated), `index-pack` starts a nested lazy fetch for delta bases already in the pack being indexed, because the prefetch loop in `fix_unresolved_deltas()` in `builtin/index-pack.c` iterates all REF_DELTA entries and the incoming objects are not yet in the object store. The report documents recursive nested lazy fetches--12 levels in about a minute, several hundred in an unattended job--against Azure DevOps Services, and notes the workaround of prefetching the commit with `GIT_NO_LAZY_FETCH=1`.
 
-**Subsystem**: `git repo` built-in command
+### Partial clone lazy-fetches a blob it just wrote
+Google -- Mergify reported that since Git 2.54.0 a cherry-pick in a `blob:none` partial clone can lazy-fetch a blob the cherry-pick just wrote locally, bisected to 5946a564cd, because the loose object cache is not updated when an object is written; the command dies even though the commit was stored. Patrick Steinhardt identified the issue as known with a fix in flight and asked for testing; after verification that both patches make the cherry-pick succeed and a new regression test pass, he acknowledged the result.
 
-**Impact**: The series is now in its final form (v9), with all design objections resolved and explicit approval from Phillip Wood. Junio can queue it without further changes.
+### `git rerere` converted to subcommands
 
-**Today's development**: [2026/11/16/13-00-40 by K Jayatheerth] The author acknowledges Phillip Wood's feedback about test efficiency but defers optimization to a follow-up series. Phillip explicitly accepts this plan and reiterates approval for merging the series as-is.
+*Long thread (root 2026/10/27/10-46-43): 32 replies so far from 6 participants over 21 days; 3 messages that day.*
 
-### [PATCH v5 0/4] branch --delete-merged: detect squash-merged and rebase-merged branches
-**What changed**: The fourth patch in Harald Nordgren's series adding `--delete-integrated` to `git branch` received final review confirmation.
+Patrick Steinhardt's v4 series modernizes `builtin/rerere` to use `OPT_SUBCOMMAND()` like other Git commands, turning `forget`, `clear`, `status`, `remaining`, `diff`, and `gc` into proper subcommands with their own usage strings. The conversion makes option placement backwards-incompatible--`git rerere --skip-locked gc` must become `git rerere gc --skip-locked`. Today Junio C Hamano acknowledged he had missed the documented incompatible change and decided to accept breaking `--skip-locked` placement: "OK. Let's break it and have the users fix their scripts."
 
-**Problem/goal**: Extend `git branch --delete-merged` to recognize branches whose changes (but not their tips) have been integrated via squash merges, rebases, or patch-based workflows.
-
-**Subsystem**: Branch management
-
-**Impact**: The patch is now technically complete and ready for integration, with Jasper Mayone confirming all substantive issues from v6 are resolved in v7.
-
-**Today's development**: [2026/11/16/16-16-03 by Jasper Mayone] The reviewer explicitly states that all three substantive issues raised in v6—performance inefficiency, correctness ambiguity, and edge-case robustness—are now resolved in v7. He confirms the patch builds cleanly, passes all tests, and adds his `Tested-by` trailer.
-
-### Regression in partial clones (blob:none) after ODB abstraction refactor
-**What changed**: A regression in Git 2.54.0 causing partial clones to attempt lazy-fetch of blobs just written locally was confirmed and a fix validated.
-
-**Problem/goal**: Fix a bug where newly written merged blobs in `git merge` cannot be read back due to stale loose object cache entries.
-
-**Subsystem**: Object database (ODB) abstraction layer
-
-**Impact**: The regression affects production workflows and has been confirmed to exist in `master`, `next`, and `seen`. The fix is ready for review/merge.
-
-**Today's development**:
-- [2026/11/16/11-45-52 by Google — Mergify] The author reports the regression with a clear reproduction case and bisect.
-- [2026/11/16/12-46-00 by Patrick Steinhardt] The reviewer confirms the issue is known and points to an in-flight fix series.
-- [2026/11/16/20-16-05 by Patrick Steinhardt] The fix is validated and ready for review/merge.
-
-### [PATCH 0/12] Introduce pluggable commit graphs for ODB abstraction
-**What changed**: Junio C Hamano provided substantive review of the first patch in Patrick Steinhardt's series introducing pluggable commit graphs.
-
-**Problem/goal**: Move commit-graph storage logic into the ODB backend layer, enabling alternative ODB implementations to control where and how commit graphs are read and written.
-
-**Subsystem**: Object database (ODB) abstraction
-
-**Impact**: This is a foundational step in the ODB abstraction effort. Junio's feedback may prompt a v2 update to address validation gaps.
-
-**Today's development**: [2026/11/16/20-53-56 by Junio C Hamano] The reviewer raises questions about error reporting conventions, the role of the `oid` field in `struct commit_graph`, and potential validation gaps that may need addressing in v2.
-
-### `index-pack` regression in Git 2.56.0
-**What changed**: A new regression was reported in `git index-pack` causing redundant lazy fetches for in-pack `REF_DELTA` bases.
-
-**Problem/goal**: Fix a bug where `git index-pack` triggers unnecessary nested lazy fetches for `REF_DELTA` bases already present in the thin pack.
-
-**Subsystem**: `index-pack`, promisor-remote lazy fetching
-
-**Impact**: The bug affects blobless partial clones when the server does not support `OFS_DELTA`, leading to redundant network round-trips.
-
-**Today's development**: [2026/11/16/17-38-38 by לירון עדן] The author reports the regression with a reproduction script and identifies the root cause in `fix_unresolved_deltas()`.
+### Optional `--follow` rename following for non-linear history
+This series makes `--follow` following renames for non-linear history optional via `--follow=merges`, fixing a performance regression from 304812ed33 and a case where the speedup lost history when one merge parent renamed a path and the other edited the old name. Today Patrick Steinhardt judged the v2 patch "looks good to me", and Junio C Hamano marked the topic ready for `next`.
 
 ## In brief
+- Patrick Steinhardt posted v2 of "builtin/repo: improve counting of objects", which avoids fully parsing trees in `git repo structure`; Derrick Stolee called the memory reduction (3.4 GiB down to 0.7 GiB) impressive, and Junio C Hamano marked the topic ready for `next`. *Long thread (root 2026/11/13/11-46-16): 9 replies so far from 4 participants over 4 days; 8 messages that day.*
+- Andreas Wendleder reported that with `submodule.recurse=true`, switching branches in a superproject worktree whose submodule is a linked worktree aborts with `BUG()` in `validate_submodule_legacy_git_dir()`, and proposed either accepting linked worktrees or returning an error instead of `BUG()`.
+- Discussion of the `promisor-remote` crash without a repository: Patrick Steinhardt and Junio C Hamano agreed the easier `repo->gitdir` NULL check is acceptable for now, with passing the repository down and checking `!repo` as the more sensible long-term direction.
+- **Tanga Joris to send v3 patch series**: He will add a preparatory patch with a `free()` in `parse_git_diff_header()` for the empty "diff --git" line fix, and name the `---`/`+++` lines in the error for the both-names patch.
 
-- **[PATCH v3] rerere: fix race condition between rebase and background maintenance**: [2026/11/16/23-39-08 by Junio C Hamano] The follow-up patch for timeout naming consistency is marked ready for 'next'.
-- **[PATCH v5] git imap-send: handle non-canonical email header order**: [2026/11/16/07-44-07 by Patrick Steinhardt] The reviewer suggests a minor readability improvement to the CRLF-handling logic in the new `has_required_headers()` helper function.
-- **[RFC PATCH 0/2] git history: add --verbose support for reword**: [2026/11/16/19-23-27 by Jelle van der Waa] The author announces a pivot to make diff display the default behavior for `git history reword`, `split`, and `fixup`, controlled by `commit.verbose`.
-- **[PATCH 0/3] Fixes for compatObjectFormat interoperability layer**: [2026/11/16/07-36-53, 07-37-02, 07-37-09 by Patrick Steinhardt] The reviewer provides feedback on all three patches, including cosmetic adjustments, test design concerns, and substantive questions about header validation.
-- **[PATCH] promisor-remote: fix crash in `git ls-remote` outside repository**: [2026/11/16/06-35-26, 15-29-46 by Patrick Steinhardt, Junio C Hamano] The maintainer and reviewer discuss design approaches, with consensus forming around a minimal fix.
-- **[PATCH] http-backend: remove unnecessary pre-sizing in get_info_packs()**: [2026/11/16/06-29-44, 15-24-35 by Patrick Steinhardt, Junio C Hamano] The patch is approved and marked ready for 'next'.
-- **[PATCH 0/2] repo structure: performance and memory-usage improvements**: [2026/11/16/17-32-00 by Junio C Hamano] The series is marked ready for 'next' after addressing all feedback.
-- **[PATCH] for-each-ref: fix segfault with --no-format**: [2026/11/16/06-45-45 by Patrick Steinhardt] The patch is reviewed and approved.
-- **test modernization: replace `!` with `test_must_fail`**: [2026/11/16/16-07-11 by Junio C Hamano] The patch is approved and planned for integration.
-- **[PATCH] log: add --follow=merges option to restore pre-304812ed33 performance**: [2026/11/16/07-35-50 by Miklos Vajna] The author posts v2 incorporating feedback on error handling and documentation.
-- **[PATCH] read-cache: remove `the_repository` use in `overlay_tree_on_index`**: [2026/11/16/13-11-33 by Derrick Stolee] The patch receives surface-level review approval.
-- **[PATCH] setup: fix hash algorithm detection**: [2026/11/16/06-22-53 by Patrick Steinhardt] The reviewer suggests minor documentation and test improvements.
-- **[PATCH 0/12] Modernize git-rerere's subcommand handling**: [2026/11/16/07-46-56, 15-43-53 by Patrick Steinhardt, Junio C Hamano] The maintainer accepts the UI regression as a deliberate trade-off.
-- **[PATCH v4 0/5] glossary & docs: align "pseudoref" vs "root ref" terminology**: [2026/11/16/08-09-07 by Patrick Steinhardt] The series is confirmed ready for integration.
-- **[PATCH 0/2] worktree list --merged / --no-merged**: [2026/11/16/16-15-40, 16-15-53, 16-42-29 by Jasper Mayone, Phillip Wood] The author drops controversial patches and the reviewer questions the necessity of `%(currentworktree)`.
-- **[PATCH] doc: rewrite explanation of detached HEAD state**: [2026/11/16/22-08-39 by Junio C Hamano] The maintainer requests a final review pass before merging.
-- **[PATCH] git apply: fix crash with malformed patch headers**: [2026/11/16/17-54-21, 18-06-21 by Tanga Joris] The author confirms error message improvements for v3.
-- **[PATCH 0/12] log --follow: fix bugs and optimize for merges**: [2026/11/16/08-01-05, 17-39-12 by Patrick Steinhardt, Junio C Hamano] The toggle patch is marked ready for 'next'.
-- **[PATCH] utf8.c: fix bounds handling and documentation in utf8_strnwidth()**: [2026/11/16/18-56-59, 18-57-00, 18-57-01 by Dirk Gouders] The author posts a two-patch series fixing boundary checking and documentation in UTF-8 handling.
-- **Submodule crash in validate_submodule_legacy_git_dir()**: [2026/11/16/22-51-48 by Andreas Wendleder] The author reports a crash when a submodule is itself a linked worktree.
+- Patrick Steinhardt approved the v2 fix for the `git for-each-ref --no-format` segfault, agreeing that restoring the default format is the better pick over `PARSE_OPT_NONEG`.
+- Patrick Steinhardt reviewed the imap-send header-order fix, suggesting a clearer header-block termination check, and said he is otherwise happy with the version. *Long thread (root 2026/10/19/19-19-16): 20 replies so far from 3 participants over 29 days; 1 message that day.*
+- Patrick Steinhardt reviewed Adrian Ratiu's three `compatObjectFormat` patches, raising a concern that copying unknown commit headers unchanged also accepts malformed lines, and requesting casing and style fixes.

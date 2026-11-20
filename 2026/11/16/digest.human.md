@@ -1,130 +1,62 @@
 # Git mailing list daily digest for 2026/11/16
 
-## The day in brief
+## Long threads
 
-The Git mailing list saw significant progress on several key features and bugfixes today. The most consequential developments include: final approval for the `git repo info` path-related keys feature, confirmation that the `git branch --delete-integrated` squash-merge detection is ready for integration, and resolution of a critical regression in partial clones affecting `git index-pack`. Additionally, several long-running refactoring efforts (ODB abstraction, `the_repository` removal) took important steps forward.
+### `git repo info` path keys (GSoC series v9)
+
+*Long thread: 64 replies so far from 6 participants over 124 days; 1 message that day.*
+
+K Jayatheerth's GSoC series adds path keys to `git repo info` -- `path.workingtree.*`, `path.superprojectworkingtree.*`, `path.index.*` and `path.prefix` -- and refactors `get_superproject_working_tree()` to take a `struct repository *`. Earlier revisions renamed the keys and dropped `path.hooks` and `path.cdup` after review. Today K Jayatheerth said the easiest approach is to combine and optimize the per-test repository setup in the planned follow-up series consolidating `repo` and `rev-parse` logic.
+
+### `git branch --delete-integrated` for squash-merged branches
+
+*Long thread: 58 replies so far from 7 participants over 49 days; 1 message that day.*
+
+Harald Nordgren's series adds `--delete-integrated` to `git branch`, deleting a branch when an upstream commit contains all its changes -- covering GitHub squash and rebase merges -- and naming the landing commit. v7 added a test that the option keeps branches whose changes did not land and reads the index once before the walk. Today Jasper Mayone confirmed the v7 test covers the three cases he had proposed, ran t3200 with his extra tests (all 209 pass), and added a Tested-by trailer.
+
+### New detached HEAD guide
+
+*Long thread: 46 replies so far from 5 participants over 41 days; 2 messages that day.*
+
+Julia Evans's patch adds a `git help detached-head` guide, dual-purpose with the DETACHED HEAD section of `git-checkout.adoc`, explaining what detached HEAD state is and why users land there by accident. Today she posted v7 adding the sentence about making experimental commits without being on a branch and a clearer commit message; Junio C Hamano asked for a fresh-eyes final pass before merging it down to 'next'.
+
+### `credentialStore.lockTimeout` config name
+
+*Long thread: 43 replies so far from 5 participants over 76 days; 2 messages that day.*
+
+Okhuomon Ajayi's Outreachy patch adds `credentialStore.lockTimeout` as the preferred name for credential lock retries, matching other millisecond file-lock settings that omit the unit, with `lockTimeoutMS` kept as a deprecated synonym. Today she resent v3 with that rationale in the message; Junio C Hamano reviewed it, said it looks good, and marked the topic ready for 'next'.
+
+### Worktrees rebasing or bisecting a branch
+
+*Long thread: 41 replies so far from 8 participants over 27 days; 3 messages that day.*
+
+Jasper Mayone's series makes `git worktree remove` refuse a worktree mid-operation, documents reading `%(worktreepath)` safely, and names the worktree rebasing or bisecting a branch. Today he answered Junio C Hamano's question that the new `check_no_operation_in_progress()` and the existing checked-out-branch check answer different questions and should stay separate, with a shared helper proposed as a separate series. He also accepted Junio's objection and agreed to drop patches 4/5, stopping the series at 3/5; Phillip Wood separately suggested renaming `%(currentworktree)` to `%(currentworktreepath)`.
+
+## The day in brief
+Three topics were marked ready for 'next' today: the `credentialStore.lockTimeout` rename, optional `--follow` rename tracking in non-linear history, and the `git repo structure` object-counting speedup. Jasper Mayone added a Tested-by to the `--delete-integrated` series and agreed to trim the worktree series to three patches.
 
 ## Notable threads
 
-### 1. `[PATCH v9]` series adding path-related keys to `git repo info` (2026/07/16/01-21-31)
+### `git rerere` subcommand conversion
 
-**What changed**: The final confirmation exchange in this series took place today, with K Jayatheerth acknowledging Phillip Wood's feedback about test efficiency but deferring optimization to a follow-up series. Phillip explicitly accepted this plan and reiterated his approval for merging the series as-is.
+*Long thread: 32 replies so far from 6 participants over 21 days; 3 messages that day.*
 
-**Why it matters**: This feature exposes filesystem locations of repository components (working tree, index file, superproject working tree, etc.) in a user-facing, scriptable format. The new keys (`path.working_tree`, `path.superproject_working_tree`, `path.index`, and `path.prefix`) are particularly valuable for tooling that needs to interact with Git's internal paths without requiring direct access to Git's internals.
+Patrick Steinhardt's series converts `builtin/rerere` to proper subcommands using `OPT_SUBCOMMAND()`. Today he confirmed the conversion makes option placement backwards-incompatible -- `git rerere --skip-locked gc` must become `git rerere gc --skip-locked` -- and Junio C Hamano accepted breaking `--skip-locked` placement, telling users to fix their scripts.
 
-### Technical details
+### Optional `--follow` rename tracking in non-linear history
+Miklos Vajna's patch makes `--follow` rename tracking in non-linear history optional via `--follow=merges`, addressing a performance regression. Today Patrick Steinhardt judged v2 "looks good to me", and Junio C Hamano marked the topic ready for 'next'.
 
-- The series is now fully approved and ready for merging
-- All design objections have been resolved
-- The implementation touches `builtin/repo.c`, `submodule.c`, `submodule.h`, `builtin/rev-parse.c`, and test files
-- Keys support suffix-based formatting (e.g., `path.working_tree.absolute` vs `path.working_tree.relative`)
-- The series includes a critical correctness fix for `get_superproject_working_tree()`
+### Faster object counting in `git repo structure`
 
-**Next steps**: Junio can queue this for merging without further changes.
+*Long thread: 9 replies so far from 4 participants over 4 days; 8 messages that day.*
 
----
-
-### 2. `git branch --delete-integrated` squash-merge detection (2026/09/29/07-30-30)
-
-**What changed**: Jasper Mayone confirmed that all three substantive issues raised in v6—performance inefficiency, correctness ambiguity, and edge-case robustness—are now resolved in v7. The patch builds cleanly, passes all tests, and has received a `Tested-by` trailer.
-
-**Why it matters**: This feature extends `git branch --delete-merged` to recognize branches whose changes (but not their tips) have been integrated via squash merges, rebases, or patch-based workflows. This is a significant usability improvement for repository maintenance, particularly in workflows that use squash merges (common in many Git hosting platforms).
-
-### Technical details
-
-- The series provides `--delete-integrated` flag for change-based detection
-- Handles upstream modifications via path-by-path three-way merge approximation
-- Includes correct `.gitattributes` support and performance optimizations
-- New test cases cover edge cases: unmerged, partially landed, and conflicting branches
-- The implementation uses Git's low-level merge machinery (`ll_merge`)
-
-**Next steps**: The patch is now technically complete and ready for integration.
-
----
-
-### 3. Partial clone regression in `git index-pack` (2026/11/16/17-38-38)
-
-**What changed**: A critical regression was reported in Git 2.56.0 where `git index-pack` triggers unnecessary nested lazy fetches for `REF_DELTA` bases already present in the thin pack. The author provided a reproduction script and identified the root cause in `fix_unresolved_deltas()`.
-
-**Why it matters**: This bug affects blobless partial clones when the server doesn't support `OFS_DELTA`, leading to redundant network round-trips and potential unbounded recursion. The issue impacts production workflows and has been observed in real-world scenarios (e.g., Azure DevOps).
-
-### Technical details
-
-- Regression introduced in Git 2.56.0
-- Affects `index-pack` in partial clones with `REF_DELTA` (no `OFS_DELTA`)
-- Root cause in `fix_unresolved_deltas()` in `builtin/index-pack.c`
-- Commit `4360734e90` caps recursion at 5 levels but doesn't fix the redundant fetch
-- Workaround: explicitly fetch the commit before checkout
-
-**Next steps**: This is a high-priority bug that will likely receive immediate attention from maintainers.
-
----
-
-### 4. ODB abstraction: pluggable commit graphs (2026/11/16/13-07-36)
-
-**What changed**: Junio C Hamano provided substantive review of the first patch in this 12-patch series, raising questions about error reporting conventions, the role of the `oid` field in `struct commit_graph`, and potential validation gaps.
-
-**Why it matters**: This series is a foundational step in the ODB (object database) abstraction effort, which aims to make Git's storage layer pluggable. The ability to support alternative ODB implementations is crucial for Git's scalability and adaptability to different use cases.
-
-### Technical details
-
-- The series moves commit-graph storage logic into the ODB backend layer
-- Introduces pluggable commit-graph callbacks (`read_commit_graph` and `write_commit_graph`)
-- 12 patches refactor internal commit-graph handling
-- Junio's review focuses on the first patch's error handling and validation
-- The series is infrastructure-only with no user-facing features yet
-
-**Next steps**: A v2 update is expected to address Junio's feedback.
-
----
-
-### 5. `git worktree list` enhancements (2026/10/17/15-17-02)
-
-**What changed**: Jasper Mayone agreed to drop the controversial `%(currentworktree)` patch and stop the series at patch 3/5, resolving the main point of contention. Phillip Wood provided substantive review of the dropped patch, questioning its necessity and implementation.
-
-**Why it matters**: This series adds filtering capabilities to `git worktree list` and addresses safety issues with `git worktree remove`. The changes improve repository maintenance workflows, particularly for users with multiple worktrees.
-
-### Technical details
-
-- The series now consists of three uncontroversial patches:
-  1. Safety fix for `git worktree remove` (refuses deletion of in-progress worktrees)
-  2. Documentation update for `git-for-each-ref`
-  3. Enhancement to `%(worktreepath)` (O(1) performance, excludes `rebase --update-refs` branches)
-- The dropped `%(currentworktree)` patch was deemed redundant with `%(worktreepath)`
-- Phillip Wood criticized the implementation as inefficient (using a hashmap for a single entry)
-
-**Next steps**: The series is now effectively complete and ready for integration.
-
----
+Patrick Steinhardt's two-patch series makes `builtin/repo` parse commits only as needed and avoid fully parsing trees when counting objects. Today he posted v2 with a reworded comment; Kristofer Karlsson said it addresses his only nit, Derrick Stolee called the memory reduction from 3.4 GiB to 0.7 GiB impressive, and Junio C Hamano marked the topic ready for 'next'.
 
 ## In brief
+- Google - Mergify reported that since Git 2.54.0 a cherry-pick in a blob:none partial clone lazy-fetches a blob it just wrote; Patrick Steinhardt pointed to a known fix in flight and acknowledged verification that it resolves the case.
+- לירון עדן reported that `index-pack` in a blobless partial clone starts nested lazy fetches for REF_DELTA bases already in the pack being indexed; prefetching the commit with `GIT_NO_LAZY_FETCH=1` avoids it.
+- Andreas Wendleder reported that with `submodule.recurse=true`, switching branches in a superproject worktree whose submodule is a linked worktree aborts with BUG() in `validate_submodule_legacy_git_dir()`.
+- Jelle van der Waa will respin the `git history --verbose` RFC with verbose on by default, following `commit.verbose`, for split, reword and fixup.
+- **Root refs vs pseudorefs**: Patrick Steinhardt agreed Andy Koppe's patch series looked sensible and ready from his point of view. *Long thread: 31 replies so far from 4 participants over 26 days; 1 message that day.*
 
-- **[PATCH v3] credentialStore: align timeout naming with established convention** (2026/09/02/08-31-37): The follow-up patch for timeout naming consistency is uncontroversial and ready for integration, with all feedback incorporated.
-
-- **`git imap-send` bugfix series** (2026/10/19/19-19-16): Patrick Steinhardt suggests a minor readability improvement to the CRLF-handling logic in the `has_required_headers()` helper function.
-
-- **`git rerere` subcommand modernization** (2026/10/27/10-46-43): Junio has accepted the UI regression (enforcing option ordering) as a deliberate trade-off to fix what the author considers a design flaw.
-
-- **Loose object database cache invalidation** (2026/11/04/12-16-33): Patrick Steinhardt acknowledges the performance impact of removing the `QUICK` flag but concludes that correctness must take precedence.
-
-- **Git v3 object format bugfix** (2026/11/06/16-50-03): Patrick Steinhardt suggests minor documentation and test improvements for the already-merged patch.
-
-- **`git history` verbose support** (2026/11/13/00-06-01): The author announces a pivot to make diff display the default behavior for `git history reword`, `split`, and `fixup`, controlled by the existing `commit.verbose` configuration.
-
-- **`compatObjectFormat` interoperability fixes** (2026/11/12/19-57-37): Patrick Steinhardt provides substantive review of the third patch, questioning the handling of malformed commit headers and proposing a standardized prefix for custom headers.
-
-- **Promisor-remote crash fix** (2026/11/13/00-06-01): Junio agrees with Patrick's preference for checking `!repo` rather than `!repo->gitdir` but accepts the minimal fix as a short-term solution.
-
-- **`git repo structure` performance improvements** (2026/11/13/11-46-16): The series is marked ready for `next` after addressing all review feedback, with impressive memory reduction (80%) and performance improvements (20%).
-
-- **`for-each-ref --no-format` segfault fix** (2026/11/13/16-14-10): The patch is reviewed and approved, fixing a long-standing crash that has existed since 2007.
-
-- **Test modernization** (2026/11/15/18-15-21): Junio approves the patch to replace `!` with `test_must_fail` in test scripts, noting that other instances remain for future work.
-
-- **ANSI color handling in `git log --format`** (2026/11/15/21-35-03): Junio endorses the runtime approach to fix color loss across line breaks, acknowledging the API gap in `%w` and `%b`.
-
-- **`git log --follow=merges` option** (2026/11/16/07-35-50): The v2 patch incorporates feedback, improving error handling and documenting the performance trade-off.
-
-- **UTF-8 handling fixes** (2026/11/16/18-56-59): A two-patch series fixes bounds handling and documentation in `utf8_strnwidth()`.
-
-- **Submodule linked worktree crash** (2026/11/16/22-51-48): A crash (BUG()) is reported in `validate_submodule_legacy_git_dir()` when a submodule is itself a linked worktree.
+- Patrick Steinhardt and Junio C Hamano discussed the `ls-remote` promisor-remote crash fix, preferring to pass the repository down and check `!repo` while accepting the easier NULL-`gitdir` check for now.
