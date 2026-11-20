@@ -1,139 +1,139 @@
-# Git Mailing List Digest: 2026/09/21 -- 2026/09/27
+## Long threads
+
+### `git repo info` gains more `path.*` keys
+
+*Long thread: 37 replies so far from 5 participants over 74 days.*
+
+K Jayatheerth's GSoC series adds path keys to `git repo info` in `builtin/repo.c`, covering `path.toplevel`, `path.superproject-root`, `path.hooks`, `path.index`, `path.grafts`, `path.git-prefix`, and `path.cdup`, each with absolute and relative suffixes. The series reached v7 on 2026/09/27 with eight patches, splitting the `get_superproject_working_tree()` fix into its own commit, removing dead code in the index path handlers, and fixing `path.cdup` to return an absolute path when the worktree lies outside the current directory, matching `git rev-parse --show-cdup`. Earlier revisions had addressed dead `if (!index_file)` checks and the discrepancy between `git repo` and `git rev-parse` output for `path.cdup`.
+
+### Sequencer auto-maintenance timing
+
+*Long thread: 32 replies so far from 5 participants over 20 days.*
+
+Thomas Bachem's series makes merge-backend sequences run `git maintenance --auto` once when the sequence completes instead of inside the spawned `git commit`, `git merge`, and exec commands. By 2026/09/23 the series reached v5, with Phillip Wood reviewing the test comments and declaring it "looks ready for next to me". The placement of the call in `builtin/rebase.c` and `builtin/revert.c` rather than inside the sequencer was settled after Bachem spelled out that single picks return through paths that bypass `pick_commits()`.
+
+### http.sslVerifyStatus OCSP stapling in the HTTP transport
+
+*Long thread: 31 replies so far from 5 participants over 46 days.*
+
+Grayson Gordon's series adds an `http.sslVerifyStatus` boolean mapping to `CURLOPT_SSL_VERIFYSTATUS` so libcurl requests stapled OCSP responses, defaulting to off because enabling it would block servers that do not staple. The topic was reverted out of `next` on 2026/09/23 after SZEDER Gábor reported a t5585 failure; by 2026/09/25 he confirmed his setup used the GnuTLS curl backend, which lacks proper OCSP support, and that switching to OpenSSL makes the test pass. The test prerequisite still needs refinement to check for the absence of "could not enable OCSP status verification" rather than merely testing the config setting.
+
+### stash `--index` in-core merge cleanup
+
+*Long thread: 28 replies so far from 3 participants over 9 days.*
+
+D. Ben Knoble's series fixes the interaction between autostashing, staged index entries, and `stash.index=true` by replacing the shell-out sequence of `diff-tree`/`apply --cached`/`reset` in `builtin/stash.c` with an in-core `merge_incore_nonrecursive()` call. v3 posted on 2026/09/26 corrected the tree argument order to `(merge_base, head, merge)`, fixed a `merge_result` memory leak, and relabeled the conflict output. On 2026/09/27 Junio C Hamano identified a new bug in patch 5/5 where `o.verbosity = 0` is set unconditionally for the index merge but never restored for a later three-way merge reusing the same `merge_options`, and said he would eject the topic from `seen` until fixed.
+
+### reference-transaction hooks reporting old values
+
+*Long thread: 25 replies so far from 5 participants over 6 days.*
+
+Maciej Ciemborowicz's series addresses the reference-transaction hook reporting all-zero old object IDs for unconditional updates. After earlier iterations extended `refs_delete_refs()` and its callers, v6 posted on 2026/09/24 moved the fix to the common transaction layer: the hook layer resolves the old value before the "preparing" hook and refreshes it after the backend locks the references, only when a hook exists, leaving `refs_delete_refs()`, `ref_transaction_delete()`, and all callers unchanged. Patrick Steinhardt had argued for exactly this common-layer approach earlier that day.
+
+### --force-if-includes with a reflog-less remote-tracking ref
+
+*Long thread: 20 replies so far from 6 participants over 23 days.*
+
+Aleksei Sviridkin's patch fixes `push --force-if-includes` rejecting valid pushes when the remote-tracking ref has no reflog, by initializing the cutoff timestamp to 0 in `is_reachable_in_reflog()`. On 2026/09/25 Tyler Cipriani argued for `date=0` as always correct, giving a clone/reset/wait/commit/push scenario where a gc-based cutoff produces the wrong answer, and Junio C Hamano responded that with a never-expired reflog, using all available information works better than any cutoff.
+
+### AsciiDoc cross-references and the tutorial rewrite in Documentation/
+
+*Long thread: 17 replies so far from 4 participants over 4 days.*
+
+Julia Evans's patch replaces "see EXAMPLES below" with `<<EXAMPLES,EXAMPLES>>` cross-references in the man pages so rendered text is controlled across asciidoc implementations. She reposted v2 on 2026/09/25 with a corrected commit message, and Jeff King said it looks good. She also announced a planned rewrite of `gittutorial.adoc` covering only basic commands; Junio C Hamano agreed the current tutorial has outlived its time but stressed that new guides must be sufficient to replace it.
+
+### GitLab CI Windows cargo invocation fix
+
+*Long thread: 12 replies so far from 3 participants over 6 days.*
+
+Johannes Schindelin's four-patch series fixes the GitLab CI cargo invocation in Windows jobs, broken since Rust was enabled there. He posted v2 on 2026/09/24, rewording commit messages to clarify that "GNU Rust" means the GCC-targeting toolchain and correcting "GNU MSI" to "Rust MSI", and answered Patrick Steinhardt's questions about the `Gcc` feature and PATH quoting.
+
+### New gitmergeconflicts(7) guide
+
+*Long thread: 12 replies so far from 5 participants over 2 days.*
+
+Julia Evans's seven-patch series adds `Documentation/gitmergeconflicts.adoc` explaining how to handle merge conflicts and links to it from the `git merge`, `git rebase`, `git revert`, `git cherry-pick`, and `git pull` pages. On 2026/09/25 D. Ben Knoble flagged that the `git-merge.adoc` rewrite dropped both an explanation of what a conflict is and the `git log --merge -p <path>` tip, and Junio C Hamano objected that the `git-cherry-pick.adoc` rewrite removed cherry-pick-specific details such as `CHERRY_PICK_HEAD`.
+
+### Rebase `--amend` regression after conflict commit
+
+*Long thread: 10 replies so far from 4 participants over 1 day.*
+
+Patrick Steinhardt posted a regression fix for `builtin/rebase`: since commit 6257588252 made `git commit` refuse `--amend` at a conflicted rebase stop, the refusal persisted after the user committed the resolution. Phillip Wood asked whether cherry-pick, merge, and revert share the problem, and Elijah Newren warned that `MERGE_MSG` is unreliable because `git reset` removes it without moving HEAD. The discussion converged on reverting 6257588252 for Git 2.56, which Junio C Hamano preferred at -rc2.
 
 ## The period in brief
-This week (2026/09/21--2026/09/27) saw **high-volume, technically dense traffic** across Git's core subsystems. The list was unusually active for a non-release week, with **six days of substantive discussion** and no quiet periods. Two long-running regression fixes -- the `reference-transaction` hook and `git stash` autostash -- reached critical milestones, while architectural debates flared around the "safe" `strbuf` API and Git 3.0's version numbering. **Do not miss**: the `reference-transaction` hook v6 pivot, the `git stash` autostash bugfix completion, and the Git 3.0 timeline clarification.
 
----
+The week of 2026/09/21 through 2026/09/27 saw active traffic across all seven days, with several long-running series reaching new iterations and one major topic reverted from `next` after a test failure. Junio C Hamano proposed a v3.0 release timeline, and contributors advanced work on refs transactions, the sequencer, stash, and documentation.
 
 ## Key developments
 
-### Reference-transaction hook regression fix pivots to transaction-layer design (v6)
-The six-iteration series fixing a **Git 2.31 regression** where the `reference-transaction` hook received all-zero OIDs on branch/tag deletion reached a **major architectural pivot** in v6. Earlier versions modified `refs_delete_refs()` to preserve old OIDs, but Junio C Hamano and Patrick Steinhardt identified a **critical design flaw**: the patch turned deletions into an all-or-nothing operation, breaking `git fetch --prune` and `git remote prune` where users expect unconditional deletion even if some refs are concurrently updated.
+### Git v3.0 timeline proposal
 
-The v6 series abandons the `refs_delete_refs()` approach entirely and instead **moves the fix into the transaction layer itself**. The new design records a separate "observed old value" for updates where callers didn't supply one, using this value only as hook input without setting `REF_HAVE_OLD` or constraining the update. This ensures the hook always receives meaningful old OIDs while preserving the performance gains of the original optimization. The series includes updated regression tests and is rebased onto `master`.
+Junio C Hamano laid out a proposed timeline: Git 2.98 at year's end, 2.99 in March 2027 as a signal that something major is coming, 2.99.1 in April 2027 carrying only accumulated bugfixes, and 3.0 identical to 2.99.1 except with breaking changes enabled via the `WITH_BREAKING_CHANGES` Makefile knob. He cautioned that anything beyond this year is "play it by ear" territory. Johannes Schindelin thanked him for the roadmap clarity, saying it helps plan the Git for Windows release schedule, while Harald Nordgren argued against signaling 3.0 in advance, a position Junio rejected by explaining that an advance version jump warns downstream distributions that something major is coming.
 
-**Key participants**: Maciej Ciemborowicz (author), Junio C Hamano, Patrick Steinhardt, Karthik Nayak.
-**Current status**: v6 posted; addresses all prior architectural concerns. Ready for final review before `next`.
+### refs batched deletions and transaction hooks
 
----
+Maciej Ciemborowicz progressed his series from v4 to v6 during the week, ultimately moving the old-OID reporting for batched deletions to the common transaction layer after Patrick Steinhardt suggested that approach, leaving `refs_delete_refs()` and its callers unchanged. Earlier iterations had extended the API to accept parallel old-OID arrays, with Junio C Hamano reviewing v3 and arguing for always passing `REF_TRANSACTION_ALLOW_FAILURE` and counting individual failures rather than collapsing them to one.
 
-### `git stash` autostash bugfix completes five-patch series
-A **critical race condition** in `git stash` autostash handling of staged index entries when `stash.index=true` was fixed in a **five-patch series** that reached completion. The bug, which could corrupt staged entries during merge operations, was caused by a non-reentrant filesystem operation in `save_autostash()`. The fix replaces subprocess-based index merging (`git diff-tree` and `git apply`) with in-core merging via `merge-ort.c`, eliminating the SIGSEGV risk.
+### Sequencer auto-maintenance
 
-The series is now **technically complete**, incorporating all review feedback:
-- Fixed a **tree argument order bug** in `merge_incore_nonrecursive()` (flagged by Junio)
-- Resolved a **memory leak** (missing `merge_finalize()` call)
-- Expanded test coverage to verify both worktree and index state on failure
-- Structured as: cleanup (already merged), refactoring, test additions, and the functional fix
+Thomas Bachem's series reached v5 with Phillip Wood declaring it ready for `next`, settling on running `git maintenance --auto` once at sequence completion from `builtin/rebase.c` and `builtin/revert.c` rather than inside the sequencer, since single picks return through paths that bypass `pick_commits()`.
 
-**Key participants**: D. Ben Knoble (author), Junio C Hamano, Phillip Wood.
-**Current status**: Patches 2--5 finalized; ready for integration. The series touches `builtin/stash.c`, `merge-ort.c`, and the test suite.
+### OCSP stapling reverted from next
 
----
+Grayson Gordon's `http.sslVerifyStatus` series was reverted out of `next` after SZEDER Gábor reported t5585 failures, later traced to a GnuTLS curl backend lacking OCSP support; the test prerequisite still needs to check for the absence of "could not enable OCSP status verification" rather than merely testing the config setting.
 
-### Git 3.0 timeline clarified; Rust portability advances
-The **Git 3.0 timeline discussion** saw significant clarification this week. Junio C Hamano proposed a **tentative three-phase timeline** (Git 2.98 in December 2026, Git 2.99 in March 2027, Git 3.0 in April 2027) but emphasized its flexibility, noting the stabilization period for Git 2.99 may require additional maintenance releases. The discussion highlighted two key developments:
-1. **Rust portability**: Ramsay Jones reported successful Rust compilation on Cygwin using an unofficial toolchain, providing the first public data point on Rust's viability outside mainstream platforms. While encouraging, the toolchain's experimental status limits immediate practicality.
-2. **JGit readiness**: The JGit project's pluggable backend architecture is now production-ready, as validated by Google's internal Git servers and GerritForge's global refdb backend. This removes a major ecosystem blocker for Git 3.0's SHA-256 interoperability goals.
+### Rebase --amend regression
 
-**Key participants**: Junio C Hamano, Johannes Schindelin, Ramsay Jones, brian m. carlson.
-**Current status**: Timeline remains provisional; Rust support is a goal but not guaranteed for Git 3.0 due to portability concerns (e.g., NonStop platform).
+Patrick Steinhardt's fix for the regression introduced by 6257588252 converged on reverting that commit for Git 2.56, with Elijah Newren warning that `MERGE_MSG` is unreliable because `git reset` removes it without moving HEAD.
 
----
+### git-p4 shell injection fix
 
-### "Safe" `strbuf` API RFC sparks architectural debate
-Derrick Stolee's RFC series introducing a **"safe" `strbuf` API subset** that cannot call `die()` received **substantive feedback** from Junio C Hamano and Jeff King, sparking a broader architectural debate. The series aims to harden core service routines as part of Git's libification effort, but reviewers raised two key concerns:
-1. **API design**: Junio argued the goal should be to harden the *entire* `strbuf` API rather than carve out a niche "safe" subset, and suggested renaming higher-level utilities (e.g., `strbuf_realpath()`) to avoid the `strbuf_` prefix.
-2. **Implementation bugs**: Two bugs were identified:
-   - A **memory leak** in `srealloc()` (where `realloc()` failure clobbers the caller's pointer)
-   - A **misleading error message** in `safe_memory_limit_check()` (reporting the original `git_alloc_limit` value instead of the effective limit)
+Anupam Mediratta's v2 replaced the shell pipeline in `applyCommit()` with two argument-vector subprocess calls connected by a pipe, removing shell interpretation of `--commit` values, and added an `ignore_error` parameter to `diffTreeApply()` so the two `tryPatch` callers can preserve the old behavior of ignoring apply failures while the main path still aborts on non-zero exit.
 
-Jeff King proposed an alternative design using **fixed-size, stack-allocated buffers** to avoid `malloc()` entirely, arguing this would better serve the trace2 use case. The discussion remains open, with no consensus on the path forward.
+### Submodule merge corruption
 
-**Key participants**: Derrick Stolee (author), Junio C Hamano, Jeff King, Phillip Wood.
-**Current status**: RFC stage; architectural direction unresolved. The series touches `strbuf.c`, `strbuf.h`, and test infrastructure.
+Guillaume CHAUVEL reported that merging a superproject with submodules in Git v2.56.0-rc2 sometimes reads from submodule A a commit existing only in submodule B, failing with "repository corrupt"; his reproducer triggered it in all 50 Ubuntu and 43 of 50 Alpine runs, with an AI analysis pointing to a stale delta-base cache entry outliving its pack.
 
----
+### Early option scanning API
 
-### `gitmergeconflicts(7)`: New man page centralizes conflict resolution guidance
-Julia Evans posted a **seven-patch series** introducing `gitmergeconflicts(7)`, a new man page consolidating merge conflict resolution guidance previously scattered across `git merge`, `git rebase`, `git revert`, `git cherry-pick`, and `git pull`. The new guide is organized as a **practical, example-driven document** with sections covering:
-- When conflicts occur
-- Resolution paths
-- Merge conflict markers
-- Tools for handling conflicts
-- Edge cases (e.g., `git rebase` inverts "ours" and "theirs")
-
-The series updates existing command man pages to link to the new guide and adds it to the build system. Junio requested mechanical adjustments (e.g., updating `Documentation/meson.build` and folding the `.gitattributes` addition into the first patch), but the core content is uncontroversial.
-
-**Key participants**: Julia Evans (author), Junio C Hamano, Jeff King.
-**Current status**: Merged to `seen`; ready for integration after mechanical fixes.
-
----
-
-### `git repack` concurrent-push data-loss fix advances
-A **six-patch series** fixing a race condition where concurrent pushes can cause `git repack -d` to delete packs whose objects were never copied elsewhere reached a critical milestone. Junio C Hamano **acked patch 2/5 (v3)** after the author moved the kept-pack cache invalidation logic to `packfile.c`, addressing a layering concern. The series is now **ready for `next`**, with the remaining patches under final review.
-
-The fix is **critical for repository integrity** and has been validated in GitLab CI. The series touches `builtin/repack.c`, `packfile.c`, and `object-file.c`.
-
-**Key participants**: Patrick Steinhardt (author), Junio C Hamano.
-**Current status**: Patch 2/5 acked; remaining patches under review.
-
----
-
-### CI and build system improvements land
-Several **CI and build system improvements** landed this week, addressing long-standing pain points:
-1. **Windows unit tests**: Karthik Nayak fixed a regression where unit tests were being skipped on Windows CI due to a mismatch in test-slice indexing.
-2. **Meson build optimizations**: Patrick Steinhardt posted a **seven-patch series** reducing clean build times by ~35% (from ~6.8s to ~5.0s) by:
-   - Avoiding redundant compilation of HTTP sources
-   - Using precompiled headers for test helpers and unit tests
-   - Fixing outdated completion helpers
-3. **Leak sanitizer reporting**: Harald Nordgren improved leak sanitizer failure reporting in GitHub Actions by stopping tests at the first failure and emitting detailed annotations.
-
-**Key participants**: Karthik Nayak, Patrick Steinhardt, Harald Nordgren.
-**Current status**: All patches merged or ready for integration.
-
----
+Christian Couder posted v2 adding an `early_scan_options()` sub-API to parse-options that reuses the command's `struct option` array via a `PARSE_OPT_EARLY` flag, and converted `git fast-import`'s hand-rolled scan so `--allow-unsafe-features` after `--depth 5` is no longer silently ignored.
 
 ## In brief
 
-**`reference-transaction` hook omits new ref on branch rename** -- The v2 patch confines copy/rename state to per-ref-update data, preserving transaction genericity and enabling multi-ref operations. Ready for review.
+**pull segfault fix** -- Jiri Kuncar posted v2 adding NULL guards in `get_can_ff()` and `already_up_to_date()` so a failed commit lookup falls through to the merge path instead of crashing.
 
-**`git-p4` shell injection fix (v2)** -- Anupam Mediratta posted v2 of the patch fixing a shell injection vulnerability in `git-p4`, restoring the original error-handling behavior while preserving the shell injection mitigation. Ready for integration.
+**"safe" strbuf API** -- Junio C Hamano reviewed an RFC for a `strbuf-safe` API to prevent trace2 `die()` recursion, identifying a memory leak in `srealloc()` where the original pointer is clobbered before the failure check.
 
-**`git reflog expire` default expiry fix (v5)** -- The v5 patch restores the correct default expiry periods for `git reflog expire` (reachable=90d, unreachable=30d), addressing a Git 2.50 regression. Approved by Junio and ready for `next`.
+**repack kept-pack race** -- Qin ShiCheng's series hands pack-objects the startup snapshot to prevent losing objects when a `.keep` appears mid-run; Junio accepted the kept-pack cache invalidation point while noting the layering concern about the unchecked downcast to the files backend.
 
-**`git stash` autostash verbosity regression** -- Junio C Hamano identified a verbosity regression in the final patch of the `git stash` autostash bugfix series, where the `.verbosity` field was unconditionally set to `0` during the index merge and never restored. A minimal fix has been proposed.
+**--force-if-includes reflog** -- Aleksei Sviridkin's patch initializes the cutoff to 0 for reflog-less remote-tracking refs; Tyler Cipriani argued `date=0` is always correct with usually equivalent runtime.
 
-**`git var` extension series (v9)** -- Andrew Pleeter posted v9 of the series implementing a unified, scriptable interface for Git's identity and signing configuration. The controversial `GIT_SIGNING_KEY` variable was removed due to ambiguity across signing mechanisms. Ready for integration.
+**git-history during rebase** -- Nikita Bobko reported that running `git history` mid-rebase updates the branch being rebased, so `git rebase --continue` fails with a ref lock error.
 
-**`git ls-files` untracked cache reuse (v2)** -- The v2 series expanded to three patches, enabling cache sharing between `git status -unormal` and `git status -uall` and teaching `git ls-files` to reuse the cache. Benchmarks show a **7.3× speedup** (241 ms → 33 ms) for wildcard queries on a synthetic tree with 100 k files.
+**GIT_WORK_TREE in post-checkout hook** -- Phil Sainty found the hook sees `GIT_WORK_TREE=.` rather than the actual worktree path in worktrees, pointing at setup.c as the source.
 
-**`git repo info` path-related keys (v7)** -- K Jayatheerth’s series adding eight new path-related keys to `git repo info` reached v7, marking the series as mechanically complete and correctness-fixed. Ready for substantive review.
+**parse_revision_opt() fixes** -- Jeff King fixed two bugs so unknown options are reported by name instead of `(null)` in `git shortlog` and similar commands.
 
-**`git format-patch` `--[no-]range-diff-notes` (v2)** -- Kristoffer Haugsbakk posted v2 of the series, addressing Junio C Hamano’s usability concerns by eliminating the toggle mechanism and enforcing explicit separation between patch notes and range-diff notes.
+**pack-objects partial clone abort** -- L Naudé reported a BUG abort in `tree:0` partial clones when fetching missing promised trees via `is_not_in_promisor_pack_obj()`.
 
-**`git status --ignored` pathspec substring matching bugfix (v2)** -- René Scharfe posted v2 of the bugfix, incorporating Junio’s squash-in fix for a NULL-dereference crash in the new `dir_match()` helper. Ready for integration.
+**dir.c nested repo** -- René Scharfe's v2 guards the `dir_match()` call against NULL pathspec for excluded directories containing nested repositories.
 
-**`git shortlog` regression fix** -- Jeff King’s two-patch series fixing the `(null)` regression in `git shortlog` error messages is under maintainer approval and a strong candidate for inclusion in `next`.
+**git var extensions** -- Andrew Pleeter's v9 adds `-z` output, multiple variables per invocation, and broken-out `GIT_AUTHOR_*`/`GIT_COMMITTER_*` ident variables.
 
-**`git-interpret-trailers` documentation** -- Kristoffer Haugsbakk improved clarity of `trailer.<key-alias>.cmd` examples in the `git-interpret-trailers` man page.
+**default config values** -- Phillip Wood proposed a `core.defaults` setting for modern defaults; Junio responded that Git already changes defaults when beneficial but benefits remain speculative until released.
 
-**Localization updates** -- Jiang Xin submitted l10n updates for Git 2.56.0, adding Afrikaans and Brazilian Portuguese translations and refreshing eight existing languages.
+**credential/libsecret** -- Daniel Martí's v2 loads secrets explicitly via `secret_item_load_secret_sync()`, producing useful error messages instead of assertion failures.
 
----
+**format-patch range-diff-notes** -- Kristoffer Haugsbakk's series adds `--range-diff-notes` options; Junio noted a redundant `test_when_finished` in patch 2/2.
+
+**Documentation updates** -- Julia Evans advanced AsciiDoc cross-references and the `gitmergeconflicts(7)` guide; Tamir Duberstein clarified `--follow` in `git-log`; jyotish kumar updated `name-rev` docs from "SHA-1" to "object ID"; Matthias Goergens clarified that `git remote set-head` never changes the remote's own HEAD.
+
+**Test and CI fixes** -- Royce Remer registered temp pack files with the tempfile subsystem so killed `git gc` runs leave no orphans; Jon Simons fixed perf test ref deletion with `--no-deref`; Harald Nordgren fixed CI leak-sanitizer annotations and macOS brew warnings; Tamir Duberstein used `cmp` for the t4205 comparison.
+
+**Reflog expiry fix** -- Pushkar Singh's v3 fixed swapped default expiry periods (90 days reachable, 30 unreachable) with better-organized tests; Junio judged it probably ready for Git 2.56.
+
+**l10n updates** -- Jiang Xin submitted pull requests for Git 2.56.0 adding Afrikaans and Brazilian Portuguese and updating eight other languages.
 
 ## Looking ahead
-The next week is likely to see **integration of several high-priority series**, including:
-- The `reference-transaction` hook v6 series (now architecturally sound)
-- The `git stash` autostash bugfix (verbosity regression fix pending)
-- The `git repack` concurrent-push data-loss fix (patch 2/5 already acked)
-- The `gitmergeconflicts(7)` man page (mechanical fixes pending)
 
-**Ongoing architectural debates** to watch:
-- The "safe" `strbuf` API RFC (direction unresolved)
-- Git 3.0 version numbering (default changes still under discussion)
-- The `git var` extension series (v9 ready for integration)
-
-**Late-posted series** likely to see review:
-- K Jayatheerth’s `git repo info` path-related keys (v7)
-- Kristoffer Haugsbakk’s `--[no-]range-diff-notes` (v2)
+The `http.sslVerifyStatus` topic needs a corrected test prerequisite to distinguish curl backends with and without OCSP support before it can return to `next`. K Jayatheerth's `git repo info` path keys series at v7 and Thomas Bachem's sequencer auto-maintenance series, deemed ready for `next`, will see further review in the coming week. The rebase `--amend` regression revert for Git 2.56 will need confirmation in the release notes, and D. Ben Knoble's stash series awaits a fix for the verbosity bug in patch 5/5 before it can re-enter `seen`.
