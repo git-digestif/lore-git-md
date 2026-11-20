@@ -1,137 +1,145 @@
-# The Git Project Weekly Digest
-**Period: 2026/11/09 -- 2026/11/15**
+## Long threads
+
+### fetch: limited fetching for new remotes in shallow clones
+
+*Long thread: 78 replies so far from 6 participants over 57 days.*
+
+Harald Nordgren's series addresses shallow clones fetching every branch of a newly added remote by separating which refs to fetch from where they are stored. The v13 iteration introduced `remote.<name>.fetchRefmap` and `--limited-fetch`, but Phillip Wood and Junio C Hamano pressed for dropping the refmap-only patch in favor of combining `.fetchRefmap` with `.fetch`, and questioned the `@{push}` handling. By v14 Nordgren squashed the `@{push}` fix into the refmap patch and shrank the series to five patches, with Wood reiterating that command-line refspecs with explicit destinations should not also update refmap destinations.
+
+### repo: path keys for `git repo info`
+
+*Long thread: 63 replies so far from 6 participants over 123 days.*
+
+K Jayatheerth's GSoC series adds path keys to `git repo info`, evolving through nine versions after sustained review. Early debate centered on key naming: Phillip Wood argued against `path.hooks` and `path.cdup` as encouraging outdated interfaces, while Junio C Hamano noted Git avoids dashes in configuration-style names. The v9 series renamed keys to `path.workingtree.*`, `path.superprojectworkingtree.*`, and `path.prefix`, dropped the contested keys, and refactored `get_superproject_working_tree()` onto a `struct repository *`. Phillip Wood reviewed the final range-diff and said he would be happy for it to merge as-is, with test consolidation deferred to a follow-up.
+
+### branch: `--delete-integrated` for squash-merged branches
+
+*Long thread: 57 replies so far from 7 participants over 47 days.*
+
+Harald Nordgren's series adds `git branch --delete-integrated <pattern>` to delete branches whose changes landed upstream via squash or rebase merges. Jasper Mayone's review of v6 flagged that `repo_read_index()` ran per changed file and proposed reading the index once before the walk, which v7 adopted alongside a test ensuring branches whose changes did not land are kept. The series names the commit where changes landed and uses merge attributes from the worktree's index rather than the upstream commit.
+
+### doc: detached HEAD guide rewrite
+
+*Long thread: 45 replies so far from 5 participants over 39 days.*
+
+Julia Evans is rewriting the detached HEAD explanation as a standalone `gitdetached-head` guide wired into `advice.c`. The thread grappled with audience: Junio C Hamano argued the guide must serve both users who detached accidentally and advanced users making experimental commits, while Evans initially framed it for confused users. By v6 they converged on wording that "HEAD can store either" a branch or commit ID, with Hamano approving a sentence about making experimental commits without being on a branch, noting the material can serve both the general manual and a survival guide.
+
+### credential-store: lockTimeout config option
+
+*Long thread: 42 replies so far from 5 participants over 75 days.*
+
+Okhuomon Ajayi's Outreachy patch adds `credentialStore.lockTimeout` as the preferred name for credential lock retries, keeping `lockTimeoutMS` as a deprecated alias. Junio C Hamano questioned the unit-less name, but Ajayi defended it by citing other millisecond-based lock timeouts (`rerere.lockTimeout`, `reftable.lockTimeout`, `core.filesRefLockTimeout`) that omit the unit, contrasting with `credential-cache --timeout` which uses seconds. She plans to resend with this rationale in the commit message.
+
+### worktree: treat a branch being rebased or bisected as checked out
+
+*Long thread: 38 replies so far from 8 participants over 24 days.*
+
+Jasper Mayone's v5 series makes `git worktree remove` refuse worktrees mid-operation without `--force`, documents `%(worktreepath)`, names the rebasing worktree in that specifier, adds `%(currentworktree)`, and stops `git branch` marking such branches with `+`. Phillip Wood proposed a hash map for `branch_checked_out_worktree()` to avoid iterating all worktrees, which v5 adopted. Junio C Hamano praised the central `check_no_operation_in_progress()` design as extensible but expressed reservations about patch 5, suggesting the series might stop at 3/5 if 4/5 exists only to support it.
+
+### Community voting process
+
+*Long thread: 31 replies so far from 14 participants over 35 days.*
+
+Following Contributor's Summit notes, Stéphane Glondu proposed Belenios as the voting platform, noting it supports Condorcet voting and that an instance already runs at vote.debian.net for Debian Salsa account holders. The thread continues earlier debate over voter eligibility and platform selection for project decisions.
+
+### t: add `test-tool genbytes` to avoid slow `tr(1)` on macOS
+
+*Long thread: 30 replies so far from 5 participants over 5 days.*
+
+Kristofer Karlsson's series adds `test-tool genbytes <char> [<count>]` to replace slow `genzeros | tr` pipelines in tests like t4205, which burn over 95 CPU-seconds on macOS. After v3 adopted a static buffer and `git_parse_signed()`, Junio C Hamano marked the topic ready for `next`; v4 rebased to catch a new callsite in t1600-index.sh.
+
+### root refs vs pseudorefs documentation
+
+*Long thread: 30 replies so far from 4 participants over 22 days.*
+
+Andy Koppe's five-patch series stops calling root refs pseudorefs across the glossary, `git-ls-remote(1)`, `gitdatamodel(7)`, and tests. His v4 dropped pseudoref/root-ref contrasts and reworded the `rev-list --merge` error message; Junio C Hamano wrote that the series "looked all sensible".
+
+### builtin/rerere: convert to use subcommands
+
+*Long thread: 29 replies so far from 6 participants over 19 days.*
+
+Patrick Steinhardt's 12-patch series converts `git rerere`'s custom parsing to `OPT_SUBCOMMAND()`, making forget, clear, status, remaining, diff, and gc proper subcommands. Junio C Hamano noted a possible UI regression where options before the subcommand are no longer accepted, requiring `git rerere gc --skip-locked` instead of `git rerere --skip-locked gc`.
+
+### `git diff` EXAMPLES section rewrite
+
+*Long thread: 23 replies so far from 6 participants over 8 days.*
+
+Julia Evans retracted an accidental `--cached` to `--staged` synopsis swap from her v2 patch to keep scope small. Kaartic Sivaraam explained how to fetch Junio C Hamano's queued SQUASH??? commits from his tree.
+
+### Fix segfaults on settings given without a value
+
+*Long thread: 22 replies so far from 5 participants over 6 days.*
+
+Thomas Bachem's 15-patch series fixes segfaults when settings like `rebase.missingCommitsCheck` or `remote.*.tagOpt` are given without a value. After v3 made `tagOpt` and `color.blame.repeatedLines` warn-and-ignore rather than error, Phillip Wood called the range-diff ready for `next` and Junio C Hamano marked the topic ready.
 
 ## The period in brief
-This week saw **14 active days** of mailing list traffic with **heavy development activity** across multiple fronts. The Git project made **decisive progress** on long-running feature series, including the `git repo info` path keys and `fetchRefmap` enhancements, while also addressing **critical bugfixes** and **performance regressions**. The most consequential developments were the **final approval of the `git repo info` path keys series**, the **resolution of the `git log --follow` performance regression** with an opt-in toggle, and the **advancement of the `change-id` preservation debate** to a security-focused inflection point. Readers should not miss the **security release (Git 2.56.1)** addressing six CVEs, the **integer-overflow hardening efforts**, and the **ongoing discussion about AI-assisted development partnerships**.
 
----
+The week of 2026/11/09 through 2026/11/15 saw heavy traffic across seven active days, with several long-running series reaching decisive review rounds. Readers should not miss the Git 2.56.1 security release announcement, the resolution of the `log --follow` performance regression via an opt-in flag, and the v9 `git repo info` path-keys series which Phillip Wood approved for merging.
 
 ## Key developments
 
-### `git repo info` path keys series lands
-The **nine-iteration series** adding path-related keys to `git repo info` received **final approval** and is ready for merging. The series introduces four new keys—`path.working_tree`, `path.superproject_working_tree`, `path.index`, and `path.prefix`—that expose filesystem locations of repository components in a scriptable format. Phillip Wood confirmed the **range-diff between v8 and v9 is mechanically correct** and stated, *"I'd be happy if this is merged as-is."* The keys support suffix-based formatting (absolute or relative paths) and return empty strings in bare repositories, except for `path.index`, which aligns with `git rev-parse --git-path` precedent. The series resolves all prior objections, including naming conventions (underscores over hyphens) and test efficiency concerns.
+### Git 2.56.1 security release
 
-**Key participants**: K Jayatheerth (author), Phillip Wood (reviewer), Junio C Hamano (maintainer)
-**Status**: Ready for `next`; uncontroversial after design resolution
+Junio C Hamano announced coordinated security releases Git 2.56.1 and maintenance tracks down to maint-2.43 addressing six CVEs. Todd Zullinger noted the cited GitLab work item links appear inaccessible to normal users and added Patrick Steinhardt to help open them up.
 
----
+### log: --follow rename following regression
 
-### `git log --follow` performance regression resolved
-A **months-long debate** about a **14× slowdown** in `git log --follow` across merges reached resolution with an **opt-in toggle** approach. The regression, introduced in June 2026, made the feature unusable at scale by enabling rename detection for all merge parents. Miklos Vajna’s patch adds `--follow=merges` (or `log.follow=merges`) to restore pre-regression performance while preserving correctness for users who need it. Junio C Hamano **ejected a prior speedup branch** and queued the toggle as the **project-level resolution**, settling the policy question after extensive discussion about performance vs. correctness trade-offs. The toggle unblocks GitLab’s deployment while maintaining the correctness improvements.
+Justin Tobler benchmarked `git log --stat --follow` on linux.git, finding the v5 speedup still 15 seconds slower than before the regression, risking server-side timeouts. Patrick Steinhardt and Junio C Hamano agreed an opt-in flag was needed; Miklos Vajna posted a patch making per-parent rename diffing opt-in via `--follow=merges` and `log.follow=merges`, and Hamano ejected the speedup topic in favor of this approach.
 
-**Key participants**: Miklos Vajna (author), Patrick Steinhardt (reviewer), Junio C Hamano (maintainer)
-**Status**: Queued for `next`; toggle patch fast-tracked
+### promisor-remote reply missing from fetch protocol v2
 
----
+Christian Couder posted a three-patch series fixing a bug where the client omits the `promisor-remote=...` reply from `fetch`, failing with stateless servers like Gerrit and JGit. Hamano objected to a dedicated parameter in `write_command_and_capabilities()`, suggesting the existing `server_options` list be generalized instead.
 
-### `change-id` preservation: security vs. workflow
-The **long-running discussion** about preserving `change-id` headers during commit rewriting operations reached a **critical inflection point** this week. Ewout ter Hoeven countered privacy and utility objections with **concrete workflow use cases** from GitHub’s `gh-stack` and GitLab’s `glab stack`, where tools struggle to maintain commit identity across rewrites. However, brian m. carlson raised a **fundamental security concern**: **change-id headers cannot be trusted as stable identifiers** because users can manually edit them, creating a risk for automated review systems. This reframes the problem as a **security boundary question**, with no clear path to reconcile workflow needs with security requirements. The thread now hinges on whether to restrict `change-id` preservation to server-controlled operations or accept that the header cannot be trusted for security-sensitive decisions.
+### setup: hash algorithm detection on re-init
 
-**Key participants**: Ewout ter Hoeven (proponent), brian m. carlson (opponent), Junio C Hamano (maintainer)
-**Status**: Design debate ongoing; no patches in flight
+brian m. carlsson's v2 reworks hash selection so command-line choices take precedence and reinitializing an existing repository with a different hash algorithm is refused, fixing a latent bug where `init.defaultObjectFormat` could corrupt an existing repository. Hamano called the restructured version simpler and said he would replace the patch.
 
----
+### repack: --filter-to-loose for filtered-out objects
 
-### Security release: Git 2.56.1 addresses six CVEs
-Junio C Hamano announced a **coordinated security release** addressing six CVEs, including:
-- **CVE-2026-111760**: Remote code execution via malicious submodule gitfiles
-- **CVE-2026-113408**: Path traversal in files ref backend
-- **CVE-2026-114467**: Stack corruption from multi-signature commits
+Adithya Chakilam's series adds `--filter-to-loose=<dir>` to `git repack`, streaming filtered packs into `unpack-objects` to write excluded objects directly as loose objects. Hamano asked for tests covering non-existent destinations and potential double-close of descriptors.
 
-The vulnerabilities span **submodules, ref backends, and merge machinery**, with potential for denial-of-service or arbitrary code execution. Fixes are backported to all supported maintenance tracks (2.56.1 down to `maint-2.43`). Key contributors included **Toon Claes** (protocol v2 symref validation), **Karthik Nayak** (multi-signature handling), and **Jeff King** (30 patches for const-correctness and HTTP header redaction). Git for Windows released **v2.56.1** with identical fixes.
+### apply: reject malformed diff headers
 
-**Key participants**: Junio C Hamano (maintainer), Toon Claes, Karthik Nayak, Jeff King
-**Status**: Released; fixes integrated into all maintenance tracks
+Tanga Joris posted v2 of an Outreachy fix for a crash in `git apply --check` on patches with corrupt `diff --git` headers, rejecting new files with old names and deleted files with new names in `parse_git_diff_header()`.
 
----
+### for-each-ref: fix segfault on --no-format
 
-### Integer-overflow hardening advances with API changes
-Johannes Schindelin’s **integer-overflow hardening series** made **significant progress** this week, addressing Phillip Wood’s review of the wrapper and date subsystems. Key updates include:
-1. **API contract change**: `write_in_full()` now returns `0` on success (eliminating overflow risk entirely), and a new `read_in_full_or_error()` helper is introduced for callers needing only success/failure status.
-2. **Macro removal**: The `signed_mult_overflows` and `mult_overflows` macros were **dropped entirely** due to GCC-only limitations and operand-width assertion concerns.
-3. **Portable date.c hardening**: The original implementation was withdrawn in favor of a simpler approach—capping user-supplied numbers at `INT_MAX` and guarding multiplications manually—to avoid compiler-specific overflow detection.
+Abhishek Agarwal's v2 fixes a segfault in `git for-each-ref --no-format` by assigning the default format after `parse_options()` when none remains, so `--no-format` cancels an earlier `--format`.
 
-The series now focuses on **portable, manual overflow checks** and **API-level hardening**, with the wrapper subsystem changes ready for integration.
+### Preserving change-id header through rebase
 
-**Key participants**: Johannes Schindelin (author), Phillip Wood (reviewer)
-**Status**: Wrapper subsystem patches ready for `next`; date.c hardening revised
+Matt Stark's patch modifies `sequencer.c` to preserve `change-id` headers through rebase and cherry-pick. brian m. carlsson objected that change-ids cannot be trusted as unmodified data since users can alter them, warning of potential abuse.
 
----
+### Fix colors at line breaks in pretty.c
 
-### `git apply --check` crash fix polishes for integration
-The **two-part bugfix series** for a crash in `git apply --check` when processing malformed patch headers gained **final polish** this week. The series now **rejects corrupt patch headers outright**, aligning with Junio’s guidance to enforce strict parsing rules. Key improvements include:
-- **Memory-leak fix**: Siddharth Asthana identified a leak in `parse_git_diff_header()` where `patch->def_name` was overwritten without freeing the old value. The fix adds a `free()` before assignment, with both callers already zeroing the `patch` struct.
-- **Error-message clarity**: Messages now reference the problematic header line (e.g., `"---"` before `"new file mode"`) instead of stripped filenames, making them more actionable for users.
-
-The series is **technically sound**, with clear error messages and comprehensive test coverage, and is ready for final review.
-
-**Key participants**: Tanga Joris (author), Siddharth Asthana (reviewer)
-**Status**: Ready for `next`; memory-leak and error-message improvements addressed
-
----
-
-### `fetchRefmap` series advances to v14 with strategic clarity
-Harald Nordgren posted **v14 of the `fetchRefmap` series**, introducing `remote.<name>.fetchRefmap` and a matching-inspired fetch mode for shallow repositories. The series is now down to **five patches** after squashing the `@{push}` resolution fix into Patch 3/5. The cover letter **explicitly ties the series to Matt Hunter’s clarification** that Patches 1–3 are sufficient to resolve textual conflicts with Collin’s `ch/remote-defer-follow-remote-head-validation` topic, strengthening the case for a **partial merge**. The architectural objection to Patch 3/5 (dynamic branch enumeration) is weakened by this context, as the patch is required to resolve the conflicts. The series is otherwise ready for final review, with no known blockers beyond the ongoing strategic discussion about whether to merge Patches 1–3 now or insist on the full series.
-
-**Key participants**: Harald Nordgren (author), Junio C Hamano (maintainer), Matt Hunter (reviewer)
-**Status**: Ready for final review; strategic discussion ongoing
-
----
-
-### `git branch --delete-integrated` series reaches v7
-Harald Nordgren posted **v7 of the series** teaching `git branch --delete-integrated` to detect branches whose changes were squash-merged or rebase-merged into an upstream branch, even when the upstream later modified the same files. The series is now **technically complete**, with all substantive review issues addressed. Key improvements include:
-- **Performance optimization**: The fourth patch now reads the index once before the walk in `find_landed_commits()`, eliminating redundant `repo_read_index()` calls.
-- **Test coverage**: Added test cases for edge-case robustness (branches whose changes never landed, landed only partially, or conflicted with upstream edits).
-- **Documentation**: The commit message explicitly documents the `.gitattributes` resolution behavior and the fact that `--delete-integrated` may download blobs in partial clones.
-
-The only remaining technical gap is the **author-check mitigation** (Jasper’s proposal), which is not yet implemented but does not block integration.
-
-**Key participants**: Harald Nordgren (author), Phillip Wood (reviewer)
-**Status**: Ready for `next`; author-check mitigation deferred
-
----
+Andy Koppe submitted a patch to `pretty.c` fixing lost and leaked colors at line breaks in custom log formats by scanning for active color escapes and making each line self-contained.
 
 ## In brief
 
-**`git rerere` subcommand modernization** -- Patrick Steinhardt’s 12-patch series modernizing `git rerere`’s subcommand handling was **merged to `master`**. The series replaces custom subcommand-parsing logic with Git’s standard `OPT_SUBCOMMAND()` mechanism, aligning it with other multi-subcommand built-ins. It also adds a `BUG()` check to catch invalid flag combinations and per-subcommand usage strings. **Key participants**: Patrick Steinhardt, Karthik Nayak.
+**reftable HEAD reflog** -- 井上司 corrected his report, noting the files backend behaves the same, and proposed a `refs.c` helper returning the new oid of a ref updated in the same transaction.
 
-**Config-related segfaults systematically fixed** -- Thomas Bachem’s 15-patch series eliminates Git segfaults when config settings are given without values (e.g., `git -c foo.bar`). The series audits config callbacks and `repo_config_get_value()` callers to handle missing values gracefully, addressing 23 distinct crash sites. **Key participants**: Thomas Bachem, Junio C Hamano, Derrick Stolee, Phillip Wood.
+**log --follow v5** -- Miklos Vajna posted v5 speeding up `log --follow` on non-linear history, now following copies and renames across parents with no merge base.
 
-**Refactor of `t9300-fast-import.sh` advances** -- Karthik Nayak posted v2 of a 20-patch series splitting the monolithic `t9300-fast-import.sh` (4000+ lines) into smaller, self-contained test files. The series makes each test run in a fresh repository with consistent configuration, improving maintainability. **Key participants**: Karthik Nayak, Junio C Hamano.
+**unpack-trees the_repository removal** -- Junio C Hamano posted v2 and Derrick Stolee gave an LGTM to the series removing `the_repository` from `unpack-trees.c`.
 
-**Object format interoperability bugs addressed** -- Adrian Ratiu posted a 3-patch series fixing bugs in Git’s `compatObjectFormat` interoperability layer, which handles conversions between SHA-1 and SHA-256 repositories. The series addresses a crash when `compatObjectFormat` and `objectFormat` are set to the same value, silent incorrect OID returns, and inconsistent handling of unknown commit headers. **Key participants**: Adrian Ratiu, Junio C Hamano.
+**ODB transaction temp directory** -- Justin Tobler posted a four-patch series creating the ODB transaction temporary directory eagerly, showing about 7% overhead on `git add` of 10000 files.
 
-**Promisor-remote protocol v2 capability fixed** -- Christian Couder posted a 3-patch series fixing a bug where the Git client omits the `promisor-remote=...` reply during `fetch` protocol v2 commands. The fix enables reliable partial clone operations with servers that don’t maintain state between requests. **Key participants**: Christian Couder, Junio C Hamano.
+**Configurable orphaned commit checks** -- Wyatt Holden's three-patch series adds `checkout.orphanedCommitWarning` to skip the reachability check on checkout, which takes 193 seconds in an internal mono-repo.
 
-**`git ls-remote --show-object-format`** -- Junio C Hamano confirmed the safety of the implementation and endorsed the test coverage as adequate, moving this feature closer to integration. The patch enables tools like Jujutsu to detect a remote repository’s hash algorithm without cloning. **Key participants**: Patrick Steinhardt, Junio C Hamano.
+**fsmonitor untracked cache** -- Ilia K's v2 invalidates the whole cache when the worktree cannot be determined; Hamano reverted the `next` merge and queued v2 on the original base.
 
-**GitLab CI speedups** -- Johannes Sixt reported successful testing of Patrick Steinhardt’s CI optimization series on Windows hardware, confirming significant runtime reductions (32% for `t0027`, 11% for `t1092`). **Key participants**: Johannes Sixt, Patrick Steinhardt.
+**cat-file out-of-range reflog** -- Caspar Duregger's four-patch series makes `git cat-file --batch-check` report out-of-range reflog selectors as missing instead of dying.
 
-**Detached HEAD documentation** -- Julia Evans posted v6 of the documentation rewrite, addressing final style nits and test expectations. The series creates a standalone guide explaining detached HEAD in plain language. **Key participants**: Julia Evans, Junio C Hamano.
+**struct commit padding** -- Kristofer Karlsson proposed moving `index` into the padding hole in `struct commit`, shrinking it from 80 to 72 bytes on 64-bit platforms.
 
-**Glossary terminology alignment** -- Andy Koppe’s v4 series addressing the 2024 terminology change that narrowed "pseudoref" to `FETCH_HEAD` and `MERGE_HEAD` only received final sign-off from Junio C Hamano. **Key participants**: Andy Koppe, Junio C Hamano.
+**git repo structure speedup** -- Patrick Steinhardt sped up `git repo structure` in huge repositories by only parsing objects as needed.
 
-**`git credential` conversion to `OPT_SUBCOMMAND`** -- Wasswa Edson posted v2 of the series converting `git credential` to use `OPT_SUBCOMMAND` from the parse-options API. The series is split into three patches: aligning `-h` output with the SYNOPSIS, refactoring subcommands into their own functions, and switching to `OPT_SUBCOMMAND`. **Key participants**: Wasswa Edson, Junio C Hamano.
+**credential OPT_SUBCOMMAND** -- Wasswa Edson posted v2 converting `git credential` dispatch to `OPT_SUBCOMMAND()`.
 
-**`git worktree list` improvements** -- Jasper Mayone’s v5 series extending `git for-each-ref`’s `%(worktreepath)` atom and improving worktree safety gained traction. The series now uses a hashmap for O(1) lookups and introduces `%(currentworktree)` for conditional formatting in `git branch`. **Key participants**: Jasper Mayone, Phillip Wood.
+**Test modernization** -- Hardik Kumar replaced `!` with `test_must_fail` in several test scripts so signal-killed commands fail properly.
 
-**`git history --verbose` output format debate** -- The discussion about adding diff display to `git history reword` shifted to the **output format**, with Patrick Steinhardt requiring it be generalizable to all `git history` subcommands. He suggested `git range-diff`’s structured format as a model. **Key participants**: Patrick Steinhardt, Jelle van der Waa, Karthik Nayak.
-
-**ODB transaction temporary directory creation** -- Justin Tobler’s series to make temporary directory creation eager in ODB transactions faced design scrutiny. Karthik Nayak questioned the motivation for switching from lazy to eager creation, while Patrick Steinhardt endorsed the direction. **Key participants**: Justin Tobler, Karthik Nayak, Patrick Steinhardt.
-
-**Bugfix for `git cat-file --batch` with invalid reflog references** -- Caspar Duregger necroposted a four-patch series systematically applying `GET_OID_GENTLY` to make `git cat-file --batch` error handling uniform for invalid reflog references. The series addresses a regression introduced by commit 393bbb21. **Key participants**: Caspar Duregger, Junio C Hamano.
-
-**`git ls-remote` promisor-remote crash fix** -- Christian Couder posted a patch to fix a crash in `git ls-remote` when invoked outside any Git repository with promisor-remote configuration enabled. Junio C Hamano proposed an alternative approach that makes `promisor_remote_reply()` a no-op when no repository is present. **Key participants**: Christian Couder, Junio C Hamano.
-
-**Partnership proposal for AI-assisted development on Git for Windows** -- Weifang Leiming Cloud Network Technology Co., Ltd. proposed a business partnership to provide AI-driven development support for Git for Windows. The proposal sparked procedural discussion about the appropriateness of such partnerships on the mailing list. **Key participants**: Weifang Leiming, Johannes Schindelin, Junio C Hamano.
-
-**`git diff` shell function context** -- Junio C Hamano confirmed a bug in `git diff`’s context header logic for shell scripts where function definitions span multiple lines. The issue is identified as a configuration problem—Git does not auto-detect shell scripts, so the generic hunk header pattern is used unless `diff=bash` is explicitly configured. **Key participants**: Windl, Ulrich, Johannes Sixt.
-
-**`struct commit` memory optimization** -- Kristofer Karlsson’s patch to reduce `struct commit` size by 10% on 64-bit platforms received final maintainer approval. The patch reorders fields to eliminate padding, reducing memory usage by 10% (from 80 to 72 bytes). **Key participants**: Kristofer Karlsson, Junio C Hamano.
-
-**`git repo structure` performance improvements** -- Patrick Steinhardt posted a two-patch series improving performance and reducing memory usage of `git repo structure`. The patches achieve an 80% memory reduction (5.1× less memory) and 20% wall-time improvement by delaying parsing until necessary and skipping full tree parsing when only the object type is required. **Key participants**: Patrick Steinhardt, Kristofer Karlsson.
-
----
+**Translation and docs** -- Jean-Noël Avila's synopsis-style conversion and various man page fixes continued, alongside Dirk Gouders' `doc/gitcli` fixes and Yikun Wei's retracted `fmt-merge-msg` doc patch.
 
 ## Looking ahead
-The next week is likely to see **integration of several ready-for-`next` series**, including the `git repo info` path keys, `git log --follow` performance toggle, and `git apply --check` crash fix. The **`change-id` preservation debate** may see new proposals to reconcile workflow needs with security requirements, potentially involving server-side enforcement or cryptographic signing. The **integer-overflow hardening series** is expected to advance further, with the wrapper subsystem patches likely landing and the date.c hardening undergoing final revisions. The **`fetchRefmap` series** may see a partial merge of Patches 1–3 to resolve conflicts with other in-flight topics, while the full series continues to be debated. Finally, the **AI-assisted development partnership proposal** may generate further discussion about the project’s stance on external collaborations.
+
+The v9 `git repo info` path-keys series appears ready to merge after Phillip Wood's approval, with test consolidation planned for a follow-up. Harald Nordgren's v14 shallow-fetch series and v7 `--delete-integrated` series await final review, as does Julia Evans's v6 detached HEAD guide. The `change-id` preservation patch and Adithya Chakilam's `--filter-to-loose` series will likely see further discussion next week.
