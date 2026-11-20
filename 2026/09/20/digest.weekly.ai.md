@@ -1,105 +1,106 @@
-# The Git Project -- Weekly Digest for 2026/09/14 -- 2026/09/20
+## Long threads
+
+### receive-report hook in `builtin/receive-pack.c`
+
+*Long thread: 58 replies so far from 7 participants over 29 days.*
+
+Karthik Nayak's series introduces a `receive-report` hook that runs after the reference transaction completes but before the report is sent to the client, receiving the pkt-line encoded report on stdin and allowing its stdout to replace the report while a non-zero exit marks all references rejected. The thread saw steady progress across the week, with Junio C Hamano queueing a coccinelle fix on top of the v10 series to drop a redundant nullness check before `FREE_AND_NULL`, which Nayak confirmed looked good. The series remains in flight with the hook mechanics settled and cleanup patches applied.
+
+### sequencer auto maintenance timing
+
+*Long thread: 30 replies so far from 5 participants over 14 days.*
+
+Thomas Bachem's series makes rebase, cherry-pick and revert run `git maintenance run --auto` exactly once when a sequence completes, passing `maintenance.auto=false` to sequencer-spawned commands via `GIT_CONFIG_PARAMETERS` to prevent background maintenance from racing the sequence for locks. The week saw v5 arrive with wording updates only, adopting Patrick Steinhardt's documentation suggestions and Phillip Wood's commit message rewording, while the placement of the maintenance call remained under discussion between calling it at the end of `pick_commits()` versus in the two builtins.
+
+### unifying ref storage format terminology
+
+*Long thread: 29 replies so far from 4 participants over 12 days.*
+
+Patrick Steinhardt's 13-patch v3 series renames inconsistent ref storage format interfaces to consistent `ref-storage-format` equivalents across init, clone, refs, submodule, rev-parse and help, keeping old names as hidden aliases and accepting `format://payload` URIs. Reviewers debated whether `OPT_ALIAS()` entries should be hidden, with Junio C Hamano explaining that `OPT_HIDDEN` belongs to a later deprecation stage and that if `OPT_ALIAS()` cannot take it, that is an infrastructure bug. The series was found to be in very good shape by the end of the week.
+
+### advice squelch hints with `--global`
+
+*Long thread: 25 replies so far from 4 participants over 9 days.*
+
+Vsevolod Myalitsin's series addresses the `defaultBranchName` advice by suggesting the global config scope, since the local-scope command only affects the repository where the advice was already shown. The discussion converged on a boolean global hint rather than a full `enum config_scope`, with Jeff King agreeing that passing a pointer to the `advice_setting` to `vadvise()` should go as a separate patch, and Junio C Hamano posting a simpler v5 that just adds `--global` to the squelch message for all advice.
+
+### http.sslVerifyStatus for stapled OCSP responses
+
+*Long thread: 22 replies so far from 4 participants over 37 days.*
+
+Grayson Gordon's patch adds an `http.sslVerifyStatus` boolean mapping to `CURLOPT_SSL_VERIFYSTATUS` so Git can check stapled OCSP responses, defaulting to false to avoid blocking connections to servers that send no stapled response. The week saw v7 posted as the combined version with tests split between `t5551` for cases needing no OCSP setup and the new `t5585` for responder-dependent tests, with Junio C Hamano approving the test updates and saying he would replace the existing tests with them.
 
 ## The period in brief
 
-This week (2026/09/14--2026/09/20) saw **high-volume, high-impact activity** on the Git mailing list, with **six days of sustained traffic** and **no weekend lull**. The period was **exceptionally eventful**, featuring **critical bugfixes** (repack data-loss race, `--force-if-includes` logic flaw, `rerere` conflict resolution), **major feature graduations** (`http.sslVerifyStatus`, Rust infrastructure reorganization), and **architectural discussions** (ODB transactions, "safe" strbuf API). **Git v2.56.0-rc1** was announced, marking the start of the stabilization period for the next release. **Three things a reader absolutely should not miss**: the **repack data-loss race fix**, the **Rust infrastructure reorganization**, and the **`reference-transaction` hook regression fix**.
-
----
+The week of 2026/09/14 through 2026/09/20 saw heavy traffic across seven active days, with five long-running threads continuing alongside several new bug fixes and feature series. Readers should not miss the repack race fix that prevents data loss when `.keep` files appear mid-run, the resolution of the `--force-if-includes` fast-forward rejection bug, and Maciej Ciemborowicz's work restoring old OIDs to batched ref deletions and routing copy/rename through transactions.
 
 ## Key developments
 
-### Repack data-loss race fix lands
-A **critical data-loss bug** in `git repack -d`—where concurrent pushes could cause objects to vanish despite `.keep` files—was **fixed in a six-patch series** by Qin ShiCheng (qeesung). The bug manifested when `git repack -d` deleted packs whose objects were never copied elsewhere, leaving dangling refs. The fix replaces the `--honor-pack-keep` mechanism with a **snapshot-based approach**, ensuring `.keep` files are managed consistently. Key patches include:
-- **Patch 1/6**: Prevents `receive-pack` from removing `.keep` files it didn’t create.
-- **Patch 2/6**: Fixes traversal logic in `pack-objects` to treat `--keep-pack` packs as "kept-open."
-- **Patch 5/6**: Adds `--keep-pack-from-file` to handle repositories with many kept packs.
-- **Patch 6/6**: Passes `repack`’s snapshot of `.keep` packs to `pack-objects`.
+### repack race with mid-run `.keep` files
 
-The series is **production-tested** and includes **comprehensive test coverage**. Justin Tobler’s review proposed an alternative ODB-focused refactoring, but the incremental fix was deemed safer for immediate integration. The series **landed in `next`** and is poised for `master`.
+A production-hit race where `git repack -d` could delete a pack whose objects were never copied -- because a concurrent push linked a `.keep` file between repack's initial scan and pack-objects' rescan -- drew sustained attention across four days. Qin ShiCheng posted a six-patch series making repack hand pack-objects its startup snapshot of kept packs via a new `--keep-pack-from-file=<file>` option, while qeesung posted v2 dropping the receive-pack side in favor of Justin Tobler's plan to have the ODB transaction create `.keep` files at commit time. The core fix ensures both processes work from one snapshot, with supporting patches handling the cruft walk's kept-pack cache and binary lookup.
 
----
+### `--force-if-includes` push semantics
 
-### Rust infrastructure reorganization queued for `next`
-The **long-running effort to reorganize Git’s Rust code** into a dedicated `rust/` subdirectory reached a milestone. Mike Hommey’s **v5 patch** moves Rust sources from `src/` to `rust/src/` while preserving build artifact locations, addressing project hygiene and downstream vendoring concerns. The patch updates the **Makefile, meson.build, and CI scripts** to reference the new paths and was **queued for `next`** after Junio C Hamano confirmed it applies cleanly on Git 2.56-rc1.
+Tyler Cipriani's series making `--force-if-includes` reject non-branch sources and fix fast-forward rejections progressed through v4, v5 and v6 during the week. The final v6 defers reflog verification until after fast-forward rules are evaluated, so valid fast-forward pushes with expired reflogs proceed instead of being rejected, while still rejecting tag pushes and adding a `pushRefUnverifiable` advice message suggesting `--force-with-lease=<ref>:<expect>`. D. Ben Knoble flagged that the earlier behavior broke his workflow of pushing `<TAG>:hotfix`, which Cipriani confirmed and addressed in the later iterations.
 
-The reorganization is a **prerequisite for Git 3.0’s mandatory Rust components** and resolves a blocker for downstream packagers. Minor stylistic questions (e.g., `CARGO_MANIFEST_DIR` usage) remain open but are not blockers. The patch is **uncontroversial** and marks a key step toward Rust integration.
+### stash autostash with `stash.index=true`
 
----
+The bug where `stash.index=true` left a redundant stash entry after a successfully applied merge autostash -- because `git stash apply --index` reached a reset mode that discarded branch state -- was diagnosed and fixed during the week. D. Ben Knoble posted a two-patch series replacing the subprocess-based index merge with an in-core `merge_incore_nonrecursive()` call, fixing the lock failure on deleted `MERGE_AUTOSTASH` refs, with Phillip Wood reviewing the WIP approach as looking good and suggesting minor refinements.
 
-### `reference-transaction` hook regression fix advances
-A **regression in the `reference-transaction` hook**—where branch renames (`git branch -m`) omitted the creation of the new ref—was **diagnosed and fixed** in a **two-patch series** by Maciej Ciemborowicz. The fix introduces a new transaction type (`REF_TRANSACTION_TYPE_RENAME`/`COPY`) and a `REF_TRANSACTION_FLAG_SKIP_HOOK` flag to suppress hooks for nested operations. It ensures both the deletion of the old ref and the creation of the new ref are reported as a **single transaction**, addressing a long-standing inconsistency between `git branch -m` and `git update-ref --stdin`.
+### refs: old OIDs for batched deletions and transactional copy/rename
 
-The series includes **thorough test coverage** for rename, copy, forced updates, D/F conflicts, and hook-triggered rollback. Karthik Nayak identified a **race condition** in a related series restoring the old OID in the hook for deletions, but the fix for branch renames is **technically complete** and ready for review.
+Maciej Ciemborowicz posted a v2 series teaching `refs_delete_refs()` to accept an optional `oid_array` of old OIDs, restoring compare-and-delete race protection for branch, tag, fetch and remote prune operations that was lost when commit `8198907795` converted them to batched deletion. A companion patch routes reference copy and rename through the transaction API so the `reference-transaction` hook observes them, representing a rename as a deletion plus creation in one transaction with backend-specific reflog handling and rollback on hook rejection.
 
----
+### incremental connectivity check via rev-list
 
-### `--force-if-includes` logic flaw fixed
-A **critical flaw in `--force-if-includes`**—where the feature incorrectly checked the reflog of the *local* branch matching the *remote* destination—was **fixed in a six-patch series** by Tyler Cipriani. The series addresses two issues:
-1. The feature checked the wrong reflog (e.g., `refs/heads/main` instead of `refs/heads/src` in `src:main`).
-2. It unnecessarily rejected fast-forward pushes of non-branch refs (tags, detached HEADs).
+Kristofer Karlsson posted a two-patch series adding an opt-in incremental connectivity check gated behind `transfer.connectivityCheck=incremental`, running inside the rev-list subprocess with benchmarks reporting up to ~190x speedup for small pushes. Junio C Hamano called the benchmarks exciting but raised concerns about a possibly too-late `is_promisor_object()` call and a possible NULL from `get_commit_tree_oid()`, which Karlsson confirmed and promised to address with a blob test and a NULL check.
 
-The v6 reroll renames the `deferred_reject_reason` variable to `needs_force_reject_reason` for clarity and adds a new `ref->unverifiable` flag to provide actionable advice for rejected non-branch pushes. The series includes **108 lines of new test coverage** and is **ready for final review**.
+### commit-reach: parse commits in the given repository
 
----
+Orestis Floros fixed `can_all_from_reach()` and `can_all_from_reach_with_flag()` in `commit-reach.c` to parse commits in the caller's repository rather than `the_repository`, fixing a "fatal: invalid commit position" crash when merging superprojects whose submodule pointers advanced on both sides with commit-graphs present. Junio C Hamano called the change reasonable and a welcome step for libification, saying he would queue it, while Kristofer Karlsson noted it reduces `the_repository` references in the file from 17 to 11.
 
-### `http.sslVerifyStatus` graduates to `master`
-The **`http.sslVerifyStatus` feature**, which enables OCSP staple validation for HTTPS connections, **graduated to `master`**. The feature adds a boolean configuration option (default `false`) that causes Git to fail connections if the server does not provide a valid OCSP staple. This addresses a **security gap for government and FIPS-compliant users** (e.g., US DoD PKI deployments) where OCSP stapling is mandated.
+### dir: pathspec prefixes with exclusions
 
-The patch merges the author’s original tests with Patrick Steinhardt’s OCSP test harness, providing **comprehensive coverage** of fail-closed behavior, per-URL scoping, and staple validation. The feature is **technically complete**, with all review feedback addressed.
+Yannik Tausch's v4 series fixing the pathspec prefix optimization in `dir.c` was marked ready for `next` by Junio C Hamano. The series derives the common prefix from non-exclude items and matches exclude items against full pathnames, fixing an incorrect match and an out-of-bounds read when an exclude item appeared first in the pathspec.
 
----
+### upload-pack: shallow-info ordering
 
-### "Safe" strbuf API RFC sparks architectural discussion
-Derrick Stolee posted an **RFC series introducing a "safe" strbuf API** that cannot call `die()` or `exit()`, motivated by trace2’s need to avoid recursive fatal errors during memory allocation failures. The series includes:
-- **Patch 1**: Moves `strbuf` struct definitions to `strbuf-safe.h`.
-- **Patch 3**: Introduces `safe_memory_limit_check()` to avoid `die()`.
-- **Patch 4**: Implements `sstrbuf_grow()`, the first safe method.
+Royce Remer posted v2 swapping the order of `send_wanted_ref_info()` and `send_shallow_info()` in `upload_pack_v2()` so shallow fetches with `uploadpack.allowRefInWant=true` work, fixing a "fatal: expected 'packfile', received 'shallow-info'" error. Junio C Hamano agreed the explanation was good commit-log material and noted the bug had existed since the original ref-in-want implementation.
 
-Phillip Wood’s review identified a **critical bug**: `sstrbuf_grow()` uses `st_add3()`, which calls `die()` on overflow, violating the safety guarantee. He proposed replacing it with `st_add_overflows()` and critiqued the API’s framing, suggesting it be described as **error-returning** with naming aligned to existing patterns (e.g., `strbuf_*_gently`). The discussion highlights the tension between **safety guarantees** and **usability** in critical code paths.
+### RFC: a "safe" strbuf API
 
----
+Derrick Stolee posted an RFC proposing a `strbuf-safe` API whose methods cannot transitively call `die()`, motivated by recursive die loops in trace2 under allocation failure. Phillip Wood objected to the name "safe" and identified that `sstrbuf_grow()` calls `st_add3()`, which dies on overflow, suggesting a sticky error bit instead.
 
-### Git v2.56.0-rc1 announced
-Junio C Hamano announced **Git v2.56.0-rc1**, marking the start of the stabilization period for the next release. The release candidate includes **721 non-merge commits** since v2.55.0, contributed by **90 people**, 37 of whom are first-time contributors. Key changes span:
-- **UI/workflows**: New `git refs` subcommands, `git history drop`.
-- **Performance**: ODB abstraction, reftable backend improvements.
-- **Development support**: Build system updates, CI infrastructure.
+### reflog expire default expiry times swapped
 
-The final release is expected soon, pending community testing.
-
----
+r.norouzi reported that `git reflog expire` prunes reachable reflog entries older than 30 days instead of the documented 90, because the default expiry values were swapped in commit `85658275702b` first released in Git 2.50.0, reversing the assignments in `builtin/reflog.c`.
 
 ## In brief
 
-**Advice system** -- Junio C Hamano posted v5 of a patch adding a scope hint (`--global`) to Git’s advice settings, implementing the now-consensus design for uniform scope recommendations.
-
-**Autostash bugfix** -- D. Ben Knoble submitted a two-patch series fixing a bug in `git stash` where autostashing failed to correctly handle staged index entries when `stash.index=true` is set. The fix replaces subprocess-based logic with in-core merging via `merge-ort.c`.
-
-**Coverity-reported issues** -- Johannes Schindelin posted a seven-patch series addressing Coverity-reported static-analysis warnings in Git for Windows, including potential signed-overflow in `writev`, missing input validation in GPG signature parsing, and MIDX pack-ID checks.
-
-**GitLab CI Windows breakage** -- Johannes Schindelin’s four-patch series fixing Windows CI breakage after Rust support was enabled passed validation. The series ensures the correct Rust toolchain is provisioned and preserves `.git/info/exclude` contents.
-
-**Outreachy December 2026** -- Christian Couder confirmed a third project, “Implement promisor remote fetch ordering,” for Git’s Outreachy December 2026 cohort. Kaartic Sivaraam is tentatively confirmed as mentor.
-
-**`git rerere remaining` bugfix** -- Junio C Hamano posted a patch fixing a bug where consecutive conflicted paths with only stage-1 entries were incorrectly skipped. The fix adds a same-path check (`ce_same_name()`) to `check_one_conflict()` in `rerere.c`.
-
-**`git status --ignored` regression** -- René Scharfe posted a patch fixing a regression where ignored directories were incorrectly matched when the pathspec was a substring of the directory name.
-
-**Sequencer auto maintenance** -- Thomas Bachem posted v5 of a three-patch series deferring auto maintenance until sequencer-driven operations (`git rebase`, `git cherry-pick`) complete. The series is code-identical to v4, with only commit messages and test annotations updated.
-
-**Shallow clone advice** -- Harald Nordgren submitted a patch adding a new advice message (`advice.shallowHistory`) to explain why `<ref>~N` or `<ref>^N` fails in a shallow clone. The advice suggests the exact `git fetch --deepen=<n>` command needed.
-
-**Test modernization** -- Mark C. Chu-Carroll posted v4 of a test modernization series updating three legacy test scripts to use current Git test conventions. The changes are purely mechanical and improve readability.
-
-**Worktree lifecycle hooks** -- Maciej Ciemborowicz proposed adding native Git hooks for worktree operations (`add`, `remove`, `move`, `lock`, `unlock`, `prune`). The proposal avoids veto hooks and focuses on post-operation events.
-
----
+- **Git v2.56.0-rc1** -- Junio C Hamano announced the release candidate comprising 721 non-merge commits since v2.55.0 from 90 people, 37 of them new.
+- **Git for Windows 2.56.0-rc0** -- Johannes Schindelin announced the Windows release dropping Windows 8.1 support and bundling Git v2.56.0-rc0, Git LFS v3.8.0, cURL v8.22.0 and OpenSSL v3.5.8.
+- **`git var` v8** -- Andrew Pleeter posted a version printing `VARIABLE=value` pairs for multi-variable queries, omitting unset variables while still exiting 1.
+- **rerere lock timeout v4** -- Thomas Bachem posted a series making `setup_rerere()` wait up to `rerere.lockTimeout` for `MERGE_RR.lock`.
+- **packed-refs transaction skip** -- Junio C Hamano said he would queue Ariel Keselman's v3 patch skipping the packed-refs transaction for root-ref deletions in the files backend.
+- **`git status --ignored` bug** -- René Scharfe bisected a partial-pathspec match bug to commit 95c11ecc73 and proposed removing an optimization check in `treat_directory()`.
+- **commit-buffer leak** -- Kaartic Sivaraam posted v4 fixing a leak in `builtin/history.c` by pairing `repo_logmsg_reencode()` with `repo_unuse_commit_buffer()`.
+- **packfile flush during ODB transaction** -- Justin Tobler's two-patch series fixes flushing with `core.fsyncMethod=batch`, reviewed positively by Karthik Nayak.
+- **`git pull` NULL guard** -- Jiri Kuncar posted a patch keeping `git pull` from crashing on an unresolvable merge head, which Junio C Hamano called a good improvement.
+- **precompiled headers** -- SZEDER Gábor posted v2 of a series precompiling `git-compat-util.h`, reporting about 35% faster builds.
+- **Coverity fixes** -- Johannes Schindelin posted a seven-patch series fixing Coverity issues from Git for Windows, including `writev_in_full()` overflow and rerere failure handling.
+- **`git rerere remaining` fix** -- Junio C Hamano confirmed Mikko Rantalainen's diagnosis that consecutive conflicted paths with only stage-1 entries were skipped, and posted a patch adding a same-path check.
+- **`diff --no-index -R`** -- Haokai Ding fixed file/directory conflicts where the early queue entry bypassed reverse handling, collecting reviews from René Scharfe and Jacob Keller.
+- **Rust `gitcore` crate move** -- Mike Hommey posted v5 moving the crate into a `rust/` subdirectory to allow use as a submodule, answering review questions about `--manifest-path` and meson `subdir()`.
+- **RUNTIME_PREFIX on OpenBSD** -- Brad Smith submitted a patch enabling it via `getexecpath()`, prompting questions from Junio C Hamano about version applicability.
+- **Outreachy project** -- Christian Couder and Kaartic Sivaraam proposed "Implement promisor remote fetch ordering" for the December 2026 cohort.
+- **GitLab CI cargo fixes** -- Johannes Schindelin posted a four-patch series fixing the cargo invocation in Windows CI jobs, with the `build:mingw64` job succeeding.
+- **`fetch.shallow` config** -- Harald Nordgren submitted a patch adding an option making refspec-less fetches in shallow repositories fetch only the current branch's upstream.
+- **`shallowHistory` advice** -- Harald Nordgren posted a patch adding advice when `<ref>~N` resolution stops at a shallow boundary, suggesting `git fetch --deepen=<n>`.
+- **worktree lifecycle hooks RFC** -- Maciej Ciemborowicz proposed native hooks for worktree add, remove, move, lock, unlock and prune events.
+- **`LESS=FRX` documentation** -- brian m. carlsson explained Git sets `LESS=FRX` only when `LESS` is unset, with Todd Zullinger suggesting documenting `LESS=""` overrides.
+- **test modernization** -- Mark C. Chu-Carroll posted v4 of a three-patch series modernizing `t40*` tests with setup blocks and consistent capitalization.
 
 ## Looking ahead
 
-The next week is likely to see **continued stabilization for Git v2.56.0**, with a focus on **regression fixes** and **test coverage**. Key topics to watch:
-- **`reference-transaction` hook regression fix**: The v2 series restoring the old OID in the hook for deletions is **ready for final review**, with the race condition trade-off as the remaining open question.
-- **"Safe" strbuf API**: Derrick Stolee’s RFC will likely see a v2 addressing Phillip Wood’s feedback on the bug and usability concerns.
-- **ODB transactions**: Justin Tobler’s ODB-focused refactoring for the repack data-loss race may gain traction as an alternative to the incremental fix.
-- **Rust integration**: The `rust/` subdirectory reorganization is **queued for `next`**, and downstream packagers will begin testing the new structure.
-- **Outreachy December 2026**: Mentor assignments are finalized, and the application deadline (October 5, 2026) is approaching. Project details will be refined in the coming weeks.
+Maciej Ciemborowicz's patch routing reference copy and rename through the transaction API, posted on 2026/09/20, will likely see review next week alongside his v2 series on old OIDs for batched deletions. Harald Nordgren's `shallowHistory` advice and his RFC for worktree lifecycle hooks, both posted late in the week, are expected to draw discussion. Derrick Stolee's RFC for a "safe" strbuf API, posted on 2026/09/18, awaits broader feedback on whether the direction is worthwhile given Phillip Wood's objection to the naming and the `st_add3()` overflow issue. Kristofer Karlsson's incremental connectivity check series needs follow-up patches addressing Junio C Hamano's concerns about the promisor object check and NULL handling before it can advance.
