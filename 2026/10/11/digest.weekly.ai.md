@@ -1,107 +1,128 @@
-# The Git Project -- Weekly Digest for 2026/10/05 -- 2026/10/11
+## Long threads
+
+### New `gitmergeconflicts(7)` manual page
+*Long thread: 54 replies so far from 6 participants over 17 days.*
+Julia Evans's series adds a manual page explaining merge conflicts, linked from five commands. It reached v2 with detailed review from Junio C Hamano, who requested `Helped-by:` instead of self-added `Reviewed-by:`, formal constructions, and explicit listing of all conflict-causing commands. Earlier revisions refined the "OURS"/"THEIRS" section under review from Patrick Steinhardt and D. Ben Knoble.
+
+### `uploadpack.lazyFetchTrusted` config
+*Long thread: 36 replies so far from 3 participants over 89 days.*
+Christian Couder's series adds the protected config for server-side lazy fetch. After v5 was rebased, Junio C Hamano asked if it had reached diminishing returns, and Christian agreed it should be marked for `next` as it adds mostly refactorings rather than substantial new features.
+
+### `http.sslVerifyStatus` for stapled OCSP
+*Long thread: 33 replies so far from 5 participants over 59 days.*
+Grayson Gordon's patch adds the boolean mapping to `CURLOPT_SSL_VERIFYSTATUS`. After being reverted from `next` over a GnuTLS failure, Junio C Hamano confirmed via bisection that it alone causes 6-hour linux-* CI timeouts and tentatively ejected it from `seen`.
+
+### Shallow-repo limited fetch
+*Long thread: 31 replies so far from 4 participants over 22 days.*
+Harald Nordgren's series adds `remote.<name>.refmap` and `--limited-fetch` to avoid fetching every branch in shallow repos. It reached v8, splitting out a `collect_upstream_from_remote()` helper after Junio C Hamano reviewed v7 and requested naming and structural changes; remaining test failures were identified as an interaction with another topic.
+
+### Rerere waiting on `MERGE_RR.lock`
+*Long thread: 29 replies so far from 4 participants over 40 days.*
+Thomas Bachem's series makes rerere wait up to `rerere.lockTimeout` for the lock and adds `--skip-locked` to `git rerere gc`. It reached v7, dropping the patch letting commands proceed without rerere; Patrick Steinhardt suggested a dedicated flags enum, and Junio C Hamano reviewed test details.
+
+### Keeping `die()` out of trace2 API
+*Long thread: 26 replies so far from 6 participants over 84 days.*
+This series introduces `banned-die.h` to ban die-capable helpers in trace2 sources. Derrick Stolee noted the topic has sat idle because the protections are incomplete, and his RFC for making strbuf more robust was similarly unsatisfying.
+
+### CI failure and leak annotations
+*Long thread: 24 replies so far from 4 participants over 12 days.*
+Harald Nordgren's series makes GitHub Actions annotations name the test script and line. After Phillip Wood agreed file/line links should be dropped, Harald posted a revision showing them as plain text, which Phillip reviewed with "Lets get this merged!"
+
+### `git-bisect-rebase`
+*Long thread: 22 replies so far from 6 participants over 8 days.*
+Alejandro Colomar's tool bisects for the first commit a branch cannot cleanly rebase onto. He implemented `--abort`, `--continue`, and `--quit`, gave example sequences, and corrected the tree algorithm so `git rebase --onto A tmpA B` uses C instead of B.
+
+### Ref copy and rename through transactions
+*Long thread: 22 replies so far from 6 participants over 22 days.*
+Maciej Ciemborowicz's series routes copy/rename through transactions so the hook sees the whole operation. V4 fixed test failures from v3, but reviewers criticized posting new versions without engaging feedback, with Patrick Steinhardt warning this is a red flag.
+
+### `--delete-merged` squash detection
+*Long thread: 22 replies so far from 4 participants over 13 days.*
+Harald Nordgren's patch detects squash-merged branches via patch-id comparison. Reposted as v2, it shares diff results between branches and adds `--no-squashed`; Phillip Wood endorsed patch-id comparison as necessary since squash merges create single-parent commits not tree-same to the tip.
+
+### Removing `gittutorial-2`
+*Long thread: 21 replies so far from 4 participants over 9 days.*
+This series deletes the stale tutorial page. Tuomas Ahola showed the interdiff adds it to `command-list.txt`, making `git(1)` advertise it; Junio C Hamano proposed ejecting both topics and having Julia Evans send a v3 without the entry.
+
+### `--force-if-includes` checks pushed ref
+*Long thread: 20 replies so far from 5 participants over 32 days.*
+Tyler Cipriani's series makes the check consult the pushed ref's reflog, rejecting non-branch sources as unverifiable. He addressed Patrick Steinhardt's review by noting tags and detached HEAD are rejected because their reflogs lack integration information, and offered a rebased v7.
+
+### `man git` navigation
+*Long thread: 15 replies so far from 5 participants over 10 days.*
+Julia Evans's patch rewrites `man git` to explain help navigation and points to `git help --guides`. The thread covered the git-scm.com migration, and Junio C Hamano asked the next iteration to justify dropping user-manual and datamodel references.
+
+### Faster SHA-1 collision detection
+*Long thread: 14 replies so far from 6 participants over 10 days.*
+Scott Chacon's series ports the sha1dc Rust crate to C, claiming 2.7x faster hashing. Sebastian Thiel and Sam Reis welcomed it; D. Ben Knoble raised license compatibility, which Reis clarified by noting the UBC tables are autogenerated, and Junio confirmed GPL-2 can incorporate MIT code.
 
 ## The period in brief
-This week (2026/10/05--2026/10/11) saw **580 emails** across six active days, with traffic slightly above the recent weekly average. The tone was **eventful and occasionally contentious**, dominated by three major arcs: the **Git 3.0 SHA-256 transition debate** sparked by Scott Chacon’s challenge, **AI-assisted contribution policy discussions** following Maciej Ciemborowicz’s disclosure, and **performance and correctness fixes** for long-standing issues in `git repack`, `git blame`, and `git rerere`. Readers should not miss the **Git 3.0 planning notes** from the Contributor’s Summit, the **final approval of `git blame`’s default ignore-revs file**, and the **abandonment of the trace2 hardening effort** after substantive objections.
-
----
+The week of 2026/10/05 through 2026/10/11 saw heavy traffic across seven active days, with documentation and shallow-repository work dominating. Readers should not miss Julia Evans's `gitmergeconflicts(7)` series reaching v2 under detailed review, Harald Nordgren's v8 of the shallow-repo limited-fetch series, and the heated debate over Scott Chacon's RFC to allow AI-assisted contributions under the DCO. Junio C Hamano started the Git 2.98 cycle by flushing `next` to `master`.
 
 ## Key developments
 
-### Git 3.0 planning: two-stage rollout confirmed, SHA-256 and Rust inclusion settled
-The Git Contributor’s Summit notes, shared by Kaartic Sivaraam, confirmed the **two-stage rollout plan** for Git 3.0 (2.99 → 3.0) and settled key technical decisions. The 3.0 release will differ only in flipped defaults for breaking changes, minimizing disruption. **SHA-256 support** is confirmed for GitHub (GA November 2026) and GitLab (already public), but interoperability between SHA-1 and SHA-256 repositories remains incomplete on brian m. carlson’s personal branch. **Rust support** drew no objections, but no decision was made on whether it will be mandatory or merely allowed in 3.0. **LTS status** for 2.99 was proposed (Gentoo expressed interest), but no consensus was reached. The notes also highlighted funding gaps for JGit and gitoxide SHA-256 support, with Google declining JGit and gitoxide’s status uncertain.
+### AI-assisted contributions policy debate
+Scott Chacon's RFC proposed allowing responsible AI-assisted contributions under the DCO with an `Assisted-by:` trailer. The proposal drew sharp objections: brian m. carlsson argued the DCO cannot honestly be asserted for LLM output, Luca Milanesio argued fully AI-generated work should be rejected, and Junio C Hamano critiqued the text as unenforceable. Patrick Steinhardt warned that loosening the policy would worsen the review bottleneck as AI-generated slop increases.
 
-The discussion revealed **broad consensus on the technical direction** but lingering questions about **downstream synchronization** and **latent bug exposure** during SHA-256 adoption. Follow-up threads on each technical track (SHA-256 interoperability, Rust integration, LTS planning) are expected in the coming weeks.
+### Packfile corruption from stale delta cache
+Patrick Steinhardt's two-patch series fixes corruption from delta base cache entries never evicted when their pack closes, reproducible via recursive submodule merges. Jeff King called the fix obviously correct, and Junio C Hamano marked it for `next` after confirming the reproducer also fails on Alpine with musl.
 
----
+### `git blame` default ignore-revs
+Ravi Mistry's series makes `git blame` use `HEAD:.git-blame-ignore-revs` by default so local runs match hosting platforms. V3, which uses `sb->repo` instead of `the_repository`, was deemed ready for `next` by Junio C Hamano, with earlier revisions tightening the parser against NUL bytes and lazy promisor fetches.
 
-### Git 3.0 SHA-256 transition: strategic debate escalates
-Scott Chacon **escalated the debate** over Git 3.0’s SHA-256 transition plan, arguing it is a **GitHub-driven effort lacking broad community buy-in** and proposing his **tree-digest signing mechanism** as a less disruptive alternative. Chacon’s proposal—embedding SHA-256 digests of tree contents in signed commits/tags—would satisfy regulatory mandates for signatures without switching the default object format. brian m. carlson and Patrick Steinhardt countered that the transition is **necessary for regulatory compliance and ecosystem momentum**, with Steinhardt warning that abandoning it would **ossify the ecosystem**, making future breaking changes exponentially harder.
+### `repack --dry-run` fix
+Siddharth Shrimali's patch fixes `git repack --drop-filtered --dry-run` rebuilding packs despite documentation saying it only lists objects. V2 returns right after listing candidates and adds a test that the pack directory is unchanged; D. Ben Knoble offered his Reviewed-by and Junio C Hamano marked it for `next`.
 
-The thread exposed a **governance fault line**: Chacon framed the transition as a **corporate priority** (GitHub’s internal timeline conflicts with the project’s), while Carlson emphasized **personal contributions** and **institutional demand**. The discussion remains unresolved, with Junio C Hamano yet to weigh in. The outcome will determine whether Git 3.0 proceeds with the full SHA-256 transition or adopts a hybrid approach.
+### SSH signing trust limits
+Christian Ramos reported that `valid-before` is checked against a signer-controlled date and that a missing `gpg.ssh.revocationFile` fails open. Patrick Steinhardt argued there is no proper fix for the timestamp in a distributed system but agreed documentation should avoid false trustworthiness, and suggested failing by default on a missing revocation file with an optional escape hatch.
 
----
+### Contributor Summit notes and Git 3.0 timeline
+Taylor Blau shared notes from the 2026 Git Contributor's Summit covering security process, Git 3.0 timing (possible 2.99 and 3.0 in March 2027 with only `BREAKING_CHANGES` defaults flipped), pluggable ODB, and protocol v2 for pushes.
 
-### AI-assisted contributions: policy debate stalls on legal and process concerns
-Scott Chacon’s proposal to **explicitly permit AI-assisted contributions** under clear conditions sparked a **multi-day debate** about enforceability, legal risks, and reviewer bandwidth. The patch introduced an `Assisted-by:` trailer for substantial AI assistance, requiring contributors to review, test, and sign off on submissions. **brian m. carlson** opposed the change on **legal and ethical grounds**, citing risks of license violations and copyright infringement from AI-generated code. **Patrick Steinhardt** and **Junio C Hamano** raised **operational concerns**, noting that loosening the AI policy without addressing reviewer bandwidth would worsen the existing backlog of low-quality submissions.
-
-Maciej Ciemborowicz’s disclosure of a **seven-step AI-assisted workflow**—relying on AI agents for code generation, testing, and review—further polarized the discussion. Ciemborowicz framed his participation as a **moral dilemma**, while maintainers reinforced the expectation that authors engage substantively with reviewer feedback. The thread remains stalled, with no clear path forward. The debate highlights the tension between **productivity tools** and **project norms**, particularly around authorship and review culture.
-
----
-
-### `git blame` default ignore-revs file lands in `next`
-Ravi Mistry’s three-patch series teaching `git blame` to automatically use `HEAD:.git-blame-ignore-revs` as a default ignore-revs file **reached integration-ready status** after Junio C Hamano approved the v3 revision. The series addresses security concerns by **rejecting malformed input** (NUL bytes) and **preventing promisor fetches** in partial clones. The default file lookup logic resolves the blob via `get_oid_with_context()` and skips non-regular tree entries (e.g., committed symlinks). User-configured ignore files take precedence, and empty configurations bypass the default blob entirely.
-
-The feature aligns `git blame` with other Git commands that support ignore-revs files, improving workflows for large-scale code archaeology. The hardening measures—particularly the promisor fetch prevention—address long-standing security concerns about parsing upstream-controlled content. The series is now in `next` and expected to graduate to `master` in the coming weeks.
-
----
-
-### `rerere` race condition fix finalized after dropping controversial behavior
-Thomas Bachem’s two-patch v7 series fixing a race condition in the `rerere` subsystem **reached final form** after dropping the controversial third patch. The series introduces a **configurable timeout** (`rerere.lockTimeout`, defaulting to 1000 ms) for the `MERGE_RR.lock` file, allowing processes to wait briefly for the lock instead of failing immediately. Patch 2 adds a **hidden `--skip-locked` flag** to `git rerere gc`, enabling auto-maintenance tasks to skip silently if the lock is held. The decision to drop the warning-and-proceed behavior reflects feedback from Patrick Steinhardt, who argued it was unnecessary without real-world user reports.
-
-The series addresses a **long-standing robustness flaw** exacerbated by Git 2.54’s geometric maintenance strategy, which triggered `git rerere gc` more aggressively. The fix is conservative, prioritizing correctness over user-facing behavior changes. The series is technically complete and awaits Junio’s final review.
-
----
-
-### Trace2 hardening abandoned after substantive objections
-Derrick Stolee **abandoned the RFC series** (`ds/trace2-tolerate-failed-timestamp`) that aimed to eliminate `die()`-prone helpers in the trace2 subsystem. The series introduced `banned-die.h` to enforce a no-`die()` policy but was deemed **too complex for the benefits it provided**. Jeff King (Peff) had proposed a **ground-up rewrite of trace2** as the only way to fully eliminate `die()`-prone dependencies, but this was not pursued due to complexity.
-
-The thread’s pivot reflects the **challenges of hardening low-level subsystems** without introducing excessive complexity. The core goal—preventing trace2 crashes—remains, but the path forward is now less certain. The abandonment underscores the trade-offs between **defensive programming** and **maintainability** in Git’s codebase.
-
----
-
-### CI improvements: leak sanitizer v6 resolves annotation link regression
-Harald Nordgren’s v6 of the CI leak sanitizer series **resolved the annotation link regression** from v5 by embedding file and line context directly in annotation text. The compromise avoids the earlier issue where annotation links were broken unless the test file was modified in the same pull request. The series now:
-1. Stops leak-sanitizer scripts at the first failure (`--immediate`) and annotates leaks with the test script name and sanitizer output.
-2. Preserves job-output links while embedding context in the annotation text (e.g., `memory leak logged in t1060 (t1060-object-corruption.sh)`).
-
-Phillip Wood accepted the compromise, and the series is now a candidate for `next`. The improvements target GitHub Actions CI usability, particularly for large test suites.
-
----
-
-### `git repack` data-loss race fix advances with snapshot-based approach
-Qeesung’s v3 series fixing a data-loss race in `git repack -d` **addressed Junio C Hamano’s layering concern** by moving the kept-pack cache invalidation logic from `builtin/pack-objects.c` to `packfile.c`. The series replaces the racy `--honor-pack-keep` mechanism with a **snapshot-based approach**, ensuring `.keep` files are managed consistently. The final patch (5/5) eliminates the race by passing `pack-objects` a snapshot of `.keep` packs observed at repack startup via `--keep-pack-from-file`, replacing the mid-repack directory scan that could miss concurrent `.keep` file creation.
-
-Junio has blocked integration pending stabilization of Patrick Steinhardt’s `ps/odb-files-alternates` topic, preferring not to carry a temporary merge resolution in `seen`. The series is technically complete and addresses a **long-standing correctness issue** in Git’s repack machinery.
-
----
-
-### Performance optimizations: packed-refs and refspec matching
-Two performance optimization series advanced this week:
-1. **Karthik Nayak’s packed-refs backend optimization** speeds up operations that rewrite the packed-refs file (e.g., deleting references) by avoiding redundant formatting of unchanged refs. The patch tracks raw byte positions of unchanged refs and writes them directly with `fwrite()`, bypassing `fprintf()`. The optimization reduces `fetch/write-commit-graph` time by ~20% in synthetic benchmarks and is ready for maintainer pickup.
-2. **Jon Simons’s refspec matching optimization** for `git push` achieves 10-100x speedups in large repositories by replacing linear ref traversals with `strmap` lookups. The 15-patch series fixes long-standing behavioral quirks in `refname_match()` and targets workflows with many deletions (e.g., 100k refs). The series is technically complete and awaits Junio’s review.
-
-Both series demonstrate Git’s **ongoing focus on large-repository performance**, particularly for operations involving many refs.
-
----
+### Push resending common history after pre-push repack
+Jens Röcker reported that a push resends common history when a pre-push hook repacks the object database. Patrick Steinhardt confirmed the mechanism as `odb_has_object()` false negatives after repack and provided an untested `send-pack.c` patch batching the negative-object checks.
 
 ## In brief
 
-- **`git history` signing**: Souma’s patch series (v5) to teach `git history` to sign rewritten commits is **unblocked** after resolving a completion test regression. The series is cooking in `seen` and ready to graduate to `next`.
-- **Shallow clone safeguards**: Patrick Steinhardt proposed that Git **warn or refuse by default** when users attempt destructive operations on shallow boundary commits. Junio C Hamano clarified that shallow clones **preserve original commit IDs** but logically rewrite boundary commits as root commits during traversal. The discussion is ongoing.
-- **ZIP timestamp bugs**: René Scharfe posted a patch omitting the Extended Timestamp (UT) extra field for out-of-range commit times, preventing silent timestamp wrap. The fix prioritizes correctness over tool compatibility and is ready for review.
-- **`git fast-import` crash fix**: Aniket Gupta confirmed a fix for crashes when resolving unreachable in-session commits. The patch adds a cache lookup in `parse_from_existing` and is ready for integration.
-- **Global config handling**: Delilah Ashley Wu’s v3 series fixes Git’s global config file handling inconsistency, making `--global` operations read both `$HOME/.gitconfig` and `$XDG_CONFIG_HOME/git/config`. The series is technically complete and ready for Junio’s final review.
-- **`gitmergeconflicts(7)` guide**: Julia Evans’s six-patch v2 series introduces a new man page consolidating Git’s merge-conflict resolution guidance. The series is nearing completion, with Junio’s latest refinements to be incorporated into v3.
-- **Outreachy mentor reorganization**: Git’s participation in the Outreachy December 2026 cohort was finalized with a mentor reorganization. The project will proceed with three approved ideas but can only mentor two interns due to mentor availability.
-- **CI infrastructure debate**: Patrick Steinhardt pushed back against Junio C Hamano’s proposal to remove the `linux32` and `linux-TEST-vars` jobs, arguing that i386 coverage and exotic configuration testing remain valuable. The discussion highlights the trade-offs between CI maintenance burden and test coverage.
-- **`git stash create` redesign**: Kazumasa Shigeta and Phillip Wood narrowed the scope of proposed changes to `--include-untracked` and `--all`, ruling out `--patch` and positional pathspecs. The discussion remains unresolved.
-- **`git fetch --prune-tags` bugfix**: Orgad Shaneh gently pinged Junio C Hamano for a substantive response on the series aligning implementation with documentation. The thread remains stalled.
-- **`git checkout -m` conflict labels**: Phillip Wood’s v2 series to preserve original conflict labels is **ready for integration**, pending resolution of the conflict style question.
-- **`git fetch` incremental connectivity check**: Patrick Steinhardt and Junio C Hamano discussed trust boundary detection and error handling, with Junio suggesting **non-ref roots** (e.g., index entries) for connectivity checks.
-- **Test modernization**: Muhammed Dilshad A updated `t/t0450-txt-doc-vs-help.sh` to use Git’s helper functions and posted a three-patch series migrating mergesort tests to Clar. Both series are ready for review.
-- **`--relative` with combined diffs**: Muhammed Dilshad A posted v2 of a series fixing `--relative` handling in combined diffs, addressing path normalization and rename handling.
-- **Windows performance regression**: Daniel Gullberg reported a performance regression in `safe.directory` ownership checks with unreachable UNC paths, causing 25-second stalls on Windows.
-- **`git repo structure`**: Mark C. Chu-Carroll’s v4 series adds revision-based filtering support, but remains blocked by unaddressed feedback on commit message motivation and the double ref-walk inefficiency.
-- **`git(1)` man page rewrite**: D. Ben Knoble approved Julia Evans’ v2 revision, which incorporates feedback to use `git help push` as an alternative to `git push --help`.
-- **Push negotiation bug**: Jens Röcker reported a bug where a pre-push hook repacking the local object database causes Git to resend common history. Patrick Steinhardt proposed a fix.
-- **`git status`/`git push` enhancements**: Harald Nordgren posted a six-patch series to better handle rebased push branches, introducing more granular tracking of divergence and adjusting advice messages.
-- **Clock-skew warning**: Junio C Hamano raised fundamental objections to Devi Srinivas Vasamsetti’s patch, questioning its usefulness and noting the warning cannot address the root problem.
-- **`git worktree repair` validation**: Yoichi NAKAYAMA agreed to split patch 1/2 into smaller commits to separate behavioral changes from refactoring.
-- **`git branch --delete-merged` squash detection**: Harald Nordgren posted v2 of the series, adding a `--no-squashed` flag to skip slower squash detection.
-- **OpenSSL compatibility patch for `imap-send`**: Xiangfei Ding posted a patch updating `imap-send.c` to stop assuming `ASN1_STRING` data is null-terminated, addressing an upcoming breaking change in OpenSSL derivatives.
-- **Documentation update**: Jon Simons and Junio C Hamano discussed wording for a `SubmittingPatches` update discouraging the "add failing test, then fix" anti-pattern.
+**`uploadpack.lazyFetchTrusted`** -- Christian Couder's series adding the protected config for server-side lazy fetch was agreed to be marked for `next`.
 
----
+**`--force-if-includes`** -- Tyler Cipriani's series making the check consult the pushed ref's reflog addressed review by rejecting tags and detached HEAD as unverifiable.
+
+**CI failure annotations** -- Harald Nordgren's revised patch showing file and line as plain text drew Phillip Wood's "Lets get this merged!"
+
+**Keeping `die()` out of trace2** -- Derrick Stolee noted the `banned-die.h` protections remain incomplete and the topic has sat idle.
+
+**Removing `gittutorial-2`** -- The series was set to be rerolled without the `command-list.txt` entry that advertised the obsolete tutorial.
+
+**`man git` navigation** -- Julia Evans's patch explaining help navigation drew requests to justify dropping user-manual references.
+
+**`git-bisect-rebase`** -- Alejandro Colomar implemented `--abort`, `--continue`, and `--quit` for the iterative rebase bisect tool.
+
+**SHA-1 collision detection** -- Scott Chacon's port of the sha1dc crate to C was welcomed with license compatibility confirmed.
+
+**Shallow fetch tag backfill** -- Karthik Nayak's patch fixes a regression where tag backfilling sent no `have` lines.
+
+**Packed-refs optimization** -- Karthik Nayak's v4 of the `fwrite()` optimization showed ~20% faster deletions.
+
+**Fetch commit-graph** -- Kristofer Karlsson's v3 writing commit-graph using updated refs only dropped fetch times from ~357 ms to under 10 ms.
+
+**ODB source-files alternates** -- Karthik Nayak reviewed the 13-patch series and said it looks good.
+
+**`checkout -m` conflict labels** -- Phillip Wood's v3 writing labels to `.git/MERGE_LABELS` was reviewed as "nicely done".
+
+**`git status` merge advice** -- Julia Evans's patch changing advice to `git merge --continue` was approved for `next`.
+
+**`fast-import` crash** -- Marc Becker fixed a crash when `from` references a commit created in the same session.
+
+**`git repo structure` revs** -- Mark C. Chu-Carroll posted v4 adding revision filtering.
+
+**Repack `.keep` race** -- Qin ShiCheng's series fixing objects lost to a mid-run `.keep` waits for `ps/odb-files-alternates`.
+
+**ZIP timestamps** -- René Scharfe recommended clamping out-of-range values in `git archive --format=zip`.
+
+**`git status` conversion disagreement** -- Curtis Allen Smith's series fixes `git status` disagreeing with `git diff` under active clean filters.
+
+**Git 2.98 cycle** -- Junio C Hamano flushed `next` to `master` to start the new development cycle.
 
 ## Looking ahead
-The next week is likely to see continued discussion on **Git 3.0 planning**, particularly around **SHA-256 interoperability** and **Rust integration**. The **AI-assisted contributions policy debate** may see further input from Junio C Hamano or the Project Leadership Committee, though no resolution is imminent. **Performance optimization series** (packed-refs, refspec matching) are expected to advance toward integration, as are **correctness fixes** for `git repack` and `git rerere`. The **`git blame` default ignore-revs file** and **`rerere` race condition fix** are both in `next` and may graduate to `master`. Finally, the **Outreachy project selection** process will conclude, with interns expected to begin work in early November.
+Harald Nordgren's v8 of the shallow-repo fetch series and Thomas Bachem's v7 of the rerere lock-wait series will see further review, as will Ravi Mistry's v3 blame ignore-revs series which is ready for `next`. The AI-assistance policy debate is likely to continue given Patrick Steinhardt's concerns about review bottlenecks. Qin ShiCheng's repack `.keep` race fix waits on the `ps/odb-files-alternates` topic, and the Git 3.0 timeline targeting March 2027 will shape upcoming discussions.
