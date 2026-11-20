@@ -1,86 +1,45 @@
 # Git mailing list daily digest for 2026/11/04
 
+## Long threads
+
+### reflog: add %gb to name each entry's branch
+
+*Long thread: 32 replies so far from 6 participants over 21 days; 1 message that day.*
+
+Harald Nordgren posted v4 of the series adding a `%gb` placeholder to pretty formats for reflog entries. The reflog of HEAD mixes entries from every branch, so `%gb` names the branch HEAD was on when each entry was recorded, showing "detached at <commit>" when detached. V4 fixes `%gb` for `git rebase <upstream> <branch>` with `GIT_REFLOG_ACTION` set -- a case Phillip Wood had reported showing wrong names -- and rewords the commit message. The first patch defines named constants in `reflog.h` for reflog message strings, used across `builtin/branch.c`, `builtin/checkout.c`, `builtin/rebase.c`, `object-name.c`, `sequencer.c`, and `wt-status.c` with no behavior change. Earlier, Phillip Wood had reviewed the placeholder as "Looks good".
+
+### repack: corner cases for cruft-less MIDXs
+
+*Long thread: 31 replies so far from 5 participants over 36 days; 1 message that day.*
+
+With `repack.midxMustContainCruft=false`, geometric repacks can omit cruft packs from the MIDX while relying on the indexed set being closed under reachability; Taylor Blau's series adds tree and tag roots, retains cruft for ordinary incremental repacks, and includes required packs in ordinary and incremental MIDX writes, fixing cases where bitmap generation could fail. Today Junio C Hamano re-read the patches and their review discussion, found himself confused by the same points Jeff King had flagged, and said he has no concrete improvement ideas right now. Earlier, Taylor had said the series should be ready as-is after Junio questioned the topic's viability, a question Junio now clarified was not meant for the author to answer.
+
+### range-diff: add --matched-only
+
+*Long thread: 20 replies so far from 5 participants over 55 days; 3 messages that day.*
+
+Harald Nordgren's patch adds `git range-diff --matched-only` to show only commits that correspond on both sides, since `--left-only` and `--right-only` cannot be combined. Today Kristoffer Haugsbakk said he uses the `base..old base..new` form so unrelated commits never appear, and Ben Knoble corrected that the three-revision form `git range-diff base old new` selects the same commits without repeating the base, which Kristoffer acknowledged. Earlier, reviewers debated whether running `left_only` and `right_only` together makes sense, with several suggesting better range selection addresses the motivating case.
+
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. A critical regression in promisor remote lazy-fetch was diagnosed and fixed, with the root cause traced to stale loose object cache entries. The `git describe` command's handling of skewed commit dates sparked debate over algorithmic approaches, with a new prototype offering near-exact results without generation numbers. Outreachy applicants continued to propose projects, with several focusing on reducing global state and improving promisor remote functionality. Performance regressions in `git log --follow` and HTTP retry logic were also prominent topics.
+Patrick Steinhardt posted a two-patch fix for a stale loose-object cache that made `git merge` in blobless partial clones try to lazy-fetch blobs it had just written locally, breaking Kubernetes CI. Derrick Stolee fixed an fsmonitor/untracked-cache bug that could hide new untracked files, and Harald Nordgren posted v4 of the reflog `%gb` placeholder series.
 
 ## Notable threads
 
-### Promisor remote lazy-fetch regression fix
-**What changed**: Patrick Steinhardt posted a two-patch series fixing a critical regression in promisor remote lazy-fetch that was causing `git merge` to fail with "not our ref" errors. The issue stemmed from stale loose object cache entries not being updated when new objects were written during merges.
+### partial clone: lazy fetch fails with "not our ref"
+Patrick Ohly reported that `git merge` in a blobless partial clone fails with "not our ref" since 5946a564, breaking Kubernetes CI. Kristofer Karlsson reproduced it and traced it to the loose object cache: writing a loose object does not update the cache, so once a subdirectory is listed, existence checks wrongly report newly written objects missing, triggering a promisor fetch for a locally present blob. Patrick Steinhardt confirmed the root cause predates the bisected commit -- 5946a564cd stopped flushing the cache on misses, which had masked the bug -- and sent a fix series.
 
-**Problem/goal**: The regression, introduced during ODB abstraction work, was preventing Git from recognizing locally written merged blobs, causing unnecessary and failing backfill fetches from promisor remotes.
+### odb/source-loose: fix stale-cache existence checks
+Patrick Steinhardt posted a two-patch series fixing the stale loose-object cache behind the partial-clone failure: the first extracts subdirectory bitmap retrieval into `subdir_seen_bitmap()`, the second adds `loose_cache_mark_seen()` to update the cache on each loose write, plus a regression test in `t/t5616-partial-clone.sh`. Kristofer Karlsson verified the test fails without the fix; Derrick Stolee and Junio C Hamano also reviewed it as looking good.
 
-**Subsystem**: ODB abstraction layer, promisor remote lazy-fetch mechanism, loose object cache.
-
-**Change type**: Bugfix.
-
-**Impact**: The fix addresses a blocker for CI workflows in projects like Kubernetes that rely on blobless partial clones. The regression manifested only when merging an object whose first two hex characters matched those of a newly written object in the same subdirectory.
-
-### Today's developments
-
-- Kristofer Karlsson identified the exact mechanism: stale loose object cache invariant violation exposed by ODB abstraction work
-- Patrick Steinhardt confirmed the issue and posted a fix series
-- The fix updates the loose object cache's oidtree after writing objects to listed subdirectories
-
-### `git describe` algorithmic reconsideration
-**What changed**: Kristofer Karlsson proposed an alternative algorithm for `git describe` that delivers near-exact commit distances without relying on commit generation numbers, potentially obviating the need for the `--exact` opt-out flag.
-
-**Problem/goal**: The current implementation, which uses commit generation numbers to handle skewed commit dates, has performance costs and requires an opt-out mechanism. The new algorithm aims to provide accurate results with similar performance to the current implementation.
-
-**Subsystem**: Commit graph, revision walking.
-
-**Change type**: Algorithmic improvement.
-
-**Impact**: The proposal could eliminate the need for the `--exact` flag while maintaining accuracy, particularly for repositories with non-monotonic commit dates caused by GitLab's Marge-bot workflow.
-
-### Today's developments
-
-- Kristofer posted a prototype that tracks two counters per tag (commits visited vs. commits carrying the tag's bit)
-- The algorithm uses an epsilon-based heuristic for commits outside the commit-graph
-- Junio acknowledged the proposal as "interesting"
-- Linus clarified the root cause of skewed dates: GitLab's Marge-bot `--keep-committers` merge logic
-
-### HTTP retry logic configuration
-**What changed**: Brian M. Carlson challenged the default behavior of the HTTP retry logic, arguing that even 429 responses should trigger a non-zero initial delay to avoid overwhelming rate-limited servers.
-
-**Problem/goal**: The current implementation defaults to immediate retry when no Retry-After header is present, which could exacerbate server load during rate-limiting events.
-
-**Subsystem**: HTTP transport.
-
-**Change type**: Design discussion.
-
-**Impact**: The debate centers on whether the default behavior should prioritize fast recovery or server protection, with implications for users interacting with rate-limited hosting backends.
-
-### Today's developments
-
-- Brian argued for a 30-second default delay to avoid overwhelming servers
-- The discussion remains unresolved, with no consensus on the appropriate default
-
-### Outreachy proposals for promisor remote improvements
-**What changed**: Two Outreachy applicants proposed projects to improve promisor remote functionality, focusing on configurable fetch ordering.
-
-**Problem/goal**: The current implementation uses a hardcoded order for trying multiple promisor remotes, which doesn't account for performance differences or user preferences.
-
-**Subsystem**: Promisor remote, partial clone.
-
-**Change type**: Feature enhancement.
-
-**Impact**: The proposals aim to improve performance and reliability in partial-clone setups with multiple promisor remotes.
-
-### Today's developments
-
-- Yopa Nelly posted a patch implementing `promisor.fetchOrder` configuration
-- Shashank S proposed a more comprehensive solution including server-side Protocol v2 extensions
-- Both proposals received early feedback on design approaches
+### fsmonitor: invalidate untracked cache after losing history
+Derrick Stolee posted a patch for an fsmonitor/untracked-cache bug present since 2017: when fsmonitor fails or returns a trivial response, untracked cache entries could stay marked valid, so `git status` could miss new untracked files. The fix invalidates every untracked cache directory and sets UNTRACKED_CHANGED on a failed token request. Junio C Hamano called it "rather a blunt instrument" but said being without acceleration beats being fast and incorrect, and queued it; he also asked whether it could replace an unreviewed pending series on the same topic.
 
 ## In brief
-- **`git log --follow` performance regression**: A severe slowdown (600x) was reported when tracking files through non-linear history, bisected to commit 304812ed33
-- **`--force-with-lease` forwarding fix**: Tyler Cipriani posted v2 of a fix for `--force-with-lease` being silently ignored when pushing to remote groups
-- **Credential command refactoring**: Wasswa Edson converted `git credential` to use `OPT_SUBCOMMAND` from the parse-options API
-- **Path-walk object loss fix**: Derrick Stolee fixed a regression where tagged trees could cause object loss when revisiting paths
-- **Documentation fixes**: Cynthia Uche restored a dropped word in the parse-options API documentation
-- **CI cleanup**: The defunct `.cirrus.yml` file was removed after confirmation it was unused
-- **Global state reduction**: Several Outreachy applicants proposed projects to reduce Git's reliance on global state
-- **Commit-graph refactoring**: Patrick Steinhardt posted a ten-patch series consolidating commit-graph write options into a single struct
-- **Pre-commit hook policy**: Discussion continued on whether pre-commit hooks should be allowed to mutate the index
-- **ODB lockfile fixes**: Justin Tobler posted follow-up patches to recently merged ODB lockfile fixes
+- Derrick Stolee fixed a path-walk regression from Git 2.55.0 that dropped blobs from tagged trees at already-visited paths; Taylor Blau reviewed it as LGTM.
+- **describe distance fix**: Kristofer Karlsson proposed an exact-depth prototype without generation numbers; Linus Torvalds blamed GitLab Marge-bot's --keep-committers, not clock skew, for the kernel case.
+
+- Jeff King reviewed the v2 patch preserving WWW-Authenticate headers across HTTP redirects as OK with small suggestions.
+- Phillip Wood called the v2 sequencer patch refusing shallow boundary commits "definitely moving in the right direction" while questioning the `--allow-shallow-boundary` option.
+- Jeff King proposed skipping alternates matching the commondir in `refs_from_alternate_cb` for Kristofer Karlsson's quarantine alternate-refs fix; Justin Tobler called it reasonable.
+- Marc Strapetz revived the send-pack series inspecting the old tip's tree to avoid resending unchanged blobs after a rebase.
+- b.murauer reported a `git log --follow` regression bisected to 304812ed33; Patrick Steinhardt noted patches are in review.
