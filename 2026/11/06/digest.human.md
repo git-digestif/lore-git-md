@@ -1,93 +1,55 @@
 # Git mailing list daily digest for 2026/11/06
 
-## The day in brief
-The Git mailing list saw significant activity around **global config handling**, **integration pipeline policy**, and **bugfixes for critical subsystems**. Delilah Ashley Wu's global config series was accepted with minor tweaks, while Junio C Hamano formalized a new `seen` branch ejection policy to balance reviewer productivity with quality control. Notable bugfixes included fixes for `git apply` crashes, `git merge` ODB cache invalidation, and `git unpack-objects` type mismatches on 32-bit platforms. Outreachy proposals and CI optimizations also featured prominently.
+## Long threads
 
----
+### reflog: add %gb format placeholder
+
+*Long thread: 33 replies so far from 6 participants over 23 days; 1 message that day.*
+
+Harald Nordgren's series adds a `%gb` placeholder to pretty formats naming the branch `HEAD` was on when each reflog entry was recorded, read from entries left by branch switches, renames and rebases, with "detached at <commit>" for a detached `HEAD`. Phillip Wood reported that the "detached at " label shows the commit before switching away rather than where `HEAD` was detached, that parsing "rebase: checkout <revision>" treats "origin/main" as a branch name and is confused by commit subjects starting with "checkout ", and supplied a failing test covering those issues and ':' in a URL in `$GIT_REFLOG_ACTION`.
+
+### root refs vs pseudorefs documentation
+
+*Long thread: 27 replies so far from 4 participants over 16 days; 6 messages that day.*
+
+Andy Koppe's series reworks the glossary and `gitdatamodel(7)` to distinguish root refs like `ORIG_HEAD` from pseudorefs like `FETCH_HEAD` and `MERGE_HEAD`, and stops calling root refs pseudorefs across docs, refs code and tests. Koppe posted v3, explaining pseudorefs' additional semantics in the glossary, clarifying the `FETCH_HEAD` and `MERGE_HEAD` descriptions, and rewording two commit messages. Junio C Hamano reviewed patches 1-4, calling the pseudoref rewording "very very good" and the `core.logAllRefUpdates` correction a fix for a "grave mistake", with wording suggestions and a flag that non-root paths outside `refs/` are still treated as refs.
+
+### Clarifying ejected topics can return
+
+*Long thread: 23 replies so far from 5 participants over 103 days; 1 message that day.*
+
+Agreeing with Phillip Wood that ejection is not a permanent rejection, Junio C Hamano proposed new [Discarded] heading text stating removed topics "can be resubmit if they gained enough interest and showed good fit to the system in the future."
+
+### config: read both home and XDG files for `--global`
+
+*Long thread: 20 replies so far from 5 participants over 393 days; 2 messages that day.*
+
+Delilah Ashley Wu's series makes `git config --global` read both `$HOME/.gitconfig` and `$XDG_CONFIG_HOME/git/config` via `do_git_config_sequence()`. Junio C Hamano affirmed the t1300 test patch, asked whether XDG config is always `~/.config/git/config`, asked Wu to shorten the config_sequence commit message, and wondered about adding a `BUG(...)` guard in `git_config_system()` against NULL callers.
+
+### stash creation: avoid unnecessary index loads and refreshes
+
+*Long thread: 20 replies so far from 2 participants over 33 days; 2 messages that day.*
+
+Phillip Wood's seven-patch series removes duplicate index loads and refreshes in `git stash push` and `git stash create`, cutting `lstat()` calls per changed path by four for create and eight for push. Junio C Hamano reviewed the last two patches, calling 6/7 sensible since `create_index_from_tree()` is file-scope static and 7/7 an obvious, very nice simplification of `reset_tree()`'s signature.
+
+## The day in brief
+
+Andy Koppe rerolled the root-refs-vs-pseudorefs docs series to v3 with Junio C Hamano's reviews largely approving it, while Phillip Wood found edge cases in the `%gb` reflog placeholder. Patrick Steinhardt questioned whether the `--follow` speedup regresses sub-tree merges and objected that its fix fails for copied files, and brian m. carlsson confirmed `git init` with `WITH_BREAKING_CHANGES=1` still defaults to sha1 with a fix in CI.
 
 ## Notable threads
 
-### Global config handling inconsistency fixed
-**Thread root**: 2025/10/10/01-14-05
-**What changed**: Delilah Ashley Wu's two-patch v3 series to fix Git's global config file handling inconsistency was accepted. The series ensures `git config list --global` reads both `$HOME/.gitconfig` and `$XDG_CONFIG_HOME/git/config`, aligning with unscoped operations.
-**Why it matters**: This fixes a long-standing inconsistency where `--global` only read `$HOME/.gitconfig` while unscoped operations read both files. The implementation uses ignore flags and `do_git_config_sequence()` to restrict config reading to the global scope.
-**Today's developments**:
-- Junio C Hamano accepted the first patch ("t1300: test list with missing global config") with a minor question about test portability regarding XDG paths.
-- The maintainer accepted the second patch ("config: read global scope via config_sequence") with a request for a defensive `BUG()` check in `git_config_system()` to ensure no caller passes a NULL `opts` pointer.
+### rev-list: handle arguments in early option scan
+Azuama Odinaka Maximus's patch makes the early option scan in `cmd_rev_list()` skip separate arguments of options like `--grep` so they are not mistaken for options. Junio C Hamano criticized the hardcoded option-name array as fragile and incomplete; Odinaka Maximus surveyed the parsing paths and proposed sharing recognition logic between the early scan and the normal parser, while Hamano questioned whether a separate early scan is the right direction, suggesting option defaults be synthesized after all options are seen.
 
----
+### log: speed up `--follow` following renames for non-linear history
+The series speeds up `git log --follow` across renames in non-linear history and fixes cases where the speedup lost history. Patrick Steinhardt noted that with unrelated histories `follow_needs_renames()` finds no merge bases and always returns 0, asking whether that regresses the sub-tree-merge use case, and objected that patch 6/6's fix fails when a file is copied rather than renamed, with a failing test.
 
-### Integration pipeline policy update
-**Thread root**: 2026/07/27/03-09-12
-**What changed**: Junio C Hamano adopted Phillip Wood's suggestion to explicitly frame ejection from the `seen` branch as a reversible, routine event rather than a final rejection.
-**Why it matters**: This change addresses contributor anxiety by signaling that ejection is temporary and contingent on renewed engagement. The new wording in "What's cooking" reports emphasizes that topics can be resubmitted if they gain enough interest.
-**Today's developments**:
-- The maintainer updated the "Discarded" section wording to: *"Many of these topics were picked up prematurely but did not prove ready for inclusion, and will be removed. They can be resubmit if they gained enough interest and showed good fit to the system in the future, unless noted otherwise."*
-
----
-
-### Submodule crash fix under review
-**Thread root**: 2026/08/21/23-01-40
-**What changed**: Volodymyr Vriukalo's two-patch bugfix series for a crash in `git branch --recurse-submodules` with non-ref start points received substantive review.
-**Why it matters**: The bug manifests in repositories without submodules (BUG abort) and with submodules (truncated argument list). The fix prevents tracking a start point that has no ref and allows recursion to proceed when there is no tracking name.
-**Today's developments**:
-- D. Ben Knoble suggested simplifying the test case in the first patch by directly creating a branch at a non-ref start point (e.g., `git branch t @~3`) rather than first creating it at `HEAD~1` and then moving it.
-- The reviewer confirmed the technical soundness of the second patch but recommended improvements to the commit message and in-code comments.
-
----
-
-### Bundle-uri URI handling regression fixed
-**Thread root**: 2026/10/31/15-57-00
-**What changed**: Ravi Mistry's HTTP retry series resolved its primary blocker by agreeing to default `http.retryAfter` to **10 seconds** (with exponential backoff: 10s, 20s, 40s, ...).
-**Why it matters**: This compromise balances server protection (brian m. carlson's priority) with interactive usability (Ravi's concern). The series adds exponential backoff for HTTP retries and extends retries to POST operations.
-**Today's developments**:
-- Ravi accepted brian's argument that a 1-second initial delay is too short for Git's computationally expensive requests and agreed to the 10-second default.
-
----
-
-### Credential-cache daemon race condition fix
-**Thread root**: 2026/11/01/23-29-24
-**What changed**: Farid Zakaria's fix for a race condition in the Git credential-cache daemon acknowledged Junio's architectural concern about mixing `unix_ss_*` and `tempfile` APIs.
-**Why it matters**: The race causes concurrent `git credential-cache store` commands to unlink each other's sockets, leading to lost credentials and orphaned daemons. The fix uses `unix_ss_create()` to safely handle concurrent socket creation.
-**Today's developments**:
-- Farid explained that he was unsure whether the complexity of handling the "stolen" socket case was justified, given that the race might only occur during Git upgrades (old client + new daemon).
-
----
-
-### `git apply` crash regression fixed
-**Thread root**: 2026/10/24/05-24-49
-**What changed**: Hannes Brandstätter-Müller's fix for a crash in `git apply` when `core.fileMode=false` received substantive review.
-**Why it matters**: The regression causes patch series containing a pure rename followed by an edit to fail with `error: renamed: wrong type`. The fix prevents tracking a start point that has no ref.
-**Today's developments**:
-- Aniket Gupta identified a potential security edge case: a malicious patch could change a regular file into a symlink when `core.fileMode=false` is set, and proposed a refined fix that masks `patch->old_mode` to preserve only the permission bits (`07777`) and explicitly sets the file type to regular (`S_IFREG`).
-- Junio questioned whether the scenario (a pure rename followed by a type-changing patch) represents a *valid* patch input or merely corrupt data.
-
----
-
-### Loose ODB cache invalidation bug fixed
-**Thread root**: 2026/11/04/12-16-33
-**What changed**: Patrick Steinhardt's fix for a bug where newly written merged blobs in `git merge` cannot be read back due to stale loose object cache entries was endorsed for `next`.
-**Why it matters**: The bug causes Git to incorrectly assume objects are missing locally and trigger unnecessary, failing backfill fetches from promisor remotes. The fix ensures the loose object cache is properly invalidated after writing merged blobs.
-**Today's developments**:
-- Junio endorsed landing the current patch as a targeted regression fix while documenting the broader `QUICK` flag limitations via a `NEEDSWORK` comment in `odb.h`.
-
----
-
-### `git unpack-objects` type mismatch fixed
-**Thread root**: 2026/11/06/12-51-15
-**What changed**: Kristofer Karlsson's fix for a type mismatch in `unpack-objects` that causes blob sizes larger than 4GB to be truncated on 32-bit platforms (notably Windows).
-**Why it matters**: The regression was introduced in `f2063855fb` (May 2026) when object sizes were migrated to `size_t` but `stream_blob()` was left using `unsigned long`. The fix changes `stream_blob()` to accept `size_t`.
-**Today's developments**:
-- The patch was posted as part of a two-patch series, with the second patch adding test coverage.
-
----
+### default object format for new repositories in Git v3
+Adam Dinwoodie reported that `git init` built with `WITH_BREAKING_CHANGES=1` still creates repositories with the sha1 object format rather than sha256, confirmed at v2.56.0, `next` and `main`, with repro steps. brian m. carlsson confirmed the behavior appears broken and said he has a patch running through CI that he will send once it is green.
 
 ## In brief
-- **`git rerere` subcommand modernization**: Patrick Steinhardt's 12-patch series converting `git rerere` to use `OPT_SUBCOMMAND()` received surface-level review. Karthik Nayak suggested minor improvements to enum documentation and code structure.
-- **`git log --follow` performance**: Patrick Steinhardt identified a potential regression in Miklos Vajna's performance series, where `follow_needs_renames()` disables rename detection for commits with unrelated histories, contradicting the intent of commit 304812ed33.
-- **`git rev-list` option parsing**: Junio challenged the architectural premise of Azuama Odinaka Maximus's fix, suggesting eliminating the "early scan" entirely and solving the underlying problem by recording explicit option settings during normal parsing.
-- **`git ls-files --type` proposal**: Alejandro Colomar's feature request for a `--type` filter option was rejected by Junio, who argued that `git ls-files` is a plumbing command and should not grow arbitrary filtering options.
-- **Outreachy proposals**: Shashank S proposed implementing promisor remote fetch ordering, while Srujith Poojary targeted global state reduction in pathspec skip-worktree matching logic.
-- **GitLab CI speedups**: Patrick Steinhardt's seven-patch series targeting GitLab CI bottlenecks received maintainer acknowledgment. Junio found all patches "interesting" and "fully made sense."
-- **`git column` argument parsing**: Fien Dora proposed refactoring `git column` to use `early_scan_options()`, seeking maintainer input on whether to preserve current restrictions or expand to full `parse_options()` flexibility.
-- **Git v3 compatibility**: Adam Dinwoodie reported that `git init` incorrectly defaults to SHA-1 even when Git is built with `WITH_BREAKING_CHANGES=1`. brian m. carlson confirmed the bug and is preparing a fix.
+- Aniket Gupta reproduced the `git apply` failure on a pure rename followed by an edit with `core.fileMode=false` and proposed `S_IFREG | (patch->old_mode & 07777)`; Junio C Hamano questioned whether the input is valid and whether the fix works in reverse.
+- Patrick Steinhardt proposed moving ahead with the `odb/source-loose` stale-cache fix for newly written objects; Junio C Hamano accepted it and asked for a NEEDSWORK comment auditing `QUICK` uses of `OBJECT_INFO_FOR_PREFETCH`.
+- Kristofer Karlsson changed `stream_blob()` in `builtin/unpack-objects.c` to take the blob size as `size_t`, fixing truncation of blobs over 4GB where `unsigned long` is 32 bits.
+- Junio C Hamano endorsed Matt Hunter's approach of passing more context into `get_follow_remote_head()` for lazy `remote.<name>.followRemoteHEAD` resolution, calling it "very cleanly done".
+- Derrick Stolee gave an LGTM to Aniket Gupta's bundle-URI series skipping unresolvable relative URIs instead of dying; Gupta conceded the credentials patch covers only one message and offered a corrected v4.

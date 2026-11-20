@@ -1,169 +1,68 @@
 # Git mailing list daily digest for 2026/11/06
 
+## Long threads
+
+### reflog: add format %gb
+
+*Long thread (root 2026/10/15/13-13-55): 33 replies so far from 6 participants over 23 days; 1 message that day.*
+
+Harald Nordgren's series adds a `%gb` placeholder to `git log -g --format` that names the branch `HEAD` was on when each reflog entry was recorded, following branch switches, branch renames and rebases and showing "detached at <commit>" for a detached `HEAD`; v4 fixed `%gb` to name the correct branch when `git rebase <upstream> <branch>` runs with `GIT_REFLOG_ACTION` set. Phillip Wood reported that the "detached at " label shows the commit before switching away from a detached `HEAD` rather than the commit where `HEAD` was detached, that parsing "rebase: checkout <revision>" still treats "origin/main" as a branch name and is confused by commit subjects starting with "checkout ", and supplied a failing test covering those issues plus correct handling of ':' in a URL in `$GIT_REFLOG_ACTION`.
+
+### root refs vs pseudorefs documentation
+
+*Long thread (root 2026/10/22/21-28-48): 27 replies so far from 4 participants over 16 days; 6 messages that day.*
+
+Andy Koppe posted v3 of the five-patch series that stops calling root refs pseudorefs across the glossary, `gitdatamodel(7)` and other documentation, explaining the additional semantics of pseudorefs (they can record more than one object ID and extra metadata, and yield the first object ID when used) and clarifying the `FETCH_HEAD` and `MERGE_HEAD` descriptions. Junio C Hamano reviewed patches 1/5 through 4/5, calling the pseudoref rewording "very very good" and the new root ref entry "good", praising the per-worktree ref update as "very nice", welcoming the `core.logAllRefUpdates` "always" correction as fixing a "grave mistake", and confirming that `--include-root-refs` covers all root refs such as `ORIG_HEAD`; he objected to dropping "pseudorefs" from the `--merge` error message.
+
+### ejecting unreviewed topics from 'seen'
+
+*Long thread (root 2026/07/27/03-09-12): 23 replies so far from 5 participants over 103 days; 1 message that day.*
+
+Junio C Hamano has been proposing a policy rule that topics not reviewed for a period are ejected from `seen`, after his aggressive acceptance of topics left many marked "Needs review" for weeks. He agreed with Phillip Wood's earlier suggestion to clarify that ejection is not a permanent rejection, and proposed new heading text for the [Discarded] section of the "What's cooking" report stating that removed topics can be resubmitted if they gain enough interest and show good fit to the system in the future.
+
+### config: read both home and XDG files for --global
+
+*Long thread (root 2025/10/10/01-14-05): 20 replies so far from 5 participants over 393 days; 2 messages that day.*
+
+Delilah Ashley Wu's v3 series makes `git config --global` read both `$HOME/.gitconfig` and `$XDG_CONFIG_HOME/git/config` by routing global-scope reads through `do_git_config_sequence()` with the other scopes ignored, fixing the inconsistency where `git config list --global` only read the former. Junio C Hamano affirmed the t1300 test patch as "OK" and asked whether XDG config is always `~/.config/git/config`; on the implementation patch he asked for a shorter commit message, said the idea "does look sensible", and wondered whether to add a `BUG()` guard in `git_config_system()` against NULL options.
+
+### stash creation: avoid unnecessary index loads and refreshes
+
+*Long thread (root 2026/10/05/16-35-29): 20 replies so far from 2 participants over 33 days; 2 messages that day.*
+
+Phillip Wood's v4 series removes duplicate index loads and refreshes in `git stash push` and `git stash create`, cutting `lstat()` calls per changed path by four for create and eight for push, and reworks temporary index creation to use `create_index_from_tree()` instead of `reset_tree()`. Junio C Hamano reviewed the last two patches, saying patch 6/7 makes sense because `create_index_from_tree()` is a file-scope static function and the refresh is not needed with the current calling sequence, and calling the `reset_tree()` signature simplification in 7/7 an obvious, very nice simplification.
+
 ## The day in brief
-The Git mailing list saw active discussion on several fronts today. Key developments include maintainer feedback on the global config file handling series (now technically complete), a policy update for the `seen` integration branch to frame ejections as reversible, and substantive reviews identifying correctness issues in the `%gb` reflog format placeholder and `git log --follow` performance series. Additionally, a bug in `git init`'s default object format under `WITH_BREAKING_CHANGES=1` was confirmed and a fix is in progress.
+Junio C Hamano marked the parse-options `--git-completion-helper` topic ready for `next` and proposed clarifying that topics ejected from `seen` can be resubmitted rather than permanently rejected. Andy Koppe's root-refs-vs-pseudorefs documentation reroll drew detailed review from Junio C Hamano, while brian m. carlson confirmed that `git init` built with `WITH_BREAKING_CHANGES=1` still defaults to sha1 and has a fix running through CI.
 
 ## Notable threads
 
-### Global config file handling inconsistency fix
-**What changed?**
-Junio C Hamano provided final maintainer feedback on Delilah Ashley Wu's v3 series fixing Git's global config file handling inconsistency. The series is now technically complete with all feedback addressed.
+### default object format for new repositories in Git v3
+Adam Dinwoodie reported that `git init` built with `WITH_BREAKING_CHANGES=1` still creates new repositories using the sha1 object format rather than sha256, confirmed at v2.56.0, `next` and `main`, with repro steps. brian m. carlson confirmed the behavior appears broken and said he has a patch running through CI that he will send once it is green.
 
-**Problem/goal**
-The series fixes an inconsistency where `git config list --global` only showed `$HOME/.gitconfig` while Git actually reads both that and `$XDG_CONFIG_HOME/git/config` for unscoped operations.
+### defer remote.<name>.followRemoteHEAD validation
+The series defers validation of `remote.<name>.followRemoteHEAD` from `handle_config()` to `do_fetch()` via the `get_follow_remote_head()` helper, so commands like `git push` or `git remote -v` no longer warn about a value only `git fetch` consults. Matt Hunter reported that merging a rewrite of the topic into `seen` produces the same conflict in `do_fetch()` as replaying the current topic, and Junio C Hamano endorsed Hunter's approach of passing more context into `get_follow_remote_head()` for the lazy string-to-value conversion as "very cleanly done", asking Colin for his preference on moving the topic forward.
 
-**Subsystem**
-Configuration handling (`config.c`, `builtin/config.c`)
+### parse-options: answer --git-completion-helper before command runs
+The Outreachy series removes the `NO_PARSEOPT` flag from builtins that now use parse-options (`patch-id`, `diff-pairs`, `fast-import`, `var`) so bash completion can ask them for options via `--git-completion-helper`. Junio C Hamano marked the v5 topic ready for `next`.
 
-**Kind of change**
-Bugfix
+### rev-list: handle arguments in early option scan
 
-**Impact**
-The fix ensures consistent behavior between config listing and actual config reading operations, improving user experience and script reliability.
+Azuama Odinaka Maximus's v4 patch makes the early option scan in `cmd_rev_list()` skip arguments of options like `--grep` and `--author` so they are not mistaken for options. Junio C Hamano criticized the hardcoded option-name array as fragile and incomplete, missing options from `diff_merges_parse_opts()` and `diff.c`. After Azuama surveyed the parsing paths and proposed sharing option-recognition logic between the early scan and normal parser, Junio questioned whether keeping a separate early scan is worthwhile, suggesting instead that values like `.fetch_if_missing` be synthesized after all command-line options have been seen.
 
-**Today's developments**
-- [2026/11/06/13-08-09] Junio accepted the first patch ("t1300: test list with missing global config") with a minor question about test portability regarding XDG paths
-- [2026/11/06/13-28-09] Junio accepted the second patch ("config: read global scope via config_sequence") with a request for a defensive `BUG()` check in `git_config_system()` to ensure no caller passes a NULL `opts` pointer
-
-The series is now ready for integration pending this minor defensive programming tweak.
-
-### Integration pipeline policy update
-**What changed?**
-Junio C Hamano adopted Phillip Wood's suggestion to explicitly frame ejection from the `seen` branch as reversible.
-
-**Problem/goal**
-The policy change aims to reduce contributor anxiety by emphasizing that ejection from `seen` is temporary and contingent on renewed engagement, not a judgment on the patch's merit.
-
-**Subsystem**
-Integration pipeline/workflow
-
-**Kind of change**
-Policy update
-
-**Impact**
-This social change makes the `seen` branch more welcoming to contributors by signaling that ejection is a low-stakes, reversible action rather than a final rejection.
-
-**Today's development**
-- [2026/11/06/20-38-57] The maintainer updated the "Discarded" section wording in "What's cooking" reports to: *"Many of these topics were picked up prematurely but did not prove ready for inclusion, and will be removed. They can be resubmit if they gained enough interest and showed good fit to the system in the future, unless noted otherwise."*
-
-### Reflog format placeholder correctness issues
-**What changed?**
-Phillip Wood identified two remaining correctness issues in the `%gb` reflog format placeholder implementation.
-
-**Problem/goal**
-The `%gb` placeholder is meant to show the branch name for each reflog entry, but currently has issues with detached HEAD entries and rebase checkout parsing.
-
-**Subsystem**
-Reflog walking (`reflog-walk.c`)
-
-**Kind of change**
-Bugfix
-
-**Impact**
-These issues could undermine the feature's reliability for users tracking branch history through complex operations like rebases.
-
-**Today's development**
-- [2026/11/06/11-08-05] Phillip identified:
-  1. Detached HEAD entries are mislabeled with the commit *before* switching away rather than the commit where HEAD was originally detached
-  2. The rebase checkout parsing logic is fragile, incorrectly treating remote branch names as local and being confused by commit subjects starting with "checkout "
-- Phillip provided a failing test case that exercises both issues
-
-The series will need to address these issues before merging.
-
-### `git log --follow` performance and correctness
-**What changed?**
-Patrick Steinhardt identified correctness regressions in Miklos Vajna's `git log --follow` performance series.
-
-**Problem/goal**
-The series aims to improve performance of `git log --follow` when tracking file history across complex merge topologies, but has introduced correctness issues.
-
-**Subsystem**
-Revision walking (`revision.c`, `log-tree.c`)
-
-**Kind of change**
-Performance optimization with correctness fixes
-
-**Impact**
-The identified issues could cause `git log --follow` to miss important history in certain merge scenarios.
-
-**Today's developments**
-- [2026/11/06/14-14-03] Patrick identified a potential regression where `follow_needs_renames()` disables rename detection for commits with unrelated histories
-- [2026/11/06/14-14-17] Patrick identified a correctness regression in file copy handling: the new logic fails to track edits to the *source* of a copy when the merge keeps the copied file but drops the original
-
-The series will need significant revision to address these issues.
-
-### Git v3 compatibility bug
-**What changed?**
-Brian M. Carlson confirmed a bug in `git init`'s default object format when Git is built with `WITH_BREAKING_CHANGES=1`.
-
-**Problem/goal**
-`git init` incorrectly defaults to SHA-1 even when Git is built with `WITH_BREAKING_CHANGES=1`, which should enable Git v3 behavior where SHA-256 is the expected default.
-
-**Subsystem**
-Repository initialization (`builtin/init-db.c`)
-
-**Kind of change**
-Bugfix
-
-**Impact**
-This bug affects downstream consumers like Nixpkgs that rely on the breaking-changes flag to test Git v3 compatibility.
-
-**Today's developments**
-- [2026/11/06/16-50-03] Adam Dinwoodie reported the issue
-- [2026/11/06/20-46-24] Brian M. Carlson confirmed the bug and reported having a fix already prepared and undergoing CI testing
+### git apply: pure rename followed by edit fails with core.fileMode=false
+With `core.fileMode=false`, applying a patch series containing a pure rename followed by an edit to the renamed file fails with "error: renamed: wrong type". Aniket Gupta reproduced the bug, showed that taking the whole mode from `patch->old_mode` would let a hand-made patch turn a regular file into a symlink, and proposed `S_IFREG | (patch->old_mode & 07777)` instead; Junio C Hamano asked whether a patch naming the same path twice is valid input and whether the approach works when applying the patch in reverse.
 
 ## In brief
-
-- **[2026/11/06/14-05-09]** D. Ben Knoble suggested simplifying a test case in the submodule subsystem by directly creating a branch at a non-ref start point
-- **[2026/11/06/14-10-10]** D. Ben Knoble confirmed the technical soundness of a submodule bugfix but recommended improvements to commit message and in-code comments
-- **[2026/11/06/04-03-40]** Junio asked Matt Hunter to test his alternative implementation for the `remote.<name>.followRemoteHEAD` series in the `seen` branch
-- **[2026/11/06/09-34-46]** Matt Hunter reported that his alternative implementation produces the same mechanical conflict with `hn/fetch-refmap` as the original
-- **[2026/11/06/16-15-10]** Junio endorsed Matt Hunter's folded-in `get_follow_remote_head()` rewrite as "much easier for callers" and "very cleanly done"
-- **[2026/11/06/00-36-16]** Junio raised a design concern about hardcoding option strings in the `git rev-list` option-parsing fix
-- **[2026/11/06/13-25-56]** The author proposed refactoring the early option scan to reuse the main parser's option-recognition logic
-- **[2026/11/06/18-18-59]** Junio challenged the architectural premise of the proposed refactor, suggesting to eliminate the early scan entirely
-- **[2026/11/06/14-14-03]** Patrick Steinhardt reiterated mailing-list norms about inline replies and requested a `range-diff` for future iterations
-- **[2026/11/06/18-11-45]** Aniket Gupta identified a security edge case in the `git apply` regression fix
-- **[2026/11/06/20-36-07]** Junio questioned the fundamental premise of the `git apply` fix, asking whether the scenario represents valid input or corrupt data
-- **[2026/11/06/12-10-24]** Antonin Delpeuch proposed adding a dedicated section for communication channels in the governance documentation
-- **[2026/11/06/18-31-14]** Junio responded to governance documentation questions but didn't know who moderates IRC/Discord
-- **[2026/11/06/00-03-07]** Brian M. Carlson resolved the open question about algorithm ID 0 in the Rust hash module
-- **[2026/11/06/11-16-46]** Patrick Steinhardt acknowledged concerns about the `QUICK` flag in the ODB cache invalidation fix
-- **[2026/11/06/16-02-13]** Junio endorsed landing the ODB cache invalidation fix while documenting the broader `QUICK` flag limitations
-- **[2026/11/06/08-50-01]** Karthik Nayak added `OPT_ALIAS` to the `parse-options` API documentation
-- **[2026/11/06/10-37-23]** Karthik Nayak suggested replacing a `for` loop with dynamic backend detection in the ODB test suite
-- **[2026/11/06/11-01-58]** Patrick Steinhardt declined the suggestion, arguing the test should explicitly verify ref storage format behavior
-- **[2026/11/06/16-27-44]** Ravi Mistry accepted a 10-second default for `http.retryAfter` with exponential backoff
-- **[2026/11/06/20-24-06]** Christian Couder addressed three of four commands in an Outreachy proposal about `early_scan_options()`
-- **[2026/11/06/17-20-57]** Junio questioned the performance difference between `Expand-Archive` and `tar(1)` in a CI speedup patch
-- **[2026/11/06/17-33-01]** Junio suggested a stylistic refinement to a test script for better readability
-- **[2026/11/06/17-39-47]** Junio acknowledged the CI speedup series as "interesting" and "fully made sense"
-- **[2026/11/06/19-36-02]** Junio objected to a `memset()`-based refactor on stylistic grounds, advocating for compound literals
-- **[2026/11/06/14-54-32]** Patrick Steinhardt confirmed the core problem in a test fix for `t5608-clone-2gb.sh`
-- **[2026/11/06/15-12-38]** The author confirmed that `fetch.unpackLimit` has never applied to `git clone`
-- **[2026/11/06/12-51-15]** The author reported a bug in `unpack-objects` where blob sizes >4GB are truncated on 32-bit platforms
-- **[2026/11/06/12-51-16]** The author added assertions to `t5608-clone-2gb.sh` to ensure packs are truly the sizes they claim
-- **[2026/11/06/13-18-36]** Shashank S posted a revised Outreachy proposal for implementing promisor remote fetch ordering
-- **[2026/11/06/21-06-38]** Alejandro Colomar conceded the maintainer's argument against adding a `--type` filter to `git ls-files`
-- **[2026/11/06/16-44-06]** Srujith Poojary posted an Outreachy proposal to eliminate a hidden global dependency in pathspec skip-worktree matching
-- **[2026/11/06/17-26-48]** Fien Dora proposed refactoring `git column` argument parsing to use `early_scan_options()`
-- **[2026/11/06/17-44-49]** Joie Joie proposed replacing manual pack iteration with `repo_for_each_pack()` in `fast-import.c`
-- **[2026/11/06/21-02-10]** Junio posted the "What's cooking in git.git" report for November 2026
-- **[2026/11/06/01-59-11]** Junio reviewed a stash optimization patch as "makes sense"
-- **[2026/11/06/01-59-12]** Junio reviewed a stash optimization patch as "an obvious simplification. Very nice."
-- **[2026/11/06/07-36-46]** Kaartic Sivaraam reported that updated microproject guidelines are now live
-- **[2026/11/06/10-51-13]** Karthik Nayak suggested documenting that `RERERE_NOAUTOUPDATE` outputs conflict resolution information to stderr
-- **[2026/11/06/10-56-58]** Karthik Nayak confirmed that preparatory commits for the `git rerere` subcommand modernization are straightforward
-- **[2026/11/06/19-53-13]** Cynthia Uche suggested minor copy-edits to the `parse-options` API documentation
-- **[2026/11/06/10-40-23]** Karthik Nayak confirmed a change to `git rev-parse` as "makes sense"
-- **[2026/11/06/23-16-31]** Junio suggested alternatives for an error message in the glossary documentation
-- **[2026/11/06/21-31-03]** Andy Koppe posted v3 of the glossary and documentation alignment series
-- **[2026/11/06/21-31-04]** Andy Koppe posted the first patch of the glossary documentation series
-- **[2026/11/06/21-31-05]** Andy Koppe posted the second patch of the glossary documentation series
-- **[2026/11/06/21-31-06]** Andy Koppe posted the third patch of the glossary documentation series
-- **[2026/11/06/21-31-07]** Andy Koppe posted the fourth patch of the glossary documentation series
-- **[2026/11/06/21-31-08]** Andy Koppe posted the fifth patch of the glossary documentation series
-- **[2026/11/06/22-02-57]** Andy Koppe replied to Julia Evans's feedback on the glossary's "pseudoref" entry
-- **[2026/11/06/22-13-34]** Junio reviewed the first patch of the glossary documentation series
-- **[2026/11/06/22-16-56]** Junio reviewed the second patch of the glossary documentation series
-- **[2026/11/06/23-08-15]** Junio reviewed the third patch of the glossary documentation series
+- Patrick Steinhardt objected that the v4 `--follow` speedup fix in patch 6/6 does not hold when a file is copied rather than renamed, and asked whether `follow_needs_renames()` returning 0 for unrelated histories is a regression.
+- Kristofer Karlsson changed `stream_blob()` in `builtin/unpack-objects.c` to take the streamed blob size as `size_t`, fixing truncation of blobs over 4GB on platforms where `unsigned long` is 32 bits wide.
+- Patrick Steinhardt agreed to move ahead with the `odb/source-loose` stale-cache fix for newly written objects; Junio C Hamano accepted it and asked for a NEEDSWORK comment on `OBJECT_INFO_FOR_PREFETCH` about auditing uses of `QUICK`.
+- D. Ben Knoble reviewed the branch recursion fix for a nameless start point, correcting the causal chain to `find_tracked_branch()` and suggesting simplified commit messages and tests.
+- Derrick Stolee gave an LGTM to the bundle-uri series that stops dying on unresolvable relative URIs; Aniket Gupta conceded the credentials-anonymizing patch covers only one of the messages that can print a password.
+- Aniket Gupta fixed `add_patterns_from_buffer()` in `dir.c` to skip ignore-file lines that are blank after trimming, so they no longer become empty patterns matching directory paths.
+- brian m. carlson argued that an `ObjectID` with algo 0 passed from C is intended to panic, pointing to a patch on the sha256-interop branch making `ObjectID` members non-public.
+- Joy Gundu proposed zero-initializing repository configuration values with `memset()`; Patrick Steinhardt called it obviously correct, while Junio C Hamano preferred C99 designated initializers.
+- Patrick Steinhardt asked for direct replies to review comments and a range-diff in the next version of the `--follow` speedup series.
+- Patrick Steinhardt posted v3 of the rerere subcommands series; Junio C Hamano said the new `RERERE_NOAUTOUPDATE` comment still lacks an explanation of why the flag is needed. *Long thread (root 2026/10/27/10-46-43): 17 replies so far from 4 participants over 11 days; 9 messages that day.*
+- Antonin Delpeuch and Junio C Hamano discussed additions to the governance documentation, including communication channels, security-list membership and localization-maintainer handover.
+- Patrick Steinhardt posted a 7-patch CI speedup series covering SDK installation, Meson build type and slow tests; Junio C Hamano called all patches interesting reads that fully made sense.
