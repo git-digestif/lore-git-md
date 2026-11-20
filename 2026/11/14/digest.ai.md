@@ -1,64 +1,64 @@
 # Git mailing list daily digest for 2026/11/14
 
+## Long threads
+
+### fetch: limited fetching for new remotes in shallow clones
+
+*Long thread (root 2026/09/19/14-47-26): 78 replies so far from 6 participants over 57 days; 2 messages that day.*
+
+Harald Nordgren posted v14 of the series that keeps a shallow single-branch clone from downloading every branch of a newly added remote. The series adds `remote.<name>.fetchRefmap` as a configured default for `--refmap`, makes a refmap-only remote work on its own so plain `git fetch` fetches the branches local branches track, adds `git remote add --limited-fetch`, and defaults to `--limited-fetch` in shallow repositories. Today's v14 squashes the `@{push}` resolution fix into "fetch: infer branches to fetch from a refmap-only remote", moves its test to `t/t5586-fetch-refmap.sh`, and drops the separate "remote: resolve @{push} through remote.<name>.fetchRefmap" commit, shrinking the series from six patches to five. Earlier, reviewers had debated the cover letter, the overlap between `.fetch` and `.fetchRefmap`, and whether the `@{push}` failure was a bugfix belonging with the earlier patch; Nordgren agreed it was and said he would fix it.
+
+### repo: path keys for `git repo info`
+
+*Long thread (root 2026/07/16/01-21-31): 60 replies so far from 6 participants over 122 days; 1 message that day.*
+
+K Jayatheerth posted v9 of the GSoC series exposing repository paths via `git repo info`. The five patches add `path.workingtree.absolute`/`.relative`, refactor `get_superproject_working_tree()` to take a `struct repository *`, add `path.superprojectworkingtree.absolute`/`.relative`, add `path.index.absolute`/`.relative`, and add `path.prefix` for the path from the worktree root to the current directory. The revision renames `path.toplevel.*` to `path.workingtree.*`, `path.superproject-root.*` to `path.superprojectworkingtree.*`, and `path.git-prefix` to `path.prefix`, and drops `path.hooks` and `path.cdup`, which earlier reviewers had argued encouraged an outdated interface or added nothing over the relative working-tree path.
+
+### branch: `--delete-integrated` for squash-merged branches
+
+*Long thread (root 2026/09/29/07-30-30): 57 replies so far from 7 participants over 47 days; 3 messages that day.*
+
+Harald Nordgren posted v7 of the series letting `git branch --delete-integrated` delete branches whose changes landed via squash or rebase merges, naming the upstream commit in output as "landed as <commit>". Changes in v7: a new test that the option keeps a branch whose changes did not land, reading the index once before the walk in `find_landed_commits()` instead of at every file merge, and a commit message stating the merge uses the repository's attributes from the working tree and the index. Tuomas Ahola reviewed patch 4/4 with wording nits on the commit message and documentation.
+
+### doc: rewrite of the detached HEAD explanation
+
+*Long thread (root 2026/10/07/14-52-01): 45 replies so far from 5 participants over 39 days; 3 messages that day.*
+
+Julia Evans's series rewrites the detached HEAD explanation into a standalone guide referenceable as `git help detached-head` in advice. Today Junio C Hamano approved her proposed sentence "You can also use this to make experimental commits without being on a branch", calling it sufficient to hint at detached HEAD's usefulness, and called the material short enough to be shared between the manual and a survival guide. Evans said she would submit the change with a commit message stating the document serves both purposes. Hamano noted `gitdetached-head.adoc` need not merely include `detached-head.adoc`; the rest of the file can serve as survival-guide material.
+
+### builtin/rerere: convert to subcommands
+
+*Long thread (root 2026/10/27/10-46-43): 29 replies so far from 6 participants over 19 days; 2 messages that day.*
+
+Patrick Steinhardt's 12-patch v4 series converts `git rerere`'s hand-rolled subcommand parsing to `OPT_SUBCOMMAND()`, giving each subcommand its own usage string. Today Junio C Hamano reported a possible UI regression in the new syntax: options placed before the subcommand are no longer accepted, so `git rerere --skip-locked gc` now fails and must be spelled `git rerere gc --skip-locked`. Tuomas Ahola also asked whether `git history fixup HEAD~10` is what Hamano's wished-for single `git fixup HEAD~10` command would do.
+
 ## The day in brief
-K Jayatheerth posted the final v9 of the `git repo info` path-keys series, now ready for merging after addressing all design objections. Harald Nordgren’s `fetchRefmap` v14 series gained strategic clarity: Patches 1–3 are confirmed sufficient to resolve conflicts with Collin’s dependent topic, strengthening the case for a partial merge. The `git branch --delete-integrated` v7 series is now technically complete, with all substantive review issues resolved. Junio C Hamano merged brian m. carlson’s Git v3 object format fix, ensuring `git init` defaults to SHA-256 under `WITH_BREAKING_CHANGES=1`.
+
+The day's most consequential developments were new revisions of three long-running series: Harald Nordgren's v14 of limited fetching in shallow clones and v7 of `--delete-integrated`, and K Jayatheerth's v9 of `git repo info` path keys. Reviewers also weighed in on `git repack --filter-to-loose` and the `git rerere` subcommand conversion's option-ordering regression, while Abhishek Agarwal posted a segfault fix for `git for-each-ref --no-format`.
 
 ## Notable threads
 
-### `git repo info` path-keys (v9 final)
-K Jayatheerth posted the **final v9** of the series adding four new path-related keys to `git repo info`: `path.workingtree`, `path.superprojectworkingtree`, `path.index`, and `path.prefix`. The series is now **mechanically complete, design-resolved, and ready for merging**, with all prior objections addressed.
+### apply: reject malformed new/deleted file headers
+Tanga Joris posted v2 of the Outreachy fix for a crash where `git apply --check` hit an assertion in `check_preimage()` on a patch whose new file also carried an old name. Patch 2/2 adds checks in `parse_git_diff_header()` rejecting a new file that also has an old name and a deleted file that also has a new name; patch 1/2 reports an empty "diff --git" header as a corrupt-patch error.
 
-The patches introduce scriptable, user-facing keys that expose filesystem locations of repository components (e.g., working tree, index file, superproject working tree, and the relative path from the top-level working tree to the current directory). Each key supports suffix-based formatting (absolute or relative paths), and the implementation avoids direct access to Git’s internals by mirroring existing struct fields. In bare repositories, the respective keys return an empty string, except for `path.index`, which returns paths unconditionally (aligning with `git rev-parse --git-path` precedent).
+### for-each-ref: fix segfault on `--no-format`
+Abhishek Agarwal posted v2 fixing the segfault when `git for-each-ref --no-format` (also affecting `git refs list`) sets the format string to NULL, which `verify_ref_format()` then dereferences. The fix assigns the default format after `parse_options()` when none remains, so `--no-format` cancels an earlier `--format`; v2 changes only the sign-off name.
 
-Key changes since v8:
-- **Dropped controversial keys**: `path.hooks` and `path.cdup` are excluded, resolving all remaining substantive objections.
-- **Naming convention enforcement**: All keys now use underscores (`_`) instead of hyphens (`-`), e.g., `path.superproject_working_tree`.
-- **Test efficiency**: Optimized tests to avoid initializing new repositories for each test (addressing a low-weight suggestion from Phillip Wood).
+### repack: `--filter-to-loose` for filtered-out objects
+Adithya Chakilam's series adds `--filter-to-loose=<dir>` to `git repack` so objects excluded by `--filter` are written directly as loose objects into another object directory, for key-value stores that manage objects individually. Junio C Hamano asked for a test that a non-existent destination directory errors before any real work, suggested `OPT_FILENAME` so relative paths resolve when `git repack` runs from a subdirectory, and asked to double-check that `close(unpack.in)` cannot close the same descriptor twice when `start_command()` fails.
 
-The series touches `builtin/repo.c` (implementation), `Documentation/git-repo.adoc` (documentation), `t/t1900-repo-info.sh` (tests for the new keys), `t/t1500-rev-parse.sh` (tests for the `get_superproject_working_tree()` refactoring), `submodule.c`/`submodule.h` (refactored `get_superproject_working_tree()` to respect the `repo` parameter), and `builtin/rev-parse.c` (updated caller of `get_superproject_working_tree()`). The new keys are:
-- `path.workingtree.absolute` / `path.workingtree.relative`: Root directory of the working tree (empty in bare repositories).
-- `path.superproject_workingtree.absolute` / `path.superproject_workingtree.relative`: Root of the superproject when inside a submodule (empty otherwise).
-- `path.index.absolute` / `path.index.relative`: Active index file (returns paths even if the file does not exist or the repository is bare).
-- `path.prefix`: Relative path from the worktree root to the current directory (e.g., `sub/dir/`), including a trailing slash.
+### setup: fix hash algorithm detection
+The patch restructures hash algorithm selection in `git init` so a re-init no longer changes the repository's hash algorithm: the command line wins, otherwise environment, config, then default are consulted only when the repository does not exist or has no hash set, and a mismatch on re-init is refused loudly. Junio C Hamano said the updated structure looks simpler and straightforward, and that he will replace the patch.
 
-The series is **uncontroversial** and aligns with all reviewer feedback. The only unresolved architectural concern—a two-phase plan to refactor shared logic into `repo-info.c`—is now lower priority and deferred to a follow-up series. Junio’s integration branches have **not yet queued** this version, but the risk of abandonment is effectively zero.
-
-### `fetchRefmap` v14: strategic clarity and partial merge proposal
-Harald Nordgren posted the **v14 cover letter** for the `fetchRefmap` series, which introduces a matching-inspired fetch mode for shallow repositories. The series is now down to five patches after squashing the `@{push}` resolution fix into Patch 3/5, addressing D. Ben Knoble’s feedback about patch organization.
-
-The goal remains unchanged: in a shallow single-branch clone of a large repository, `git remote add` followed by `git fetch` currently downloads every branch from the remote, negating the performance benefit of a shallow clone. The series lets users configure a remote to fetch only the branches tracked by local branches, either explicitly via `git remote add --limited-fetch` or automatically in shallow repositories.
-
-Patches 1–2 add the plumbing: `remote.<name>.fetchRefmap` (a configured default for `--refmap`) and a helper to collect upstream branches. Patch 3 makes a remote with only a `fetchRefmap` (no `fetch` refspec) infer which branches to fetch from the `@{upstream}` of local branches, and now also ensures `@{push}` resolves correctly for such remotes. Patch 4 adds the `--limited-fetch` flag to `git remote add`, and Patch 5 makes it the default in shallow repositories.
-
-The v14 revision is a targeted cleanup: the `@{push}` fix is now integrated into Patch 3/5, removing the bug-introduce-then-fix sequence that reviewers flagged. The test for `@{push}` resolution is moved to the existing `t5586-fetch-refmap.sh` file, decoupling it from the `--limited-fetch` flag. The series is otherwise unchanged from v13, retaining the override semantics (command-line refspecs override `fetchRefmap` entirely) and the precedence rule (`remote.<name>.fetch` > `remote.<name>.fetchRefmap` > dynamic branch enumeration).
-
-The cover letter explicitly ties the series to the ongoing strategic discussion: Matt Hunter’s clarification that **Patches 1–3 are sufficient to resolve the textual conflicts with Collin’s `ch/remote-defer-follow-remote-head-validation` topic** strengthens the case for a partial merge. Junio and Phillip Wood are now evaluating whether to merge Patches 1–3 now (unblocking the dependent topic) and defer Patches 4–5, or to insist on the full series. The architectural objection to Patch 3/5 (dynamic branch enumeration) is weakened by the new context, as the patch is required to resolve the conflicts. The series is otherwise ready for final review, with no known blockers beyond these strategic decisions.
-
-### `git branch --delete-integrated` v7: technically complete
-Harald Nordgren posted **v7** of the series teaching `git branch --delete-integrated` to detect branches whose changes were squash-merged or rebase-merged into an upstream branch, even when the upstream later modified the same files. The series is now **technically complete**: the two substantive review issues raised by Jasper Mayone in v6—redundant index reads and `.gitattributes` resolution from the wrong tree—are both fixed. A new test case verifies that branches whose changes never landed are not deleted, closing the last major correctness gap.
-
-The first two patches remain uncontroversial: patch 1/4 is a pure refactoring that extracts `branch_opted_out()` for reuse, and patch 2/4 extends `delete_branches()` to report the landing commit in the deletion message. Patch 3/4, which implements the `--delete-integrated` flag, is also uncontroversial after Junio’s variable-rename feedback was addressed in v6. Patch 4/4—the core squash-detection logic—now reads the index once before the walk in `find_landed_commits()`, eliminating the performance bottleneck Jasper identified, and the commit message explicitly documents that the merge uses this repository’s attributes from the working tree and index, resolving the `.gitattributes` resolution ambiguity.
-
-The new test case in patch 4/4 covers three edge cases: a branch whose changes never landed (`unmerged`), a branch whose changes landed only partially (`half-landed`), and a branch whose changes conflicted with upstream edits (`conflicting`). These scenarios directly address Jasper’s robustness concerns from v6, and the test’s structure (setup in `upstream/`, execution in `repo/`) mirrors the existing test suite. The only remaining loose ends are minor usability nits: outdated flag names in the cover letter, silent skipping of checked-out worktrees, and Phillip Wood’s call for clearer documentation of the algorithm’s limitations. None of these block integration, and the series is now ready for Junio’s queue.
-
-### Git v3 object format fix merged
-Junio C Hamano **merged** brian m. carlson’s revised bugfix patch (`[PATCH v2] setup: fix hash algorithm detection`) into `master`. The patch ensures `git init` respects the `WITH_BREAKING_CHANGES=1` flag by defaulting to SHA-256 for *new* repositories while preventing silent reinitialization of existing repositories with a different hash algorithm.
-
-The fix resolves two critical issues:
-1. **Default object format selection**: `git init` now correctly defaults to SHA-256 (via `GIT_HASH_DEFAULT`) when Git is built with `WITH_BREAKING_CHANGES=1`, aligning with Git 3.0 expectations for *new* repositories.
-2. **Reinitialization safety**: The restructured `repository_format_configure()` logic prevents silent clobbering of the object format when reinitializing an existing repository, instead failing loudly if an incompatible hash algorithm is specified.
-
-The patch does not apply to `maint`, as `WITH_BREAKING_CHANGES=1` is a forward-looking flag intended only for Git 3.0 testing. Junio praised the updated code structure as "much simpler and more straightforward" and confirmed he will replace the previous version in his integration queue.
+### credential: parse subcommands with OPT_SUBCOMMAND
+Wasswa Edson posted v2 of the three-patch series converting `git credential` dispatch from `strcmp()` to `OPT_SUBCOMMAND()`, so each subcommand gets its own `-h` usage and the names become available to completion. The series also makes `-h` output agree with the SYNOPSIS, moves each subcommand into its own function, and adds a helper rejecting leftover arguments with "too many arguments", with tests.
 
 ## In brief
-- **`git credential` OPT_SUBCOMMAND v2**: Wasswa Edson posted v2 of the series converting `git credential` to use `OPT_SUBCOMMAND` from the parse-options API. The series is now split into three patches: (1) aligning the `-h` output with the SYNOPSIS, (2) refactoring each subcommand into its own function, and (3) switching to `OPT_SUBCOMMAND`. The author addressed the two main issues raised in the v1 review: the code size claim is dropped, and a helper function (`parse_no_args`) is introduced to reduce repetitive boilerplate. The series also adds a test to verify that extra arguments are rejected, closing the missing test coverage gap.
-- **`git apply` crash fix v2**: Tanga Joris posted v2 of the two-part bugfix series targeting a crash in `git apply --check` when processing malformed diff headers. The series now **rejects corrupt patch headers outright** rather than attempting to normalize them. Patch 1/2 rejects patches with blank lines or indented mode lines after `diff --git`, while Patch 2/2 rejects patches where `---` appears before `new file mode` or `+++` appears before `deleted file mode`. Junio C Hamano requested tests for directory existence, path resolution, and a double-close bug in `repack-filtered.c`.
-- **`git repack --filter-to-loose` v1**: Adithya Chakilam posted a two-patch series introducing `--filter-to-loose=<dir>` for `git repack`, which writes filtered-out objects as loose objects into a specified directory. Junio C Hamano requested tests for directory existence, path resolution, and a double-close bug in the implementation.
-- **`git for-each-ref --no-format` v2**: Abhishek Agarwal posted v2 of the bugfix patch resolving a long-standing segmentation fault when `--no-format` is used. The patch moves the default format assignment to *after* command-line parsing, ensuring `--no-format` restores the default output. The v2 updates only the Signed-off-by line to comply with the real-name policy.
-- **Detached HEAD documentation follow-up**: Junio C Hamano approved Julia Evans’s addition of the sentence “You can also use this to make experimental commits without being on a branch” to the standalone `git help detached-head` guide, treating it as a minimal, uncontroversial improvement. The thread is now conclusively closed.
-- **Shell script diff context headers**: Johannes Sixt identified the root cause of `git diff` omitting shell function names from context headers for multi-line definitions: Git does not auto-detect shell scripts, so the generic hunk header pattern is used unless `diff=bash` is explicitly configured in `.gitattributes`.
-- **Worktree-specific submodule config**: Yoichi NAKAYAMA fixed a static-buffer issue in the first patch of the series introducing worktree-specific submodule configuration. The fix copies the result of `worktree_git_path()` into a `strbuf` immediately, ensuring the path remains valid.
-- **Promisor remote fetch ordering**: Kaartic Sivaraam provided substantive feedback on Hussain Sitamouwala’s Outreachy proposal for configurable promisor remote fetch ordering, questioning config precedence, protocol design, and patch series clarity.
-- **`git archive` the_repository removal**: René Scharfe identified an unused `struct repository *` parameter in `init_zip_archiver()` and noted the commit message overstates the removal of `USE_THE_REPOSITORY_VARIABLE`.
-- **Partnership proposal**: Weifang Leiming Cloud Network Technology Co., Ltd. proposed an AI-assisted development partnership for Git for Windows, offering pilot collaboration.
-- **`gitcli` documentation v2**: Dirk Gouders posted v2 of the documentation patch improving grammatical and stylistic consistency in `Documentation/gitcli.adoc`, incorporating all maintainer feedback.
+- Yoichi NAKAYAMA corrected his proposal for making `submodule.<name>.gitdir` relative in worktrees: `relative_path()` does not always store its result in the given `strbuf`, so the absolute-path branch must assign the return value directly.
+- Laveesh Bansal gave "Looks good to me" with Reviewed-by tags on both t0410 patches (rev-parse subtree OID, exit codes in test_grep), noting the test passes under SHA-256 too.
+- René Scharfe questioned passing `repo` to `init_zip_archiver()` in archive-zip.c where it is unused, and noted the file still sets USE_THE_REPOSITORY_VARIABLE.
+- Dirk Gouders posted v2 of the doc/gitcli fixes, keeping "argument" singular and using "before or after it" per Junio C Hamano's suggestion.
+- Harald Nordgren reported using the "push: suggest a force push after a clean rebase" patch from `seen`, sharing `git status` output showing "rebased cleanly on 'upstream/master'" with a `git push --force-with-lease` hint.
+- Kaartic Sivaraam confirmed v3 of the partial-clone promisor fetch ordering documentation is queued and agreed the client-side configuration should come first.
+- Kaartic Sivaraam gave extensive feedback on Hussain's Outreachy proposal draft for promisor remote fetch ordering, flagging reference errors and a conflict between the precedence rule and the preferred config shape.
+- Johannes Sixt explained that Git does not auto-activate diff drivers by extension or shebang; users must configure them (e.g. `*.sh diff=bash`) or the default hunk header pattern applies.
