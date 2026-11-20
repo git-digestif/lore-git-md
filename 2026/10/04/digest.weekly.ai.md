@@ -1,90 +1,160 @@
-# The Git Project -- Weekly Digest for 2026/09/28 -- 2026/10/04
+## Long threads
+
+### stash: in-core index merge for `stash apply --index`
+*Long thread: 53 replies so far from 5 participants over 13 days.*
+
+D. Ben Knoble's series replaces the subprocess-based index merge in `builtin/stash.c` with an in-core `merge_incore_nonrecursive()` call, fixing a non-re-entrant `save_autostash()` lock when autostashing with staged entries and `stash.index=true`. After v4 exposed a NULL-dereference risk on hard errors, v5 distinguished `result.clean < 0` from `!result.clean`; Phillip Wood confirmed the range-diff and Junio C Hamano marked the series for `next` on October 1.
+
+### sequencer: leave auto maintenance to the end of a sequence
+*Long thread: 33 replies so far from 5 participants over 25 days.*
+
+Thomas Bachem's v5 series makes merge-backend rebase sequences run auto maintenance once at completion, matching the apply backend, by calling `run_auto_maintenance()` from `builtin/rebase.c` and `builtin/revert.c` while passing `maintenance.auto=false` to spawned commands. Patrick Steinhardt noted the series is already cooking in `next` and agreed it looks ready.
+
+### uploadpack.lazyFetchTrusted server-side lazy fetch control
+*Long thread: 34 replies so far from 3 participants over 85 days.*
+
+Christian Couder's v5 rebases the series adding the protected `uploadpack.lazyFetchTrusted` config variable, letting server operators mark repositories trusted for lazy fetching during clones when large blobs live on a promisor remote. The series touches `builtin/upload-pack.c`, `promisor-remote.c`, and `setup.c`, and adds a `GIT_INTERNAL_LAZY_FETCH_DEPTH` recursion limit; v5 contains only comment, documentation, and test updates.
+
+### refs: report old values to transaction hooks
+*Long thread: 29 replies so far from 5 participants over 13 days.*
+
+Maciej Ciemborowicz's v6 single-patch series resolves old object IDs in the common reference-transaction layer before the "preparing" hook and refreshes them after the backend locks refs, so batched branch, tag, and remote-ref deletions report real old OIDs instead of all-zero values. Patrick Steinhardt had argued the fix belongs at the transaction layer rather than in individual callers.
+
+### rerere: wait for MERGE_RR.lock and skip in auto gc
+*Long thread: 23 replies so far from 4 participants over 31 days.*
+
+Thomas Bachem's v6 makes every rerere writer wait `rerere.lockTimeout` milliseconds for `MERGE_RR.lock`, adds a hidden `--skip-locked` option to `git rerere gc` used by `git maintenance run --auto` and `git gc --auto`, and lets conflict-time callers warn and continue via the renamed `RERERE_WARN_LOCKED` flag while `git commit` and `git am --continue` still fail.
+
+### Documentation: new gitmergeconflicts guide
+*Long thread: 32 replies so far from 6 participants over 10 days.*
+
+Julia Evans's seven-patch series adds a `gitmergeconflicts(7)` manual page explaining merge conflicts with examples, linked from `git-merge`, `git-pull`, `git-rebase`, `git-revert`, and `git-cherry-pick`. v2 added a "WHAT IS A MERGE CONFLICT?" section; reviewers including Patrick Steinhardt and Junio C Hamano suggested making `merge.conflictstyle=diff3` the default and enriching conflict markers with commit IDs and dates.
+
+### xdiff: use size_t for mmfile_t
+*Long thread: 21 replies so far from 4 participants over 3 days.*
+
+Jeff King's v2 seven-patch series consolidates `mmbuffer_t` into `mmfile_t`, switches buffer sizes to `size_t`, NUL-terminates buffers read by `read_mmfile()`, and makes `merge-ll` report errors when reading external merge results fails. Patrick Steinhardt reviewed the consolidation and Junio C Hamano accepted keeping the `mmfile_t` name.
+
+### format-patch range-diff notes options
+*Long thread: 25 replies so far from 4 participants over 42 days.*
+
+Kristoffer Haugsbakk's v5 series teaches `git format-patch` the `--[no-]range-diff-notes` options so the range diff can use a different notes ref than the patches themselves. v5 adopts Junio C Hamano's condensed documentation wording; the implementation uses a parse-options callback where `--no-range-diff-notes` means no range-diff notes at all.
+
+### shallow-repo fetch of new remotes via refmap
+*Long thread: 23 replies so far from 4 participants over 16 days.*
+
+Harald Nordgren's v6 four-patch series avoids fetching every branch of a new remote in shallow repositories by adding `remote.<name>.refmap`, inferring branches from local upstreams, and adding `git remote add --limited-fetch` defaulting in shallow repos. v6 removes a leftover reference to deleted default-branch logic; Nordgren answered Junio C Hamano's design question by proposing that `remote.<name>.fetch` should win over `refmap` when both are set.
+
+### push: fix --force-if-includes when the remote-tracking ref has no reflog
+*Long thread: 23 replies so far from 6 participants over 27 days.*
+
+Aleksei Sviridkin's v4 initializes the timestamp cutoff to 0 when the remote-tracking ref has no reflog, fixing false "remote ref updated since checkout" rejections of valid pushes on machines where the uninitialized value was non-zero. Junio C Hamano marked the patch for `next` and noted trivial t5533 conflicts with another topic.
+
+### branch: let --delete-merged find squash-merged branches
+*Long thread: 10 replies so far from 3 participants over 1 day.*
+
+Harald Nordgren's patch makes `git branch --delete-merged` treat a branch as merged when some upstream commit since the fork point contains all its changes, covering squash- and rebase-merged branches. D. Ben Knoble noted the check can be expensive and floated a `--delete-merged=squashed,rebased` option value; Nordgren said performance would be the only reason to hide the behavior.
+
+### repack: corner cases for cruft-less MIDXs
+*Long thread: 27 replies so far from 5 participants over 4 days.*
+
+Taylor Blau's v2 eight-patch series fixes reachability-closure gaps when `repack.midxMustContainCruft=false` can produce a multi-pack-index whose objects are not closed under reachability, using an oidset for extra roots and traversing kept packs during geometric repacks. Elijah Newren objected that oidset iteration order can regress pack quality by visiting subtrees first and preventing delta compression.
+
+### git var -z, multiple variables, broken-out idents
+*Long thread: 22 replies so far from 6 participants over 39 days.*
+
+Andrew Pleeter's v9 four-patch series adds a `-z` NUL-terminated output mode, support for multiple variable arguments, and new `GIT_AUTHOR_*`/`GIT_COMMITTER_*` identity variables to `git var`. Phillip Wood reviewed the series as good with only minor test-style nits about `test_env()` usage.
+
+### CI annotations linked to test scripts
+*Long thread: 20 replies so far from 4 participants over 10 days.*
+
+Harald Nordgren's two-patch series links GitHub Actions failure and leak annotations to the test script's file and line, and stops leak-sanitizer jobs at the first failure. He asked whether the inability to link annotations to test files unchanged in a PR constitutes a regression worth blocking the change.
+
+### RFC for git-brebase
+*Long thread: 12 replies so far from 2 participants over 1 day.*
+
+Alejandro Colomar posted an RFC for `git-brebase`, a 164-line shell script that rebases onto the first conflicting commit of a target branch using `git bisect` internally. Nico Williams preferred a `--first-conflict` option on `git rebase` itself and suggested script improvements including a `trap` and avoiding a temp callback file.
 
 ## The period in brief
 
-This week (2026/09/28--2026/10/04) was exceptionally active, with **seven high-volume days** and traffic that was both **heavy and consequential**. The Git project released **v2.56.0**, marking a major milestone with **748 non-merge commits** from 104 contributors, including foundational work for Git 3.0. Three developments stand out: the **Rust-based SHA-1 backend** offering 3× performance gains, the **`git stash` autostash bugfix** addressing a long-standing NULL-dereference risk, and the **`uploadpack.lazyFetchTrusted`** series providing server-side security controls for lazy fetching. The week also saw **architectural debates** about Git’s future, including proposals for **hostname-based `includeIf`**, **shared stash functionality**, and **incremental rebase workflows**.
-
----
+The week of 2026/09/28 through 2026/10/04 saw steady, high-volume traffic across seven active days, with several long-running series reaching decisive milestones. D. Ben Knoble's stash index-merge fix and Patrick Steinhardt's reftable reflog-timezone correction were both marked for `next`, while Christian Couder's `uploadpack.lazyFetchTrusted` and Thomas Bachem's rerere lock handling advanced to v5 and v6 respectively. Readers should not miss the submodule merge corruption investigation pointing to a stale delta-base cache, the new `gitmergeconflicts` documentation guide, and the `repack --dry-run` bug report showing pack files written despite the documented no-write promise.
 
 ## Key developments
 
-### Git v2.56.0 released
-Junio C Hamano announced the release of **Git v2.56.0**, featuring **748 non-merge commits** from 104 contributors. This release delivers **performance optimizations** in ref handling, pack-objects, and index scanning; **new commands** (`git history drop`, `git refs`, `git replay --linearize`); and **architectural shifts** including ODB abstraction, `the_repository` removal, and Rust support enabled by default. Security hardening addresses corrupt trees, NULL-dereferences, and Windows symlink auto-detection. UX improvements include better error messages, advice for diverged branches, and `git add --resolved`. The release sets the stage for **Git 3.0**, expected in spring 2027, with foundational work on ODB pluggability and Rust integration now complete.
+### Reftable reflog timezone encoding fixed
+Patrick Steinhardt posted a three-patch series correcting `refs/reftable-backend.c` to store reflog timezones as signed minute offsets per the reftable specification rather than `[+-]HHMM` integers, adding `tz_to_minutes()`/`minutes_to_tz()` helpers in `date.c` and a t0610 test. Junio C Hamano confirmed the fix looks ready and marked it for `next`; fallout is limited since timezones are display-only and JGit reads the value as minutes.
 
-### Rust-based SHA-1 backend (3× performance gain)
-Johannes Schindelin introduced a **four-patch series** adding an optional Rust-based SHA-1 backend (`sha1dc` crate) that delivers **~3× speedups** for `git index-pack` on Windows, WSL, and macOS. The series includes FFI integration, a runtime escape hatch (`core.sha1dcBackend=c`), thread-safety shims, and thread-safe initialization. The backend is **optional** and not enabled by default, addressing concerns about build complexity and platform support (e.g., NonStop). However, the **Rust version requirement (1.87)** and **110MB SDK size increase** for Git for Windows sparked policy-level objections from brian m. carlson, who argued the version bump should be handled in a separate policy discussion. The series remains in `seen` pending resolution of this policy question.
+### Submodule merge corruption traced to delta-base cache
+Philippe Blain bisected a superproject merge failure reading a commit from the wrong submodule to a commit-graph lookup change, and Patrick Steinhardt identified the root cause as stale delta-base cache entries keyed by `struct packed_git` address that are never evicted on pack close, reproducible via recursive submodule merges. Steinhardt posted a two-patch fix; Jeff King characterized the core bug as use-after-free and suggested ASan would find it reliably.
 
-### `git stash` autostash bugfix (NULL-dereference risk)
-D. Ben Knoble’s **five-patch series** fixing a race condition in `git stash` autostash with staged index entries was **ejected from `seen`** due to a **NULL-dereference risk** in the in-core merge logic. The series replaces subprocess-based merging with `merge-ort.c` to preserve staged entries, but Junio C Hamano identified that `result.tree` could be uninitialized on catastrophic merge failure, causing SIGSEGV. The author confirmed the issue and will address it by checking `result.clean` before dereferencing. The series also surfaced an **unrelated test breakage** in `t5520-pull.sh` caused by auto-maintenance triggering `git reflog expire`, which was diagnosed and fixed by Thomas Bachem. The fix is **high-priority** for stability, as the bug affects users of `stash.index=true` during merge operations.
+### http: curl credential stripping handled
+Jeff King posted a patch because upcoming curl 8.23.0 strips credentials from `CURLINFO_EFFECTIVE_URL`, which would make Git's direct string comparison falsely detect a redirect and flush `http_auth` credentials. Patrick Steinhardt suggested `CURLINFO_REDIRECT_COUNT` but King reported it counts automatic auth retries; Junio C Hamano called the `curl_url()`-based `match_effective_url()` approach "very nice".
 
-### `uploadpack.lazyFetchTrusted` (server-side security control)
-Christian Couder’s **five-part v5 series** introducing `uploadpack.lazyFetchTrusted` reached technical completion, providing a **server-side mechanism** for operators to explicitly declare which repositories are safe to lazy-fetch from. The series replaces the earlier client-side `GIT_NO_LAZY_FETCH=fromAccepted` proposal with a protected configuration variable, addressing security concerns about untrusted repositories triggering arbitrary code execution. Junio C Hamano’s review identified a latent design issue in the existing `safe.directory` logic (silent ignoring of non-existent paths), which Christian acknowledged and proposed addressing in a follow-up patch. The series is now ready for maintainer review and integration.
+### "Limbo" object-format state proposed for empty repositories
+Jeff King proposed letting an empty server-side repository advertise a "limbo" object format so first pushes from either SHA-1 or SHA-256 clients succeed. brian m. carlsson argued `object-format=limbo` would break existing clients, and King proposed a new ignorable capability ("magic-limbo") paired with a valid `object-format=` value; Junio C Hamano lamented that multiple `object-format` capability lines would have been the right design.
 
-### `gitmergeconflicts(7)`: New man page for conflict resolution
-Julia Evans’ **RFC series** converting Git’s merge conflict advice into a dedicated `gitmergeconflicts(7)` man page saw significant progress. The series adds a **"WHAT IS A MERGE CONFLICT?"** section, improves the explanation of `diff3` conflict style, and clarifies terminology. Junio C Hamano and Patrick Steinhardt proposed **embedding commit details directly into conflict markers**, transforming them from passive indicators into active resolution tools. The discussion also gained momentum around making `merge.conflictstyle=diff3` the default, with both maintainers strongly advocating for this change. The series is now in its third iteration and nearing completion.
+### repack --dry-run writes packs bug reported
+Coy Geek reported that on Git 2.56.0, `git repack -a --filter=blob:limit=1m --drop-filtered --dry-run` writes four new files (`.pack`, `.idx`, `.promisor`, `.rev`) to the pack directory and, with explicit `-d`, deletes 12 existing files, contradicting the manual's promise that `--dry-run` lists candidates without rebuilding or deleting.
 
-### MIDX reachability closure fixes
-Taylor Blau’s **eight-patch v2 series** fixing corner cases in Git’s multi-pack-index (MIDX) reachability closure received substantive review feedback from Jeff King and Elijah Newren. The series addresses scenarios where MIDXs can end up containing objects not closed under reachability, violating the MIDX’s invariant and causing bitmap generation failures. The key debate centers on the **data structure choice for `extra_roots`**: Newren’s test cases demonstrated that an `oid_array` preserves critical path and namehash ordering required for delta compression quality, while an `oidset` would introduce functional regressions. The series remains in review, with the `oidset` vs. `oid_array` question unresolved.
+### merge-ort: --no-overwrite-ignore bypassed at rename destination
+Coy Geek reported that `git merge --no-overwrite-ignore` fails to protect an ignored, untracked file when directory rename detection moves a committed file onto that path, overwriting the ignored content in both default and `conflict` modes; a direct collision is correctly refused, so only rename-detection destinations bypass the guard, reproduced on versions 2.54.0 through 2.56.0.
 
-### Unified `post-worktree` hook
-Domen Kožar posted **v3 of the unified `post-worktree` hook**, consolidating three separate hooks (`post-worktree-add`, `post-worktree-remove`, `post-worktree-move`) into a single hook with a subcommand-style interface. The hook takes four arguments: the event name (`add`, `move`, or `remove`), the worktree identifier, the old absolute path, and the new absolute path. The series directly addresses the need for **reliable observability** for worktree lifecycle events, even when the caller is uncontrolled (e.g., IDEs, manual deletion). Junio C Hamano remains fundamentally opposed to hooks, but the series is technically complete and has garnered support from users like Maciej Ciemborowicz, who reported real-world use cases for IDE integration.
+### post-worktree hook with prune notification
+Domen Kožar posted v3 of a series adding a single `post-worktree` lifecycle hook for add, move, and remove events, extended to pruning so each pruned entry emits a remove event (skipped during dry runs), with hook failures reflected in the exit status while remaining entries are still processed.
 
-### `--[no-]range-diff-notes` feature series
-Kristoffer Haugsbakk’s **feature series** adding `--[no-]range-diff-notes` options to `git format-patch` reached technical completion in its **v5 iteration**. The series introduces two new CLI options: `--range-diff-notes=<ref>` (requires an explicit ref argument) and `--no-range-diff-notes` (suppresses notes in the range-diff without fallback). The interaction rule is simple: if no range-diff notes options are given, the range-diff uses the same notes as the patches; otherwise, it uses only the explicitly specified notes. The series is now ready for integration, with all maintainer feedback addressed.
-
----
+### filter-branch state-branch map fix reaches v3
+Grant Moyer posted v3 fixing `git filter-branch --state-branch` map initialization, which since f6d855091e in 2.50.0 interpreted object pairs in reverse, causing the state branch to be effectively ignored; the patch restores `$from_commit:$to_commit` order and adds a test that incremental rewrites use rewritten parents. Michele Locati had confirmed the bug and supplied a Tested-by tag.
 
 ## In brief
 
-**`git filter-branch` bugfix** -- Michele Locati and Grant Moyer fixed a commit mapping inversion regression in `git filter-branch --state-branch` introduced in Git 2.50.0. The fix preserves the documented "from_commit:to_commit" format and includes comprehensive test coverage.
+**connected: incremental connectivity check** -- Kristofer Karlsson posted v2 of the opt-in `transfer.connectivityCheck=incremental` mode running the verifier inside the rev-list subprocess, reporting up to 190x speedup versus the full check for single-commit pushes to large boundary-closure repos.
 
-**Reftable reflog timezone encoding fix** -- Josh McKinney and Patrick Steinhardt fixed a discrepancy in Git’s reftable backend where reflog timezone offsets were written as signed HHMM integers instead of signed minutes, breaking interoperability with JGit. The fix aligns Git with the reftable specification.
+**Optional sha1dc Rust backend** -- Johannes Schindelin conceded his "compile-time" option is misleading since `sha1dc_choose()` selects the backend at runtime, and reported the Rust and C implementations cover the same collision-detection space; brian m. carlsson objected that the crate requires Rust 1.87 while Git supports older versions.
 
-**`gitbreaking-changes(7)` manpage** -- Julia Evans proposed converting Git’s `BreakingChanges` document into a manpage (`gitbreaking-changes(7)`), improving discoverability via `git help` and `man`. The RFC seeks feedback on the anchor style trade-off (manual vs. auto-generated anchors).
+**CI install failures** -- Patrick Steinhardt suggested the CI script should fail outright when perforce, git-lfs, or JGit fail to install rather than warn; Harald Nordgren agreed.
 
-**CI optimizations** -- Harald Nordgren and Tamir Duberstein improved GitHub Actions failure reporting for leak sanitizer jobs and capped job parallelism to CPU count. The changes reduce CI noise and improve debuggability.
+**git -C alias bug** -- Maya Barriault reported that `git -C other_repo` run via an alias from a worktree sets `GIT_DIR` and `GIT_COMMON_DIR` to the worktree's values instead of the target repository's.
 
-**`git stash create` options** -- Kazumasa Shigeta extended `git stash create` to support `--include-untracked` and `--all` options, addressing a long-standing inconsistency with `git stash push` and `git stash save`.
+**What's cooking** -- Junio C Hamano noted Git 2.56 has been tagged and the next version will be Git 2.98, followed by 2.99 in preparation for Git 3.0.
 
-**`includeIf "hostname:..."`** -- Isabella Caselli proposed adding a hostname-based `includeIf` condition for Git configuration, enabling multi-machine dotfile sharing. The RFC seeks feedback on hostname normalization and discoverability trade-offs.
+**docs: remove gittutorial-2** -- Julia Evans replied that she is not replacing `gittutorial-2` since `gitdatamodel` and `gitcore-tutorial` cover its material; Junio C Hamano asked that `po/` translations be left intact and later reported doc-lint fails with "no link: gittutorial-2" once merged.
 
-**`git(1)` man page rewrite** -- Julia Evans rewrote the `git(1)` intro to orient users toward the help system, replacing outdated tutorial references. Ben Knoble praised the conciseness but questioned the omission of `git help cmd`.
+**merge-ll tempfile cleanup** -- Jeff King's v3 "merge-ll: use tempfile API for external driver files" cleans up `.merge_file_*` temporaries on Ctrl+C; Junio C Hamano said he would mark it for `next`.
 
-**`gittutorial-2` removal** -- Julia Evans proposed removing the obsolete `gittutorial-2` document, simplifying the documentation landscape for future improvements.
+**reflog expiry periods** -- Pushkar Singh's v3 swaps back the default reflog expiry periods in `reflog.h` (reachable 90 days, unreachable 30); Patrick Steinhardt suggested testing at 88 days, which Junio C Hamano accepted.
 
-**Git for Windows 2.56.0** -- Johannes Schindelin announced the release, dropping Windows 8.1 support and fixing platform-specific bugs (e.g., large-object commits, parallel checkout crashes).
+**stash create flags** -- Kazumasa Shigeta's v2 lets `git stash create` accept `-u`/`-a`; Phillip Wood objected to the changed no-changes exit status and recommended `PARSE_OPT_STOP_AT_NON_OPTION`.
 
-**`git -C` alias bug** -- A user reported that `git -C other_repo` via alias in a worktree mis-sets `GIT_DIR` and `GIT_COMMON_DIR`, causing commands to operate on the wrong repository.
+**sparse-checkout clobbering** -- Webstrand reported that `git checkout` with sparse-checkout clobbers an untracked in-cone file instead of aborting, whereas before 681c637b4a Git refused the checkout and preserved it.
 
-**`git branch --delete-merged` squash-merge detection** -- Harald Nordgren extended `git branch --delete-merged` to recognize branches whose changes have been squash-merged or rebase-merged into an upstream branch. Phillip Wood identified backward-compatibility issues that need addressing.
+**backfill --dry-run RFC** -- Pablo Sabater's RFC adds `--dry-run` to `git backfill`; Derrick Stolee questioned the size metric and proposed `--info=(count|size)`.
 
-**`git config --list --show-origin` inconsistency** -- Christophe Lohr reported that the command displays `.git/config` as a relative path, creating confusion about the `.git` directory’s location.
+**checkout -m conflict labels** -- Phillip Wood's series makes `git checkout -m` reuse original conflict labels via `.git/MERGE_LABELS`, fixing CRLF parsing with `strbuf_getline()`; Junio C Hamano agreed to document the common repository files separately.
 
-**`git submodule` root-relative URLs** -- Stanislav Aleksandrov proposed `^/` syntax for submodule URLs, allowing them to be resolved relative to the superproject’s remote server root.
+**@{p} shorthand** -- Harald Nordgren's patch makes `@{p}` short for `@{push}`; Junio C Hamano marked it queued.
 
-**`rerere` race condition fix** -- Thomas Bachem’s three-patch series fixes a long-standing race condition in the `rerere` subsystem, introducing `--skip-locked` mode for `git rerere gc`.
+**packed-refs fwrite** -- Karthik Nayak's change writes unchanged refs with `fwrite()`, about 20% faster on deletes; Toon Claes listed sanitizations lost by `fwrite()` and proposed a separate preformatted writer function.
 
-**`git restore-mtimes` proposal** -- Artem S. Tashkinov proposed a new command to preserve per-file historical modification timestamps derived from Git commit history.
+**alternates into files ODB** -- Patrick Steinhardt posted a 13-patch series moving alternates into the "files" object database backend, dropping the `read_alternates` callback from `struct odb_source`.
 
-**Stash sharing through remotes** -- Hanan Arshad proposed a porcelain workflow for `git stash` to publish, list, import, and remove stashes through remotes, leveraging `git stash export` and `git stash import`.
+**commit-graph from updated refs** -- Kristofer Karlsson posted a series making fetch write the commit-graph from updated refs only; Patrick Steinhardt noted no benchmark was provided.
 
-**Incremental rebase workflows** -- Alejandro Colomar and Nico Williams debated whether incremental rebase conflict resolution should be a new command (`git brebase`), a flag for `git rebase`, or the default behavior. The discussion highlights design trade-offs between simplicity and functionality.
+**SHA-256 tree digest RFC** -- Scott Chacon posted an RFC signing a SHA-256 digest of tree contents in commits and tags; brian m. carlsson rejected it in favor of moving to SHA-256.
 
-**Windows memory regression with fsmonitor** -- Pierre Bruno reported unexpectedly high memory consumption (around 1 GB per process) when running `git status`-like commands in Git 2.56.0.windows.1 with fsmonitor enabled. The regression is under investigation.
+**branch hook gaps** -- Поникаров reported `git branch -C` and `reflog delete --updateref --rewrite` skip the reference-transaction hook while `-c`/`-m` invoke it without the new value.
 
-**`git repack --dry-run --drop-filtered` regression** -- Coy Geek reported that `git repack --dry-run --drop-filtered` incorrectly mutates repository storage despite its documented promise to only list candidate objects. The regression is critical and requires a fix.
+**fetch.followRemoteHEAD** -- Colin Hinton posted v5 deferring validation to the point of use in `do_fetch()`, storing the raw string with a `follow_remote_head_seen` flag after Junio C Hamano endorsed dying rather than warning on bad values.
 
-**`remote.<name>.refmap` design ambiguity** -- Junio C Hamano identified a design ambiguity in Harald Nordgren’s v6 series introducing `remote.<name>.refmap`, where both `remote.<name>.fetch` and `remote.<name>.refmap` are configured. The series remains blocked until this design point is settled.
+**Zsh completion** -- Fionn Fitzmaurice patched the Zsh completion to exclude files already present in the argument list.
 
----
+**interpret-trailers examples** -- Kristoffer Haugsbakk posted v2 rephrasing the `trailer.<key-alias>.cmd` examples; Junio C Hamano marked the topic for `next`.
+
+**precompiled header** -- SZEDER Gábor noted the precompiled `git-compat-util.h` changes `__FILE__` expansion in error messages, which he judged acceptable.
+
+**fsmonitor untracked cache** -- Ilia K posted a patch adding `untracked_cache_invalidate_stale_dirs()` so that after the fsmonitor daemon sends a trivial response, stale untracked-cache directories are invalidated before the index is saved.
+
+**history sign v5** -- Souma posted v5 adding Git completion coverage for the existing `-S`/`--gpg-sign` and `--no-gpg-sign` options on history subcommands.
 
 ## Looking ahead
 
-The next week is likely to see continued activity around several ongoing efforts:
-
-- **Rust-based SHA-1 backend**: The policy-level objection over Rust version requirements must be resolved before the series can proceed. Expect discussion about whether Git should align with Debian stable or adopt a more aggressive version policy.
-- **`git stash` autostash bugfix**: The NULL-dereference risk must be addressed before the series can re-enter `seen`. The fix is high-priority for stability.
-- **`uploadpack.lazyFetchTrusted`**: The series is technically complete and ready for maintainer review. Integration is likely if no further issues are identified.
-- **MIDX reachability closure fixes**: The `oidset` vs. `oid_array` debate must be resolved before the series can graduate to `next`. Expect further discussion about the trade-offs between memory efficiency and delta compression quality.
-- **`gitmergeconflicts(7)`**: The series is nearing completion, with the next iteration likely to include the proposed conflict marker enhancements and `diff3` promotion.
-- **Incremental rebase workflows**: The design debate about whether to integrate incremental conflict resolution into `git rebase` or introduce a new command (`git brebase`) will continue. Expect further discussion about the trade-offs between simplicity and functionality.
+Several series reached v5 or v6 this week and are likely to see final review or graduation in the coming days: Christian Couder's `uploadpack.lazyFetchTrusted`, Thomas Bachem's rerere lock handling, Maciej Ciemborowicz's transaction-hook old-OID fix, and Harald Nordgren's shallow-repo refmap fetch all await further maintainer feedback. Julia Evans's `gitmergeconflicts` guide and Taylor Blau's cruft-less MIDX repack fixes absorbed substantial review and may need another iteration. The submodule delta-base cache fix and the `repack --dry-run` bug report are fresh and will likely generate follow-up discussion.
