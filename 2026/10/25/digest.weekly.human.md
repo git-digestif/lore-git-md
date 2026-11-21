@@ -1,131 +1,111 @@
 ## Long threads
 
 ### New `gitmergeconflicts(7)` documentation page
+
 *Long thread: 69 replies so far from 6 participants over 30 days.*
-Julia Evans's six-patch series adds a `gitmergeconflicts` man page explaining merge conflicts with examples, linked from `git-merge`, `git-rebase`, `git-revert`, `git-cherry-pick`, and `git-pull`. By v4 the series had folded in Junio C Hamano's diff3 example and cleanups; Ben Knoble declared himself happy with v4 and suspected diminishing returns, while Junio flagged only a tab-indentation inconsistency and a missing "from" in one phrase before finding nothing else questionable.
+
+Julia Evans posted v4 of her six-patch series adding a `gitmergeconflicts` man page that explains merge conflicts with examples, linked from the `git-merge`, `git-rebase`, `git-revert`, `git-cherry-pick`, and `git-pull` documentation instead of repeating the explanation in each command. The v4 changelog folds in Junio C Hamano's diff3 example and cleanups such as sentence periods and a more accurate cherry-pick commit message. Ben Knoble said he is happy with v4 and suspects the thread is reaching diminishing returns. Junio C Hamano flagged a tab-indentation inconsistency in the diff3 example and the phrase "each removed one fruit to the list" needing "from", retracted an earlier `SYNOPSIS` lint concern, and otherwise found nothing questionable in the six patches.
 
 ### `git branch --delete-merged` and squash-merged branches
+
 *Long thread: 47 replies so far from 6 participants over 25 days.*
-Harald Nordgren's series would let `git branch --delete-merged` treat branches merged via GitHub squash or rebase merges as merged, naming the upstream commit as "landed as ...". Junio C Hamano objected to loosening the default with a test showing a private branch wrongly deleted when its changes appeared upstream under a different author. The thread explored `--delete-integrated`, a subset-superset ladder (`=merged`, `=rebased`, `=squashed`), and a separate `--delete-integrated <pattern>` command, but Nordgren conceded on 10/23 that `--delete-merged=squashed` is stopped because the option's value slot is already taken by the upstream `<pattern>`.
+
+Harald Nordgren's series would let `git branch --delete-merged` treat a branch as merged when an upstream commit since the fork point has the branch's version of every file it changed, naming that commit in the output as "landed as ...". After Junio C Hamano objected to loosening the default and the thread explored `--delete-integrated` and level names, Harald Nordgren conceded that the `--delete-merged=squashed` proposal is stopped: the option's value slot is already required for the upstream `<pattern>` and cannot also carry a level. Earlier iterations had drawn testing from Jasper Mayone, who found a false positive where a never-merged branch is deleted because another author made the same change upstream.
 
 ### fetch: avoid fetching every branch of a new remote in a shallow repo
+
 *Long thread: 45 replies so far from 4 participants over 37 days.*
-Harald Nordgren's five-patch series keeps shallow repositories from fetching every branch of a newly added remote by adding a `remote.<name>.refmap` config, making refspec-less fetches infer targets from local upstreams, and defaulting `--limited-fetch` for shallow repos. Junio C Hamano called v10 fairly well done but asked for a second reviewer; D. Ben Knoble supplied that read on 10/24, questioning whether the `remote_find_tracking()` fallback could miss mapped refs. Nordgren posted v11 on 10/25 adding the fallback when `remote.<name>.fetch` does not match, with tests locking down negative refspecs and `--delete-merged` behavior.
+
+Harald Nordgren's series changes `git remote add` and fetch refspec handling so that adding a remote to an already shallow repository does not commit to fetching every branch the remote has. The series adds a `remote.<name>.refmap` config, makes a refspec-less fetch infer what to fetch from local branches whose `@{upstream}` is on that remote, and turns on `--limited-fetch` by default for shallow repos. v11 makes `remote_find_tracking()` fall back to `remote.<name>.refmap` when `remote.<name>.fetch` does not match, with tests that negative refspecs still exclude refs. D. Ben Knoble supplied a requested second review, questioning whether the fallback could miss mapped refs for `--delete-merged`, which Nordgren answered by adding tests locking that down.
 
 ### CI housekeeping and modernization series
+
 *Long thread: 41 replies so far from 6 participants over 12 days.*
-Patrick Steinhardt's eight-patch series fixes CI issues and moves jobs off EOL Docker images, renaming "linux-exotic" to "linux-feature-testbed". Junio C Hamano marked v4 for `next`, and Steinhardt queued a follow-up to resurrect a no-Rust CI job by adding `NO_RUST` to a Makefile-based job.
+
+Patrick Steinhardt's eight-patch series "ci: some housekeeping and modernizations" fixes CI issues and moves jobs off EOL Docker images, including renaming "linux-exotic" to "linux-feature-testbed". Junio C Hamano marked v4 for `next`. Steinhardt queued the resurrection of a no-Rust CI job -- adding NO_RUST to a Makefile-based job such as linux-feature-testbed or linux32 -- into a follow-up series he is preparing, not the current v4.
 
 ### connected: incremental connectivity check
+
 *Long thread: 35 replies so far from 3 participants over 40 days.*
-Kristofer Karlsson's series adds an incremental connectivity-check mode behind `transfer.connectivityCheck=incremental` or `"auto"` with a configurable cutoff (default 1000 commits). After Junio C Hamano questioned gating `fetch_if_missing` on "not full", Karlsson reworked v5 to use `odb_read_object_info_extended()` with `OBJECT_INFO_SKIP_FETCH_OBJECT`, verified in a partial clone that promised blobs report as missing without fetching, and Junio judged the incremental changes good on 10/23.
+
+Kristofer Karlsson posted v5 of the six-patch series adding an incremental mode to the connectivity check, gated behind `transfer.connectivityCheck=incremental` or `auto`. The series no longer touches `repo->fetch_if_missing`; it reads blobs and trees with `odb_read_object_info_extended()` and `OBJECT_INFO_SKIP_FETCH_OBJECT` so the verifier never lazily fetches, and reports a corrupt tree as an error instead of dying. Junio C Hamano reviewed v5, said the incremental changes look good, and indicated he will replace the previous version. Earlier, Patrick Steinhardt had agreed that a 1000-commit cutoff is a good first iteration for the "auto" mode.
 
 ### advice: use global config for default branch name
+
 *Long thread: 27 replies so far from 5 participants over 46 days.*
-Vsevolod Myalitsin's series makes the `defaultBranchName` advice recommend a global config scope, passing the whole `advice_setting` to `vadvise()` with a scope hint. Junio C Hamano asked whether to mark it for `next` and whether the `vadvise()` API could be cleaned up separately. David Timber warned on 10/24 that a quoted message carried a bogus 2027 timestamp, a spam-filter red flag.
+
+Vsevolod Myalitsin's series makes the `defaultBranchName` advice shown during `git init` recommend a global config scope, since a local-scope setting only affects the repository where the advice was already shown while the advice reappears on the next `git init`; it passes the whole `advice_setting` to `vadvise()` and adds a scope hint. Earlier discussion had converged on adding `--global` to the squelch hint. David Timber pointed out that a quoted message in the thread carries a bogus future timestamp (dated 2027), warning that future timestamping is a technique spammers use and a "big no no" with modern spam filters.
 
 ### doc: move BreakingChanges to a manpage
+
 *Long thread: 23 replies so far from 5 participants over 25 days.*
-Kristoffer Haugsbakk's series moves `Documentation/BreakingChanges.adoc` to a `gitbreaking-changes(7)` manpage. Junio C Hamano questioned whether anyone still cares about 1.x-to-2.0 issues; Haugsbakk proposed a trailing "what happened in 3.0" section written in future tense, and Junio decided to proceed with the manpage.
 
-### doc: add new Git tutorial for beginners
+Kristoffer Haugsbakk's series moves `Documentation/BreakingChanges.adoc` to a `gitbreaking-changes(7)` manpage so the content is reachable via `git help`. Junio C Hamano asked what should happen when Git 3.0 arrives and questioned whether keeping such a historical document is worth it. Haugsbakk proposed a trailing section for "what happened in 3.0", introduced with text noting the changes are written in the future tense for readers coming from version 2.98. Patrick Steinhardt argued the document should stay at least a couple of years because upgrades often jump versions; Junio C Hamano decided to proceed with the manpage.
+
+### doc: new beginner Git tutorial
+
 *Long thread: 22 replies so far from 5 participants over 18 days.*
-Julia Evans's two-patch series replaces `gittutorial` with a 782-line beginner tutorial covering `git init` through `git push` using only commands available in Git 2.23.0. Junio C Hamano praised the pacing and flagged heading-style nits; Evans preferred Setext headings because Atx-style `== DESCRIPTION` trips `make lint-docs`. Ben Knoble called the v3 range-diff fine with small nits about `vi` descriptions and `:cquit!`.
 
-### reflog: add --operations and --historical-branch
-*Long thread: 22 replies so far from 5 participants over 11 days.*
-Harald Nordgren's series adds `--operations` (folding rebases) and `--historical-branch` (decorating entries with the branch HEAD was on) to `git reflog` and `git log -g`. Phillip Wood and D. Ben Knoble argued `--operations` cannot truly show one entry per command and suggested `%gb` format specifiers instead. Kristoffer Haugsbakk later doubted his original motivation, finding the per-branch reflog already hides rebase steps, and Nordgren replied the code may not be worth reviewing if the design is unsettled.
-
-### Contributors' Summit 2026 follow-ups and v3.0 timeline
-*Long thread: 20 replies so far from 9 participants over 28 days.*
-Following the 2026 Contributors' Summit summary and Junio C Hamano's v3.0 timeline, Christian Couder announced attendance at the Gerrit User Summit and an NVIDIA hackathon on partial clones replacing Git LFS, while Luca Milanesio said he will present his Cassandra object-storage backend prototype for JGit.
-
-### doc: rewrite detached HEAD state explanation
-*Long thread: 20 replies so far from 3 participants over 14 days.*
-Julia Evans's `gitdetached-head` guide rewrite continued its wording debate. She explained that she shared quotes from experienced users to show the language people actually use, asked for trust in her sorting of comments, and added an XKCD reference; Junio C Hamano had questioned the quotes' purpose and recorded replacement text for the opening paragraphs.
-
-### odb: introduce object storage extension
-*Long thread: 14 replies so far from 3 participants over 2 days.*
-Patrick Steinhardt's seven-patch series adds `extensions.objectStorage` configured as `<schema>[://<payload>]`, currently only `files` with a payload that can relocate `.git/objects`. He answered Karthik Nayak's questions on relative paths, `gettext.h`, and the `DEFAULT_REPO_FORMAT` protective measure, and argued against a full 30-combination test matrix.
-
-### worktree: copy-on-write creation and ephemeral branches
-*Long thread: 11 replies so far from 5 participants over 139 days.*
-Jason Newton's v3 adds `git worktree add --reflink` for copy-on-write filesystems (disabled on Windows for a ReFS bug) plus reaping of ephemeral branches. Eric Sunshine objected that the ephemeral-branch patch adds complexity for a case covered by `--detach`; Newton argued a detached HEAD leaves status and push with nothing to name, and Phillip Wood said the reply fell short of the list's standard.
-
-### github-ci: update macOS jobs from macos-14
-*Long thread: 10 replies so far from 4 participants over 5 days.*
-Junio C Hamano posted v4 updating `osx-*` jobs from `macos-14` to `macos-15` or `macos-26`, then retracted it as bogus and settled on v2 after Patrick Steinhardt suggested mixing versions for coverage and Todd Zullinger asked about `macos-latest`.
+Julia Evans posted v3 of her two-patch series replacing the old `gittutorial` with a new 782-line beginner tutorial covering `git init` through `git push`, using only commands available in Git 2.23.0 and explicitly not covering branches or collaboration. Ben Knoble called the v3 range-diff fine with a few small nits: drop "extremely" from the `vi` description, say "bottom-left" for the tilde characters, and ideally recommend `:cquit!` alongside `:q!`. Earlier, Junio C Hamano had called the 739-line v2 well-paced and free of common traps, with nitpicks on heading underlines and SSH key commands.
 
 ## The period in brief
-The week of 2026/10/19 through 2026/10/25 saw heavy traffic across seven active days, dominated by long-running design debates on `git branch --delete-merged`, shallow-repo fetch behavior, and incremental connectivity checks, alongside a burst of documentation work from Julia Evans. Readers should not miss the v3.0 timeline follow-ups from the Contributors' Summit, Patrick Steinhardt's `extensions.objectStorage` series reaching v3, and the Git for Windows 2.56.0(3) security release.
+
+The week of 2026/10/19 through 2026/10/25 saw heavy traffic across seven active days, with documentation and fetch behavior dominating the discussion. Readers should not miss Julia Evans's advancing documentation series, Harald Nordgren's v11 shallow-repo fetch series, and the v2.56.0 regression in filtered `--unshallow` fetches that Taylor Blau and Junio C Hamano traced to the skipping negotiator.
 
 ## Key developments
 
-### Object storage extension matures
-Patrick Steinhardt advanced his seven-patch `extensions.objectStorage` series to v3, splitting the storage URI into an explicit `enum object_storage_format` plus payload, adding `--object-storage-format=` to `git-init` and `git-clone` (with local clones falling back to non-local when formats differ), and propagating the format through `git-submodule`. Karthik Nayak reviewed earlier iterations and was satisfied with v2; the series now supports only the "files" backend whose payload can relocate `.git/objects`.
+### odb: introduce object storage extension
 
-### Shallow-repo fetch series nears completion
-Harald Nordgren's v11 of the five-patch series preventing shallow repos from fetching every branch of a new remote landed after D. Ben Knoble's second review. The series adds `remote.<name>.refmap`, infers refspec-less fetch targets from local upstreams, and defaults `--limited-fetch` for shallow repos; v11 adds the `remote_find_tracking()` fallback to the refmap when the fetch refspec does not match, with tests for negative refspecs and `--delete-merged`.
+Patrick Steinhardt posted v3 of the seven-patch series introducing the `extensions.objectStorage` extension, configured via `extensions.objectStorage` with the same syntax as the ref storage extension. V3 splits the storage URI into an explicit `enum object_storage_format` plus a separate payload, adds `--object-storage-format=` to `git-init` and `git-clone` (local clones fall back to a non-local clone with a warning when formats differ), and propagates the format through `git-submodule` without passing payloads down. Karthik Nayak reviewed earlier versions and is okay with the series as is.
 
-### Incremental connectivity check reworked
-Kristofer Karlsson posted v5 of the incremental connectivity check, removing its dependence on `repo->fetch_if_missing` by using `odb_read_object_info_extended()` with `OBJECT_INFO_SKIP_FETCH_OBJECT`. Junio C Hamano judged the incremental changes good and indicated he would replace the previous version; the series supports `transfer.connectivityCheck=incremental` or `"auto"` with a configurable cutoff defaulting to 1000 commits.
+### negotiator/skipping.c: parse parents before queueing
 
-### Documentation push: tutorials and merge conflicts
-Julia Evans advanced two major doc series: v4 of the `gitmergeconflicts(7)` man page (69 replies, nearing convergence) and v3 of a new 782-line beginner `gittutorial` replacing the old one. Kristoffer Haugsbakk's `gitbreaking-changes(7)` manpage also progressed after Junio decided to proceed despite questions about retaining old-version content.
+Taylor Blau's patch makes the skipping fetch negotiator parse each unseen parent before pushing it onto the date-sorted queue, so old ref tips no longer sort ahead of unparsed parents with zero dates. Today Taylor conceded that Junio C Hamano is right that the default negotiator has a related bug (marking commits SEEN before parsing succeeds), accepted a hybrid approach, and offered to fix the default negotiator alongside this series. Junio C Hamano decided that, given a clear grasp of the existing bug and a straightforward fix, the default negotiator fix should be done as part of this series.
 
-### Git for Windows security release
+### Git for Windows 2.56.0(3) security release
+
 Johannes Schindelin announced Git for Windows 2.56.0(3), addressing the eMudhra Intermediate CA Compromise and Git LFS CVE-2026-105803 by upgrading to Git LFS v3.8.1, and bundling OpenSSH v10.6.P1 and cURL v8.23.0.
 
-### Fetch negotiator and shallow-fetch fixes
-Taylor Blau conceded a related bug in the default fetch negotiator (marking commits SEEN before parsing) and agreed to fix it alongside his skipping-negotiator patch that parses parents before queueing. Daniel Zoghalchali reported a v2.56.0 regression where filtered `--unshallow` of a moved ref aborts in pack-objects, traced to `GIT_SHALLOW_FILE` export; Junio decided the fix belongs in the same series.
+### filtered --unshallow of a moved ref aborts in pack-objects
+
+Daniel Zoghalchali reported that since v2.56.0, a fetch combining a tree filter with `--unshallow` (or `--deepen`) aborts in a non-partial shallow clone with "BUG: should_include_obj should only be called on existing objects" when the fetched ref has moved past the local tip. He traced the regression to d43b9acb05 ("setup: unify setup of shallow file"), which exports `GIT_SHALLOW_FILE` so the pack-objects grandchild inherits the empty shallow file. Taylor Blau conceded a related bug in the default fetch negotiator, and Junio C Hamano decided the fix belongs in the same series.
+
+### `git status` comparing against both upstream and push branch by default
+
+Harald Nordgren posted v3 of a patch making `git status` compare the current branch against both `@{upstream}` and `@{push}` by default, building on `status.compareBranches`. The strengthened commit message argues the push-branch comparison reminds a returning user how the branch differs from what was last pushed, reveals local rewrites needing a forced push, and validates what is about to be pushed. Junio C Hamano argued against flipping the default, saying the original commit made the comparison opt-in pending evidence that people like it, and that the change would surprise existing users.
+
+### t: run greplint checks inside chainlint
+
+Tyler Cipriani posted a four-patch series teaching `t/chainlint.pl` to run the greplint checks while processing its own tokens, so `make test-lint` parses each of the roughly 1100 test scripts once, in parallel, instead of twice with greplint running serially. The cover letter reports five runs dropping from 25.158s to 5.972s.
 
 ## In brief
 
-**log --follow speedup** -- Miklos Vajna posted v3 speeding up `git log --follow` across renames in non-linear history by removing `propagate_follow_pathspec_to_parent()` and recording the path per parent in the existing diff loop.
+- **log: speed up --follow for non-linear history**: Miklos Vajna submitted v3 speeding up `git log --follow` across renames in non-linear history by removing `propagate_follow_pathspec_to_parent()` and recording the path to follow per parent in the existing `log_tree_diff()` loop.
 
-**CRLF status fix** -- Torsten Bögershausen argued on v5 that a changed file size does not prove filtered content changed, proposing to drop the size shortcut in `ie_modified()` entirely.
+- **read-cache: do not trust a size change when conversion is active**: Torsten Bögershausen argued on the v5 patch that a changed file size does not prove the filtered content changed, since `ce_modified_check_fs()` verifies content; he proposed dropping the size shortcut in `ie_modified()` entirely.
 
-**.keep lockfile ownership** -- Justin Tobler posted v4 of the series migrating `.keep` lockfile creation to ODB transaction commit so concurrent `git receive-pack` processes no longer delete each other's lockfiles.
+- **object-file: fix ".keep" lockfile ownership in ODB transactions**: Justin Tobler posted v4 of a series fixing a bug where a `git-receive-pack` process deletes a concurrent process's `.keep` lockfile for an identical packfile; the reroll corrects the `write_pack_lockfile()` error-variable handling per Patrick Steinhardt's suggestion.
 
-**status index.lock** -- Mihai Cosma's series makes `git status` take `index.lock` only to write and fixes a `skipHash` race that could silently revert a `git add`; Jun Wu's separate `core.indexLockTimeout` series was noted as relatively independent.
+- **odb/source-files: reload alternates on retry**: Patrick Steinhardt posted a four-patch series restoring alternates reloading when an object is not found, a regression from 5946a564cd, with the last two patches bringing 20k missing-object lookups from 309ms back to 197ms.
 
-**status.compareBranches default** -- Harald Nordgren posted v3 making `@{upstream} @{push}` the default for `status.compareBranches`; Junio C Hamano argued against flipping the default, saying it would surprise existing users.
+- **fetch: commit references before backfilling tags**: Karthik Nayak posted v4 advertising already-fetched refs as "haves" when backfilling tags, fixing shallow and `--atomic` fetches; Patrick Steinhardt endorsed Justin Tobler's alternative of supplementing the backfill "haves" with the uncommitted refs in the pending transaction.
 
-**worktree --reflink** -- Jason Newton's v3 adds `git worktree add --reflink` for copy-on-write filesystems; brian m. carlsson confirmed macOS `cp -c` support but declined to review further AI-generated content.
+- **gpg-interface: fail when the SSH revocation file is missing**: Christian Noé Ramos López posted a patch making signature verification fail with an error when `gpg.ssh.revocationFile` names a missing file, with a `:(optional)` prefix to skip the check.
 
-**chainlint/greplint merge** -- Tyler Cipriani's series teaches `t/chainlint.pl` to run greplint checks, cutting `make test-lint` from about 25 seconds to 6.
+- **worktree: add --reflink for copy-on-write worktree creation**: brian m. carlson confirmed v3 handles macOS `cp -c` (clonefile(2)) so the REFLINK test runs there, and declined to review further AI-generated content from Jason Newton, citing the project's AI policy.
 
-**submodule ^/ URL syntax** -- Stanislav Aleksandrov's RFC proposes resolving `^/` submodule URLs against the superproject's remote from the server root; Jacob Keller concluded the concept makes sense.
+- **submodule: make '^/' work like '../' but with an absolute path**: Stanislav Aleksandrov's RFC proposes resolving a submodule URL starting with `^/` against the superproject's remote from the server root; Jacob Keller concluded the concept makes sense.
 
-**reflog options** -- Harald Nordgren's `--operations` and `--historical-branch` series faced skepticism that `--operations` cannot truly fold multi-commit commands, with suggestions to use `%gb` format specifiers instead.
+- **reflog: add --operations and --historical-branch**: Harald Nordgren's three-patch series adds `--operations` and `--historical-branch` to `git reflog` and `git log -g`; Kristoffer Haugsbakk expressed doubt about the motivation after testing showed per-branch reflog lists only rebase-finish entries, and criticized the `--historical-branch` implementation.
 
-**gpg SSH revocation** -- Christian Noé Ramos López posted a patch failing verification when `gpg.ssh.revocationFile` is missing, with a `:(optional)` prefix to skip; Junio objected to the doc text and the placement of the missing-file check.
+- **Documentation: propose community voting process**: On Emily Shaffer's proposed `CommunityVoting` process, Kristoffer Haugsbakk argued an AI-contributions vote would drift toward tech-employer positions; Patrick Steinhardt and brian m. carlson endorsed secret ballots; Justin Tobler argued the eligibility bar is too low.
 
-**partial clone merge failure** -- Andrew Parmet reported that in a partial clone a merge can fail with "not our ref" when requesting a locally created blob from the promisor remote.
+- **Contributors' Summit 2026 follow-ups**: Christian Couder announced he will attend the Gerrit User Summit on November 9-10 and an NVIDIA hackathon on November 11-13 on partial clones replacing Git LFS; Luca Milanesio said he will present his Cassandra object-storage backend prototype for JGit at the summit.
 
-**maintenance lock** -- Masaya Kazama reported that a killed detached maintenance child leaves a stale `objects/maintenance.lock`, making later `git maintenance run --auto` return silently.
+- **github-ci: update macOS jobs from macos-14**: Junio C Hamano posted v4 of the patch updating the four `osx-*` jobs from `macos-14` to `macos-15` or `macos-26`, then retracted it as bogus, having decided to use v2 instead.
 
-**advice scoping** -- Vsevolod Myalitsin's series adds a scope hint so the `defaultBranchName` advice suggests global config; Junio asked whether to mark it for `next`.
+- **advice: introduce advice scoping mechanism**: Vsevolod Myalitsin's series adds a scope hint so the `defaultBranchName` advice suggests the global scope; Junio C Hamano asked whether to mark `jc/advice-config-set-global` for `next`.
 
-**hook configuration** -- Thomas Bachem's v2 makes `hook.<event>.enabled=false` suppress hooks-directory hooks and treats missing `.enabled`/`.parallel` values as true; Junio said he will queue it.
+- **doc: rewrite detached HEAD state explanation**: Julia Evans's standalone `gitdetached-head` guide rewrite continued its wording debate, with Junio C Hamano questioning what she aimed to illustrate with quotes from experienced users.
 
-**diff-delta safe arithmetic** -- Srujith Poojary posted v5 of the safe-integer-arithmetic patch with expanded commit message bounds after Junio's critique.
-
-**git apply crashes** -- Tanga Joris reported `git apply --check` crashes on patches with blank lines after `diff --git` or with `--- /dev/null` before `new file mode`; Hannes Brandstätter-Müller diagnosed a zero `previous->new_mode` in `check_preimage()` for pure renames under `core.fileMode=false`.
-
-**shallow-fetch protocol v2** -- Harald Nordgren posted v2 of a fix for slow fetches from shallow repositories over protocol v2, writing shallow lines through the packet writer after Junio found the v1 broke sideband-all.
-
-**alternates reload** -- Patrick Steinhardt's series restores reloading alternates when an object lookup is retried, fixing a regression from 5946a564cd; Christian Couder noted patch 2/4 reads from the quarantine directory.
-
-**fetch tag backfill** -- Karthik Nayak posted v4 advertising already-fetched refs as "haves" when backfilling tags, fixing shallow and `--atomic` fetches; Justin Tobler suggested supplementing with uncommitted refs from the pending transaction.
-
-**community voting** -- Emily Shaffer's proposed `CommunityVoting` process drew debate: Kristoffer Haugsbakk worried an AI-contributions vote would drift toward employer positions, while Patrick Steinhardt and brian m. carlsson endorsed secret ballots.
-
-**MyFirstContribution** -- Junio C Hamano posted v4 reordering "respond to reviews" before "send v2" and strengthening the wording.
-
-**ls-files untracked cache** -- Tamir Duberstein posted v3 letting `git ls-files` reuse and update the untracked cache, releasing the index lock before printing paths.
-
-**followRemoteHEAD** -- Junio asked that the resolution in `do_fetch()` be refactored into a `lazy_follow_remote_head()` helper; the deferred validation patch has a textual conflict with Nordgren's fetch-refmap work.
-
-## Looking ahead
-The `--delete-merged` squash-detection design remains unresolved after the `--delete-merged=squashed` syntax was conceded stopped; a separate `--delete-integrated` command or a `%gb`-based reflog approach may resurface. Patrick Steinhardt's object storage extension and Harald Nordgren's shallow-fetch series are both queued for further review and likely to land in `next` soon. The incremental connectivity check v5 awaits integration after Junio's approval.
+- **Various small fixes**: Junio C Hamano found Harald Nordgren's shallow-fetch fix breaks protocol v2 with sideband-all; Andy Koppe posted v3 keeping root refs out of the loose ref cache; Phillip Wood posted v3 of the stash series removing duplicate index loads; Mihai Cosma posted a series making `git status` take `index.lock` only to write; Jun Wu's series adds `core.indexLockTimeout`; Tamir Duberstein posted v3 letting `git ls-files` reuse the untracked cache; Hannes Brandstätter-Müller reported `git apply` fails on a pure rename followed by an edit under `core.fileMode=false`; Thomas Bachem posted v2 of hook configuration changes; Srujith Poojary posted v5 of the `diff-delta.c` safe-integer-arithmetic patch; Tanga Joris reported `git apply --check` crashes on a patch with a blank line after the `diff --git` line; René Scharfe endorsed dropping `NO_PARSEOPT` from four builtins.
